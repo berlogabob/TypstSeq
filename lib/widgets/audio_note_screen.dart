@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:just_audio/just_audio.dart';
 import 'package:tylog_audio/tylog_audio.dart';
 
@@ -22,7 +23,7 @@ import 'processing_screen.dart';
 import 'constants.dart';
 
 /// Sections of the expanded audio screen.
-enum AudioTab { comments, transcribe, translate, properties }
+enum AudioTab { comments, transcribe, properties }
 
 bool get waveformSupported => !Platform.isWindows;
 
@@ -152,7 +153,12 @@ class _WaveformPainter extends CustomPainter {
       old.played != played;
 }
 
-/// Language choices and translation requests for an audio transcript.
+Future<void> _copyAudioText(BuildContext context, String text) async {
+  await Clipboard.setData(ClipboardData(text: text));
+  if (context.mounted) showSnack(context, 'Copied');
+}
+
+/// Language choices and translation retries for an audio transcript.
 class AudioLanguageBar extends StatelessWidget {
   const AudioLanguageBar({
     super.key,
@@ -181,17 +187,16 @@ class AudioLanguageBar extends StatelessWidget {
   final bool? parallel;
   final ValueChanged<bool>? onParallelChanged;
 
-  String _name(String code) => kLanguageNames[code] ?? code;
-
   @override
   Widget build(BuildContext context) {
-    final shown = {...selected, ...translated, ...translating.keys};
-    final offered = kLanguageNames.keys.where(
-      (l) => l != sourceLanguage && !shown.contains(l),
-    );
-    final faded = Theme.of(
-      context,
-    ).colorScheme.onSurfaceVariant.withValues(alpha: 0.6);
+    final shown = {
+      'ru',
+      'en',
+      'pt',
+      ...selected,
+      ...translated,
+      ...translating.keys,
+    };
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.symmetric(
@@ -239,47 +244,25 @@ class AudioLanguageBar extends StatelessWidget {
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 showCheckmark: false,
               )
-            else if (translating.containsKey(l))
+            else if (l != sourceLanguage)
               Chip(
-                avatar: translating[l] == 'failed'
-                    ? null
-                    : const SizedBox(
-                        width: 14,
-                        height: 14,
+                avatar:
+                    translating[l] == 'queued' || translating[l] == 'processing'
+                    ? const SizedBox(
+                        width: kIconSmall,
+                        height: kIconSmall,
                         child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
+                      )
+                    : null,
                 label: Text(l.toUpperCase()),
                 onDeleted: canRequest && translating[l] == 'failed'
                     ? () => onRequest(l)
                     : null,
-                deleteIcon: const Icon(Icons.refresh, size: 18),
-                visualDensity: VisualDensity.compact,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              )
-            else if (l != sourceLanguage)
-              ActionChip(
-                avatar: Icon(Icons.add, size: 16, color: faded),
-                label: Text(l.toUpperCase()),
-                labelStyle: TextStyle(color: faded),
-                onPressed: canRequest ? () => onRequest(l) : null,
+                deleteButtonTooltipMessage: 'Retry ${l.toUpperCase()}',
+                deleteIcon: const Icon(Icons.refresh, size: kIconSmall),
                 visualDensity: VisualDensity.compact,
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-          if (canRequest && offered.isNotEmpty)
-            PopupMenuButton<String>(
-              tooltip: 'Translate into another language',
-              icon: const Icon(Icons.translate),
-              style: IconButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-                fixedSize: const Size(32, 32),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              onSelected: onRequest,
-              itemBuilder: (_) => [
-                for (final l in offered)
-                  PopupMenuItem(value: l, child: Text(_name(l))),
-              ],
-            ),
         ],
       ),
     );
@@ -349,8 +332,17 @@ class AudioTranscriptRow extends StatelessWidget {
       title: _text(context, segment.text),
       subtitle: translation == null || gap
           ? null
-          : _text(context, translation!, muted: true),
+          : GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onLongPress: () => unawaited(
+                _copyAudioText(context, parseTranscriptText(translation!).text),
+              ),
+              child: _text(context, translation!, muted: true),
+            ),
       onTap: onTap,
+      onLongPress: () => unawaited(
+        _copyAudioText(context, parseTranscriptText(segment.text).text),
+      ),
     );
   }
 }
@@ -496,8 +488,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
   final _input = TextEditingController();
   final _inputFocus = FocusNode();
   late List<int> _peaks = decodePeaks(widget.note.properties['peaks']);
-  bool get _watching =>
-      _tab == AudioTab.transcribe || _tab == AudioTab.translate;
+  bool get _watching => _tab == AudioTab.transcribe;
   List<AudioComment> _transcript = const [];
   List<AudioComment> _summary = const [];
   List<AudioComment> _scenes = const [];
@@ -511,7 +502,6 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
   late AudioTab _tab = widget.initialTab;
   String? _lang;
   List<String> _langs = const [];
-  bool get _monolingual => _langs.length <= 1;
   String? _view; // selected language
   late List<String> _aliases = [...widget.note.aliases];
   late final List<String> _tags = [
@@ -565,7 +555,15 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
   bool get _jobsPending =>
       _transcriptState == 'queued' ||
       _transcriptState == 'processing' ||
-      _translating.values.any((v) => v == 'queued' || v == 'processing');
+      _translating.values.any((v) => v == 'queued' || v == 'processing') ||
+      (widget.translationStatus != null &&
+          _transcript.isNotEmpty &&
+          {'ru', 'en', 'pt', ...widget.selectedLanguages}.any(
+            (lang) =>
+                lang != _lang &&
+                !_translations.containsKey(lang) &&
+                _translating[lang] != 'failed',
+          ));
 
   void _tick() {
     if (mounted &&
@@ -698,9 +696,18 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
         ? langs.first
         : await widget.transcriptLang?.call(path);
     final jobs = <String, String>{};
-    for (final target in _translating.keys.toList()) {
+    final targets = {
+      'ru',
+      'en',
+      'pt',
+      ...widget.selectedLanguages,
+      ..._translations.keys,
+      ..._translating.keys,
+    }..remove(lang);
+    for (final target in targets) {
       final status = await widget.translationStatus?.call(path, target);
-      if (status != null && status != 'done') jobs[target] = status;
+      final pending = status ?? _translating[target];
+      if (pending != null && pending != 'done') jobs[target] = pending;
     }
     if (!mounted) return;
     final finished = _translating.keys.any((k) => !jobs.containsKey(k));
@@ -808,8 +815,19 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
         actions: [
           PopupMenuButton<String>(
             tooltip: 'Audio note menu',
-            onSelected: (_) => unawaited(_requestTranscript()),
+            onSelected: (action) {
+              if (action == 'copy') {
+                unawaited(_showCopyAll());
+              } else if (action == 'reprocess') {
+                unawaited(_requestTranscript());
+              }
+            },
             itemBuilder: (_) => [
+              PopupMenuItem(
+                value: 'copy',
+                enabled: _transcript.isNotEmpty || _translations.isNotEmpty,
+                child: const Text('Copy all'),
+              ),
               PopupMenuItem(
                 value: 'reprocess',
                 enabled:
@@ -872,7 +890,6 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
                         : switch (_tab) {
                             AudioTab.comments => _commentList(active),
                             AudioTab.transcribe => _transcribeView(),
-                            AudioTab.translate => _translateView(),
                             AudioTab.properties => _propertiesView(),
                           },
                   ),
@@ -886,8 +903,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
   Widget _tabBar() {
     const tabs = {
       AudioTab.comments: (Icons.chat_bubble_outline, 'Comments'),
-      AudioTab.transcribe: (Icons.subtitles_outlined, 'Transcribe'),
-      AudioTab.translate: (Icons.translate, 'Translate'),
+      AudioTab.transcribe: (Icons.subtitles_outlined, 'Text'),
       AudioTab.properties: (Icons.info_outline, 'Properties'),
     };
     final scheme = Theme.of(context).colorScheme;
@@ -1171,56 +1187,63 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
     );
   }
 
-  Widget _translateView() {
-    if (_transcript.isEmpty) {
-      return Center(
+  Future<void> _showCopyAll() async {
+    final transcript = _transcript;
+    final translations = _translations;
+    final target = _view != _lang && translations.containsKey(_view)
+        ? _view
+        : translations.keys.firstOrNull;
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Transcribe the audio first'),
-            const SizedBox(height: 8),
-            OutlinedButton(
-              onPressed: () => setState(() => _tab = AudioTab.transcribe),
-              child: const Text('Go to Transcribe'),
+            ListTile(
+              title: const Text('Original'),
+              enabled: transcript.isNotEmpty,
+              onTap: () => Navigator.pop(context, 'original'),
+            ),
+            for (final lang in translations.keys)
+              ListTile(
+                title: Text(kLanguageNames[lang] ?? lang.toUpperCase()),
+                onTap: () => Navigator.pop(context, lang),
+              ),
+            ListTile(
+              title: const Text('Side by side'),
+              subtitle: target == null
+                  ? null
+                  : Text(kLanguageNames[target] ?? target.toUpperCase()),
+              enabled: target != null && transcript.isNotEmpty,
+              onTap: () => Navigator.pop(context, 'parallel'),
             ),
           ],
         ),
-      );
-    }
-    final original =
-        _monolingual &&
-            _lang != null &&
-            (widget.selectedLanguages.contains(_lang) ||
-                _translations.containsKey(_lang))
-        ? _lang
-        : null;
-    final view =
-        _view != null && (_view == original || _translations.containsKey(_view))
-        ? _view
-        : original ?? (_translations.isEmpty ? null : _translations.keys.first);
-    final shown = view == original && original != null
-        ? _transcript
-        : _translations[view];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        AudioLanguageBar(
-          selected: widget.selectedLanguages,
-          original: original,
-          sourceLanguage: _lang,
-          translated: _translations.keys.toSet(),
-          translating: _translating,
-          view: view,
-          onView: (l) => setState(() => _selectView(l)),
-          onRequest: (l) => unawaited(_requestTranslation(l)),
-          canRequest: widget.requestTranslation != null && _lang != null,
-        ),
-        Expanded(
-          child: shown == null
-              ? const Center(child: Text('Pick a language to translate into'))
-              : _segments(shown, activeIndex(shown, _position.inMilliseconds)),
-        ),
-      ],
+      ),
+    );
+    if (choice == null || !mounted) return;
+    final rows = choice == 'original' || choice == 'parallel'
+        ? transcript
+        : translations[choice]!;
+    final lines =
+        [
+          for (var i = 0; i < rows.length; i++)
+            (segment: rows[i], order: i * 2),
+          if (choice == 'parallel')
+            for (var i = 0; i < translations[target]!.length; i++)
+              (segment: translations[target]![i], order: i * 2 + 1),
+        ]..sort((a, b) {
+          final time = a.segment.ms.compareTo(b.segment.ms);
+          return time != 0 ? time : a.order.compareTo(b.order);
+        });
+    await _copyAudioText(
+      context,
+      lines
+          .map((line) {
+            final segment = line.segment;
+            return '${formatTimestamp(segment.ms)} ${parseTranscriptText(segment.text).text}';
+          })
+          .join('\n'),
     );
   }
 

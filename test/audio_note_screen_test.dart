@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemChannels;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog/widgets/audio_note_screen.dart';
@@ -14,6 +15,7 @@ Future<void> _pumpNote(
   required Future<String> Function(String) readSource,
   Future<Uint8List> Function(String)? readBytes,
   String? sourceLanguage,
+  Future<String?> Function(String, String)? translationStatus,
   Future<void> Function(String, String)? requestTranscript,
   Future<void> Function(String, String, String, String, List<String>)?
   requestTranslation,
@@ -37,12 +39,29 @@ Future<void> _pumpNote(
       transcriptLang: (_) async => sourceLanguage,
       requestTranscript: requestTranscript ?? (_, _) async {},
       requestTranslation: requestTranslation,
+      translationStatus: translationStatus,
       onOpenProcessing: onOpenProcessing,
     ),
   ),
 );
 
 void main() {
+  late List<String> copied;
+  setUp(() {
+    copied = [];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+          if (call.method == 'Clipboard.setData') {
+            copied.add((call.arguments as Map)['text'] as String);
+          }
+          return null;
+        });
+  });
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null);
+  });
+
   for (final reprocess in [false, true]) {
     testWidgets(
       '${reprocess ? 'Re-process' : 'Transcription'} links to Processing',
@@ -77,12 +96,14 @@ void main() {
     );
   }
 
-  testWidgets('Translation links to Processing', (tester) async {
+  testWidgets('failed translation retry links to Processing', (tester) async {
     var requested = 0;
     var opened = 0;
     await _pumpNote(
       tester,
       sourceLanguage: 'pt',
+      translationStatus: (_, target) async =>
+          target == 'en' ? (requested == 0 ? 'failed' : 'queued') : null,
       readSource: (_) async => '$_attachment== Transcript\n- 00:05 Olá\n',
       requestTranslation: (audio, note, target, source, sourceLangs) async {
         expect(target, 'en');
@@ -92,16 +113,175 @@ void main() {
       onOpenProcessing: () => opened++,
     );
     await tester.pump();
-    await tester.tap(find.byTooltip('Translate into another language'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('English'));
-    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Retry EN'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(requested, 1);
     expect(find.text('Queued — see Processing'), findsOneWidget);
     await tester.tap(find.widgetWithText(SnackBarAction, 'Processing'));
     expect(opened, 1);
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  testWidgets('Text replaces Translate and has no translate popup', (
+    tester,
+  ) async {
+    await _pumpNote(
+      tester,
+      sourceLanguage: 'pt',
+      readSource: (_) async => '$_attachment== Transcript\n- 00:05 Olá\n',
+      requestTranslation: (_, _, _, _, _) async {},
+    );
+    await tester.pump();
+    expect(find.text('Comments'), findsOneWidget);
+    expect(find.text('Text'), findsOneWidget);
+    expect(find.text('Properties'), findsOneWidget);
+    expect(find.text('Transcribe'), findsNothing);
+    expect(find.text('Translate'), findsNothing);
+    expect(find.byTooltip('Translate into another language'), findsNothing);
+    expect(find.byIcon(Icons.translate), findsNothing);
+    await tester.tap(find.byTooltip('Audio note menu'));
+    await tester.pumpAndSettle();
+    expect(find.text('Re-process'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  for (final status in ['queued', 'processing', 'failed']) {
+    testWidgets('discovers missing translation $status on open', (
+      tester,
+    ) async {
+      await _pumpNote(
+        tester,
+        sourceLanguage: 'pt',
+        readSource: (_) async => '$_attachment== Transcript\n- 00:05 Olá\n',
+        translationStatus: (_, target) async => target == 'en' ? status : null,
+        requestTranslation: (_, _, _, _, _) async {},
+      );
+      await tester.pump();
+      final chip = find.widgetWithText(Chip, 'EN');
+      expect(chip, findsOneWidget);
+      expect(find.widgetWithText(ChoiceChip, 'PT'), findsOneWidget);
+      expect(find.widgetWithText(Chip, 'PT'), findsNothing);
+      expect(
+        find.descendant(
+          of: chip,
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        status == 'failed' ? findsNothing : findsOneWidget,
+      );
+      expect(
+        find.byTooltip('Retry EN'),
+        status == 'failed' ? findsOneWidget : findsNothing,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
+
+  testWidgets(
+    'missing language jobs and synced text refresh while Text is open',
+    (tester) async {
+      String? status;
+      var source = '$_attachment== Transcript\n- 00:05 Olá\n';
+      await _pumpNote(
+        tester,
+        sourceLanguage: 'pt',
+        readSource: (_) async => source,
+        translationStatus: (_, target) async => target == 'en' ? status : null,
+      );
+      await tester.pump();
+      expect(find.widgetWithText(Chip, 'EN'), findsOneWidget);
+      for (final next in ['queued', 'processing', 'done']) {
+        status = next;
+        await tester.pump(const Duration(seconds: 8));
+        await tester.pump();
+        if (next != 'done') {
+          expect(
+            find.descendant(
+              of: find.widgetWithText(Chip, 'EN'),
+              matching: find.byType(CircularProgressIndicator),
+            ),
+            findsOneWidget,
+          );
+        }
+      }
+      source += '== Translation en\n- 00:05 Hello\n';
+      await tester.pump(const Duration(seconds: 8));
+      await tester.pump();
+      expect(find.widgetWithText(ChoiceChip, 'EN'), findsOneWidget);
+      expect(find.text('Hello'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets('long press copies the original or translation line', (
+    tester,
+  ) async {
+    await _pumpNote(
+      tester,
+      sourceLanguage: 'pt',
+      readSource: (_) async =>
+          '$_attachment== Transcript\n- 00:05 Olá\n'
+          '== Translation en\n- 00:05 Hello\n',
+    );
+    await tester.pump();
+    await tester.longPress(find.text('Olá'));
+    await tester.pump();
+    expect(copied, ['Olá']);
+    expect(find.text('Copied'), findsOneWidget);
+    await tester.longPress(find.text('Hello'));
+    await tester.pump();
+    expect(copied, ['Olá', 'Hello']);
+    await tester.tap(find.byTooltip('Side by side'));
+    await tester.pump();
+    await tester.longPress(find.text('Hello'));
+    await tester.pump();
+    expect(copied.last, 'Hello');
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  for (final choice in ['Original', 'English', 'Português', 'Side by side']) {
+    testWidgets(
+      'Copy all $choice uses timestamps and the selected translation',
+      (tester) async {
+        await _pumpNote(
+          tester,
+          sourceLanguage: 'ru',
+          readSource: (_) async =>
+              '$_attachment== Transcript\n'
+              '- 00:05 Привет\n- 01:10 Мир\n'
+              '== Translation pt\n- 00:05 Olá\n- 01:10 Mundo\n'
+              '== Translation en\n- 00:05 Hello\n- 01:10 World\n',
+        );
+        await tester.pump();
+        await tester.tap(find.widgetWithText(ChoiceChip, 'EN'));
+        await tester.pump();
+        await tester.tap(find.byTooltip('Audio note menu'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Copy all'));
+        await tester.pumpAndSettle();
+        expect(find.text('Original'), findsOneWidget);
+        expect(find.text('Português'), findsOneWidget);
+        await tester.tap(
+          find
+              .descendant(
+                of: find.byType(BottomSheet),
+                matching: find.text(choice),
+              )
+              .first,
+        );
+        await tester.pumpAndSettle();
+        final expected = switch (choice) {
+          'Original' => '00:05 Привет\n01:10 Мир',
+          'English' => '00:05 Hello\n01:10 World',
+          'Português' => '00:05 Olá\n01:10 Mundo',
+          _ => '00:05 Привет\n00:05 Hello\n01:10 Мир\n01:10 World',
+        };
+        expect(copied, [expected]);
+        expect(find.text('Copied'), findsOneWidget);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
 
   testWidgets('language selection changes sections and transcript rows', (
     tester,
@@ -218,7 +398,6 @@ void main() {
         find.widgetWithText(ChoiceChip, 'PT'),
         find.widgetWithText(ChoiceChip, 'RU'),
         find.widgetWithText(ChoiceChip, 'EN'),
-        find.byTooltip('Translate into another language'),
       ];
       expect(find.textContaining('Language:'), findsNothing);
       expect(find.byTooltip('Original'), findsOneWidget);
@@ -306,12 +485,8 @@ void main() {
     expect(find.text('No transcript yet'), findsNothing);
     expect(find.text('Request transcription'), findsNothing);
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    await tester.tap(find.text('Translate'));
-    await tester.pump();
-    expect(find.text('Transcribe the audio first'), findsNothing);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    await tester.tap(find.text('Transcribe'));
-    await tester.pump();
+    expect(find.text('Text'), findsOneWidget);
+    expect(find.text('Translate'), findsNothing);
 
     source.complete(_attachment);
     await tester.pump();
@@ -344,10 +519,8 @@ void main() {
       expect(find.text('Olá'), findsOneWidget);
       expect(find.text('Hello'), findsOneWidget);
       expect(find.text('Request transcription'), findsNothing);
-      await tester.tap(find.text('Translate'));
-      await tester.pump();
-      expect(find.text('Hello'), findsOneWidget);
-      expect(find.text('Transcribe the audio first'), findsNothing);
+      expect(find.text('Text'), findsOneWidget);
+      expect(find.text('Translate'), findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );

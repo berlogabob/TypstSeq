@@ -291,7 +291,7 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
                       Icons.translate,
                       'Translation',
                       _translated,
-                      AudioTab.translate,
+                      AudioTab.transcribe,
                     ),
                   ],
                 ),

@@ -424,7 +424,7 @@ void main() {
     }
   });
 
-  testWidgets('mixed transcript requests a missing selected translation', (
+  testWidgets('mixed transcript retries a failed selected translation', (
     tester,
   ) async {
     String? requested;
@@ -435,7 +435,7 @@ void main() {
             selected: const ['ru', 'en', 'pt'],
             original: null,
             translated: const {'ru'},
-            translating: const {},
+            translating: const {'en': 'failed'},
             view: 'ru',
             onView: (_) {},
             onRequest: (l) => requested = l,
@@ -445,7 +445,7 @@ void main() {
       ),
     );
     expect(find.textContaining('· original'), findsNothing);
-    expect(find.byIcon(Icons.add), findsNWidgets(2));
+    expect(find.byIcon(Icons.add), findsNothing);
     final scroll = tester.widget<SingleChildScrollView>(
       find.byType(SingleChildScrollView),
     );
@@ -457,12 +457,12 @@ void main() {
     expect(scroll.child, isA<Row>());
     expect((scroll.child! as Row).spacing, 8);
     expect(find.byType(Wrap), findsNothing);
-    expect(find.byIcon(Icons.translate), findsOneWidget);
+    expect(find.byIcon(Icons.translate), findsNothing);
     expect(find.text('Translate'), findsNothing);
     expect(find.widgetWithText(ChoiceChip, 'RU'), findsOneWidget);
-    expect(find.widgetWithText(ActionChip, 'EN'), findsOneWidget);
-    expect(find.widgetWithText(ActionChip, 'PT'), findsOneWidget);
-    await tester.tap(find.widgetWithText(ActionChip, 'EN'));
+    expect(find.widgetWithText(Chip, 'EN'), findsOneWidget);
+    expect(find.widgetWithText(Chip, 'PT'), findsOneWidget);
+    await tester.tap(find.byTooltip('Retry EN'));
     expect(requested, 'en');
   });
 
@@ -480,7 +480,7 @@ void main() {
             parallel: true,
             onParallelChanged: (_) {},
             translated: const {'ru'},
-            translating: const {},
+            translating: const {'en': 'failed'},
             view: 'ru',
             onView: (_) {},
             onRequest: (l) => requested = l,
@@ -495,8 +495,8 @@ void main() {
     expect(find.byTooltip('Original'), findsOneWidget);
     expect(find.byTooltip('Side by side'), findsOneWidget);
     expect(find.widgetWithText(ChoiceChip, 'RU'), findsOneWidget);
-    expect(find.widgetWithText(ActionChip, 'EN'), findsOneWidget);
-    await tester.tap(find.widgetWithText(ActionChip, 'EN'));
+    expect(find.widgetWithText(Chip, 'EN'), findsOneWidget);
+    await tester.tap(find.byTooltip('Retry EN'));
     expect(requested, 'en');
   });
 
