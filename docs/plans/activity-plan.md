@@ -320,6 +320,8 @@ Codex (luna/terra) for major UI tasks, haiku for small ones, Claude reviews at g
 - [x] A3 (8b94f9b) P30: Processing lists old October failures first; order running > queued > newest, failures older than 3 days folded under 'Older failures (N)'
 - [x] B4 (3fe46d5; 3 songs re-queued to pick up titles) P30: song notes keep 'Audio 20261101-143642' titles, so searching 'Back to Black' finds nothing; worker sets title 'Artist — Title' from tags when the title is still the default stamp
 - [x] B5 P30: a song opened from Search shows as 'Entity' in results and opens the generic page view (sections as raw lines) instead of the audio screen with the Text tab
+- [ ] B6 song jobs end with lang None/langs [] (song mode never sets language) -> no translation jobs, no source-language Summary, no source chip in the app. Detect language from the transcript text (llm_chat, like screenshots), store lang/langs
+- [ ] B7 audio screen opens on Comments; open on Text when a transcript exists
 - [ ] P30 check of the wave (done 12:59: Processing + badge, search opens the tapped result (D1 ok); rest pending) (release build, real vault): Processing, search, tabs/copy/export/open as page, screenshots Text, @ autocomplete, indent, OCR search
 - [ ] D6 entry lost offline (10-07): sync_trace first
 - Deferred: image wrap/crop/anchors (10-07) - separate design
