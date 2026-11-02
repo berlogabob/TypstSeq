@@ -306,7 +306,7 @@ Codex (luna/terra) for major UI tasks, haiku for small ones, Claude reviews at g
 - [x] B2 screenshots: worker translations (9afc241) + app Text view
 - [x] B2b (c488c56, 315 tests; worker reloaded) worker paused 12:25: first sweep queued 207 screenshot jobs (2500 in vault) -> auto only last 7 days, audio first, prune queued backlog; then reload org.tylog.transcribe
 - [x] Songs (T37) re-run done: lyrics recognised (Back to Black, cosas claras), Summary/Scenes/References in ru/en/pt; song translations queued behind the pause
-- [ ] B3 song playback speed/pitch (T38), Flor Damico songs only (LAME 3.99, ID3v2.4, ReplayGain side data; Amy's ID3v2.3 file fine). P30 13:06: one AudioTrack started (no double player); pitch can't be measured over adb. Needs user: device + stutter vs constant shift, on the new build
+- [x] B3 not an app bug: the vault MP3 is a sped-up copy. Original 'Flor Damico - Delincuente.wav' (A24 Download, 48 kHz/24-bit) is 202.4 s; vault MP3 (LAME 3.99, lowercase tags) is 162.0 s = 1.25x faster, ~+3.9 semitones. Offer: convert originals to MP3 and replace. Was: song playback speed/pitch (T38), Flor Damico songs only (LAME 3.99, ID3v2.4, ReplayGain side data; Amy's ID3v2.3 file fine). P30 13:06: one AudioTrack started (no double player); pitch can't be measured over adb. Needs user: device + stutter vs constant shift, on the new build
 - [x] C1 copy line / copy all (original, RU, EN, PT, side by side)
 - [x] C2 (a9705f4) export Markdown / PDF via share sheet
 - [x] C3 (a9705f4) "Open as page": translation as an editable linked note
