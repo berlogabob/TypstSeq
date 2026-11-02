@@ -78,6 +78,7 @@ import 'widgets/loading.dart';
 import 'widgets/reading_mode.dart';
 import 'widgets/screenshot_view.dart';
 import 'audio/audio_note_doc.dart';
+import 'audio/audio_note_actions.dart';
 import 'audio/processing_policy.dart';
 import 'audio/transcript_jobs.dart';
 import 'module_pack_io.dart';
@@ -4622,7 +4623,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await (widget.onSharePdf ?? _sharePdfBytes)(name, pdf);
   }
 
-  Future<void> _sharePdfBytes(String name, Uint8List pdf) async {
+  Future<void> _sharePdfBytes(String name, Uint8List pdf) =>
+      _shareFileBytes(name, pdf, extension: 'pdf', mimeType: 'application/pdf');
+
+  Future<void> _shareFileBytes(
+    String name,
+    Uint8List bytes, {
+    required String extension,
+    required String mimeType,
+  }) async {
+    final safeName = name.replaceAll(RegExp(r'[\\/\r\n]'), '-');
+    final filename = '$safeName.$extension';
     // iPad and macOS anchor the share popover to a rect; without one they throw
     // or place it arbitrarily.
     final box = context.findRenderObject() as RenderBox?;
@@ -4630,13 +4641,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ShareParams(
         files: [
           XFile.fromData(
-            pdf,
-            mimeType: 'application/pdf',
-            name: '$name.pdf',
-            length: pdf.length,
+            bytes,
+            mimeType: mimeType,
+            name: filename,
+            length: bytes.length,
           ),
         ],
-        fileNameOverrides: ['$name.pdf'],
+        fileNameOverrides: [filename],
         subject: name,
         sharePositionOrigin: box == null
             ? null

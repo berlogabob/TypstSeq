@@ -247,7 +247,7 @@ extension _AudioFlow on _HomeScreenState {
     if (!mounted) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (_) => AudioNoteScreen(
+        builder: (audioContext) => AudioNoteScreen(
           onOpenProcessing: () => unawaited(_showProcessing()),
           note: note,
           initialTab: tab,
@@ -260,6 +260,41 @@ extension _AudioFlow on _HomeScreenState {
           readBytes: v.storage.readBytesNow,
           writeBytes: v.storage.writeBytes,
           mutate: workspace.mutateNote,
+          onExport: (title, content, format) async {
+            if (!mounted || vault != v) return;
+            if (format == AudioExportFormat.pdf) {
+              showSnack(audioContext, 'Building PDF…');
+              final pdf = await (widget.onCompilePdf ?? compileSourcePdf)(
+                source: content,
+                files: const {},
+                paper: vaultRegistry?.pdfPaper ?? 'a4',
+              );
+              if (!mounted || vault != v) return;
+              await (widget.onSharePdf ?? _sharePdfBytes)(title, pdf);
+            } else {
+              await _shareFileBytes(
+                title,
+                Uint8List.fromList(utf8.encode(content)),
+                extension: 'md',
+                mimeType: 'text/markdown',
+              );
+            }
+          },
+          onOpenAsPage: (language, lines) async {
+            if (!mounted || vault != v) return;
+            final path = await createAudioTextPage(
+              workspace,
+              note,
+              language,
+              lines,
+            );
+            if (!mounted || vault != v || !audioContext.mounted) return;
+            if (!await _openNote(path)) {
+              throw StateError('Could not open text page');
+            }
+            if (audioContext.mounted) Navigator.pop(audioContext);
+            unawaited(workspace.refreshIndex(always: true));
+          },
           transcriptStatus: (audio) => transcriptJobStatus(v.storage, audio),
           requestTranscript: (audio, note) async {
             await enqueueTranscript(

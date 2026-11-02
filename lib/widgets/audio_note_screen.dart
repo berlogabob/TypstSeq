@@ -13,6 +13,7 @@ import 'package:tylog_core/scanner.dart'
 
 import 'app_icons.dart';
 import '../audio/audio_info.dart';
+import '../audio/audio_note_actions.dart';
 import '../audio/audio_note_doc.dart';
 import '../audio/audio_peaks.dart';
 import '../audio/processing_policy.dart';
@@ -434,6 +435,8 @@ class AudioNoteScreen extends StatefulWidget {
     this.onChanged,
     this.waveformAvailable,
     this.onOpenProcessing,
+    this.onExport,
+    this.onOpenAsPage,
   });
 
   final AudioTab initialTab;
@@ -443,6 +446,14 @@ class AudioNoteScreen extends StatefulWidget {
   /// Called after alias/tags are saved so the index and chips can refresh.
   final VoidCallback? onChanged;
   final VoidCallback? onOpenProcessing;
+  final Future<void> Function(
+    String title,
+    String content,
+    AudioExportFormat format,
+  )?
+  onExport;
+  final Future<void> Function(String language, List<String> lines)?
+  onOpenAsPage;
   final bool? waveformAvailable;
 
   final NoteRef note;
@@ -497,6 +508,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
   bool _loadingSource = true;
   bool _parallel = true;
   bool _requestingTranscript = false;
+  bool _sharing = false;
   String? _audioPath;
   String? _transcriptState;
   late AudioTab _tab = widget.initialTab;
@@ -820,6 +832,10 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
                 unawaited(_showCopyAll());
               } else if (action == 'reprocess') {
                 unawaited(_requestTranscript());
+              } else if (action == 'export') {
+                unawaited(_export());
+              } else if (action == 'page') {
+                unawaited(_openAsPage());
               }
             },
             itemBuilder: (_) => [
@@ -827,6 +843,22 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
                 value: 'copy',
                 enabled: _transcript.isNotEmpty || _translations.isNotEmpty,
                 child: const Text('Copy all'),
+              ),
+              PopupMenuItem(
+                value: 'export',
+                enabled:
+                    !_sharing &&
+                    widget.onExport != null &&
+                    (_transcript.isNotEmpty || _translations.isNotEmpty),
+                child: const Text('Export…'),
+              ),
+              PopupMenuItem(
+                value: 'page',
+                enabled:
+                    !_sharing &&
+                    widget.onOpenAsPage != null &&
+                    (_transcript.isNotEmpty || _translations.isNotEmpty),
+                child: const Text('Open as page'),
               ),
               PopupMenuItem(
                 value: 'reprocess',
@@ -1187,13 +1219,13 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
     );
   }
 
-  Future<void> _showCopyAll() async {
+  Future<String?> _chooseText({bool allowParallel = true}) async {
     final transcript = _transcript;
     final translations = _translations;
     final target = _view != _lang && translations.containsKey(_view)
         ? _view
         : translations.keys.firstOrNull;
-    final choice = await showModalBottomSheet<String>(
+    return showModalBottomSheet<String>(
       context: context,
       builder: (context) => SafeArea(
         child: Column(
@@ -1209,42 +1241,102 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
                 title: Text(kLanguageNames[lang] ?? lang.toUpperCase()),
                 onTap: () => Navigator.pop(context, lang),
               ),
-            ListTile(
-              title: const Text('Side by side'),
-              subtitle: target == null
-                  ? null
-                  : Text(kLanguageNames[target] ?? target.toUpperCase()),
-              enabled: target != null && transcript.isNotEmpty,
-              onTap: () => Navigator.pop(context, 'parallel'),
-            ),
+            if (allowParallel)
+              ListTile(
+                title: const Text('Side by side'),
+                subtitle: target == null
+                    ? null
+                    : Text(kLanguageNames[target] ?? target.toUpperCase()),
+                enabled: target != null && transcript.isNotEmpty,
+                onTap: () => Navigator.pop(context, 'parallel'),
+              ),
           ],
         ),
       ),
     );
+  }
+
+  String? _textLanguage(String choice) => switch (choice) {
+    'original' => _lang,
+    'parallel' =>
+      _view != _lang && _translations.containsKey(_view)
+          ? _view
+          : _translations.keys.firstOrNull,
+    _ => choice,
+  };
+
+  List<String> _textLines(String choice) => audioTextLines(
+    choice == 'original' || choice == 'parallel'
+        ? _transcript
+        : _translations[choice] ?? const [],
+    parallel: choice == 'parallel'
+        ? _translations[_textLanguage(choice)] ?? const []
+        : const [],
+  );
+
+  Future<void> _showCopyAll() async {
+    final choice = await _chooseText();
     if (choice == null || !mounted) return;
-    final rows = choice == 'original' || choice == 'parallel'
-        ? transcript
-        : translations[choice]!;
-    final lines =
-        [
-          for (var i = 0; i < rows.length; i++)
-            (segment: rows[i], order: i * 2),
-          if (choice == 'parallel')
-            for (var i = 0; i < translations[target]!.length; i++)
-              (segment: translations[target]![i], order: i * 2 + 1),
-        ]..sort((a, b) {
-          final time = a.segment.ms.compareTo(b.segment.ms);
-          return time != 0 ? time : a.order.compareTo(b.order);
-        });
-    await _copyAudioText(
-      context,
-      lines
-          .map((line) {
-            final segment = line.segment;
-            return '${formatTimestamp(segment.ms)} ${parseTranscriptText(segment.text).text}';
-          })
-          .join('\n'),
-    );
+    await _copyAudioText(context, _textLines(choice).join('\n'));
+  }
+
+  Future<void> _export() async {
+    if (_sharing) return;
+    setState(() => _sharing = true);
+    try {
+      final format = await showModalBottomSheet<AudioExportFormat>(
+        context: context,
+        builder: (context) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final format in AudioExportFormat.values)
+                ListTile(
+                  title: Text(
+                    format == AudioExportFormat.markdown ? 'Markdown' : 'PDF',
+                  ),
+                  onTap: () => Navigator.pop(context, format),
+                ),
+            ],
+          ),
+        ),
+      );
+      if (format == null || !mounted) return;
+      final choice = await _chooseText();
+      if (choice == null || !mounted) return;
+      await widget.onExport?.call(
+        widget.note.title,
+        audioExportContent(
+          title: widget.note.title,
+          source: _source,
+          language: _textLanguage(choice),
+          lines: _textLines(choice),
+          format: format,
+        ),
+        format,
+      );
+    } catch (error) {
+      if (mounted) showSnack(context, 'Could not export audio note: $error');
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
+  }
+
+  Future<void> _openAsPage() async {
+    if (_sharing) return;
+    setState(() => _sharing = true);
+    try {
+      final choice = await _chooseText(allowParallel: false);
+      if (choice == null || !mounted) return;
+      await widget.onOpenAsPage?.call(
+        _textLanguage(choice) ?? 'original',
+        _textLines(choice),
+      );
+    } catch (error) {
+      if (mounted) showSnack(context, 'Could not open text page: $error');
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
   }
 
   Widget _propertiesView() {

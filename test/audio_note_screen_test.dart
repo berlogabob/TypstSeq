@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show SystemChannels;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/models.dart';
+import 'package:tylog/audio/audio_note_actions.dart';
 import 'package:tylog/widgets/audio_note_screen.dart';
 
 const _attachment =
@@ -20,6 +21,8 @@ Future<void> _pumpNote(
   Future<void> Function(String, String, String, String, List<String>)?
   requestTranslation,
   VoidCallback? onOpenProcessing,
+  Future<void> Function(String, String, AudioExportFormat)? onExport,
+  Future<void> Function(String, List<String>)? onOpenAsPage,
 }) => tester.pumpWidget(
   MaterialApp(
     home: AudioNoteScreen(
@@ -41,6 +44,8 @@ Future<void> _pumpNote(
       requestTranslation: requestTranslation,
       translationStatus: translationStatus,
       onOpenProcessing: onOpenProcessing,
+      onExport: onExport,
+      onOpenAsPage: onOpenAsPage,
     ),
   ),
 );
@@ -61,6 +66,83 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, null);
   });
+
+  for (final format in AudioExportFormat.values) {
+    testWidgets(
+      'Export ${format.name} uses side-by-side text and selected sections',
+      (tester) async {
+        String? exported;
+        await _pumpNote(
+          tester,
+          sourceLanguage: 'pt',
+          readSource: (_) async =>
+              '$_attachment'
+              '== Summary en\n- 00:00 Summary\n'
+              '== Transcript\n- 00:05 Olá\n'
+              '== Translation en\n- 00:05 Hello\n',
+          onExport: (title, content, selectedFormat) async {
+            expect(title, 'Theatre');
+            expect(selectedFormat, format);
+            exported = content;
+          },
+        );
+        await tester.pump();
+        await tester.tap(find.byTooltip('Audio note menu'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Export…'));
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.text(format == AudioExportFormat.markdown ? 'Markdown' : 'PDF'),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.descendant(
+            of: find.byType(BottomSheet),
+            matching: find.text('Side by side'),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(exported, contains('- 00:00 Summary'));
+        expect(exported, contains('- 00:05 Olá\n- 00:05 Hello'));
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
+
+  for (final choice in ['Original', 'English']) {
+    testWidgets('Open as page $choice passes one language and timed lines', (
+      tester,
+    ) async {
+      var opened = 0;
+      await _pumpNote(
+        tester,
+        sourceLanguage: 'pt',
+        readSource: (_) async =>
+            '$_attachment== Transcript\n- 00:05 Olá\n'
+            '== Translation en\n- 00:05 Hello\n',
+        onOpenAsPage: (language, lines) async {
+          expect(language, choice == 'Original' ? 'pt' : 'en');
+          expect(lines, [choice == 'Original' ? '00:05 Olá' : '00:05 Hello']);
+          opened++;
+        },
+      );
+      await tester.pump();
+      await tester.tap(find.byTooltip('Audio note menu'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Open as page'));
+      await tester.pumpAndSettle();
+      expect(find.text('Side by side'), findsNothing);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(BottomSheet),
+          matching: find.text(choice),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(opened, 1);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+  }
 
   for (final reprocess in [false, true]) {
     testWidgets(
