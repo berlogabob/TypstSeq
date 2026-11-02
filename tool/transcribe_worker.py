@@ -2,7 +2,7 @@
 
 import argparse
 from contextlib import contextmanager, suppress
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import functools
 import hashlib
 import json
@@ -31,6 +31,7 @@ TRANSLATION_PREVIOUS = 10  # source/translation pairs before a window, shown as 
 REVIEW_LOW = 3  # a line scored below this is retranslated once; still below, it renders with (?)
 REVIEW_RETRY_SECONDS = 300  # deadline of the one retranslation request, which thinks
 LANGUAGE_NAMES = {"ru": "Russian", "en": "English", "pt": "Portuguese"}
+SCREENSHOT_AUTO_DAYS = 7  # screenshots dated within this many days get translations automatically
 CYRILLIC = re.compile(r"[\u0400-\u04FF]")
 # Ordered by size; a name not listed here counts as the largest.
 WHISPER_SIZES = ("tiny", "base", "small", "medium", "large-v3-turbo", "large-v2", "large-v3", "large")
@@ -984,6 +985,18 @@ def _section_body(text, heading):
     return match.group(1) if match else None
 
 
+def screenshot_is_recent(note_text, today):
+    """True when the note's header `date:` is within SCREENSHOT_AUTO_DAYS before `today` (or on it)."""
+    match = re.search(r'^\s*date:\s*"(\d{4}-\d{2}-\d{2})"', note_text, re.MULTILINE)
+    if match is None:
+        return False
+    try:
+        day = datetime.fromisoformat(match.group(1)).date()
+    except ValueError:
+        return False
+    return today - timedelta(days=SCREENSHOT_AUTO_DAYS) <= day <= today
+
+
 def screenshot_text_lines(note_text):
     """The OCR lines of a screenshot note's == Text section, unescaped; blank lines are skipped."""
     body = _section_body(note_text, "== Text") or ""
@@ -1134,8 +1147,8 @@ def sweep(vault, now, state, force=False):
         for note in sorted((vault / "screenshots").rglob("shot-*.typ")):
             text = note.read_text(encoding="utf-8")
             rel = note.relative_to(vault).as_posix()
-            if not screenshot_text_lines(text):
-                continue
+            if not screenshot_text_lines(text) or not screenshot_is_recent(text, local_now.date()):
+                continue  # older screenshots are translated only on an explicit request
             candidates = translation_targets([], targets)
             if any(section(text, f"== Translation {t}") is not None
                    or _job_file(vault, "translations", rel + "\n" + t).exists() for t in candidates):
@@ -1328,6 +1341,33 @@ def arbitration_stage(note, sidecar, settings):
 STALE_CLAIM_HOURS = 2  # no single audio takes this long; the worker died or hung
 
 
+def _job_rank(kind, job):
+    """Transcripts first, then audio translations, then screenshot translations: screenshots never block audio."""
+    if kind == "transcripts":
+        return 0
+    return 2 if job.get("screenshot") else 1
+
+
+def prune_screenshot_backlog(vault, now):
+    """Deletes queued screenshot translation jobs the sweep created (`auto`) for screenshots older than the
+    window. Explicit requests, and jobs past queued, stay. Returns the number deleted."""
+    vault = Path(vault).resolve()
+    today = now.astimezone().date()
+    removed = 0
+    for path in sorted((vault / "_system/jobs/translations").glob("*.json")):
+        job = _read_json(path)
+        if not (job.get("screenshot") and job.get("auto") is True and job.get("status") == "queued"):
+            continue
+        try:
+            text = read_note(_vault_path(vault, job.get("note", "")))
+        except (ValueError, OSError):
+            text = ""
+        if not screenshot_is_recent(text, today):
+            path.unlink()
+            removed += 1
+    return removed
+
+
 def _stale_claim(job, now):
     """A "processing" job its worker abandoned (killed, hung, Mac asleep)."""
     if job.get("status") != "processing":
@@ -1368,6 +1408,7 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
     try:
         requested_at = _read_json(vault / "_system/jobs/process-now.json").get("requested_at")
         force = bool(requested_at) and requested_at != state.get("last_process_now")
+        prune_screenshot_backlog(vault, now)
         sweep(vault, now, state, force=force)
         if force:
             state["last_process_now"] = requested_at
@@ -1377,6 +1418,7 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
         jobs = [(kind, path, json.loads(path.read_text(encoding="utf-8")))
                 for kind in ("transcripts", "translations")
                 for path in sorted((vault / "_system/jobs" / kind).glob("*.json"))]
+        jobs.sort(key=lambda item: _job_rank(item[0], item[2]))
         for kind, job_path, job in jobs:
             if job.get("status") != "queued" and not _stale_claim(job, now):
                 continue

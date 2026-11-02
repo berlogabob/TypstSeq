@@ -2954,10 +2954,11 @@ def test_song_mode_context_prompt_names_song(sweep_vault, ffprobe, monkeypatch):
 SHOT = "screenshots/2026/10/shot-0123456789abcdef.typ"
 
 
-def add_screenshot_note(vault, text="Café Dias\nRua Nova"):
-    note = vault / SHOT
+def add_screenshot_note(vault, text="Café Dias\nRua Nova", date="2026-10-14", name=SHOT):
+    note = vault / name
     note.parent.mkdir(parents=True, exist_ok=True)
-    note.write_text('#show: tylog.note.with(\n  kind: "screenshot",\n)\n\n'
+    header = f'  date: "{date}",\n' if date else ""
+    note.write_text('#show: tylog.note.with(\n  kind: "screenshot",\n' + header + ')\n\n'
                     '#image("/assets/s.webp", width: 100%)\n\n== Description\n\nA map.\n\n'
                     f'== Text\n\n{text}\n')
     return note
@@ -3069,3 +3070,92 @@ def test_screenshot_user_edit_kept_on_rerun(sweep_vault, shot_llm):
     assert "- 00:00 Мой перевод\n- 00:00 v2 ru: Rua Nova\n" in text
     assert "v2 ru: Café Dias" not in text
     assert shot_job(vault, "ru")["status"] == "done"
+
+
+@pytest.mark.parametrize("date, enqueued", [("2026-10-07", True), ("2026-10-06", False), (None, False)])
+def test_screenshot_translation_only_for_last_seven_days(sweep_vault, shot_llm, date, enqueued):
+    """NOW is 2026-10-14: 7 days back (10-07) is inside the window, 8 days back (10-06) is not; no date is not."""
+    vault = sweep_vault
+    set_audio_settings(vault, on_the_fly=True)
+    add_screenshot_note(vault, date=date)
+    assert (worker.sweep(vault, NOW, {}) > 0) is enqueued
+    assert bool(shot_llm) is enqueued  # an old screenshot costs no detection call either
+
+
+def test_explicit_job_for_old_screenshot_is_processed(sweep_vault, shot_llm):
+    vault = sweep_vault
+    set_audio_settings(vault, on_the_fly=True)
+    note = add_screenshot_note(vault, date="2026-09-01")
+    write_job(vault, "translations", SHOT + "\nru", status="queued", note=SHOT, target="ru", lang="en",
+              screenshot=True)
+    worker.run_once(vault, now=NOW, state_path=vault / "state.json", translate=shot_fake_translate(""))
+    assert shot_job(vault, "ru")["status"] == "done"
+    assert "== Translation ru\n\n- 00:00 ru: Café Dias\n" in note.read_text(encoding="utf-8")
+    assert not job_path(vault, "translations", SHOT + "\npt").exists()  # no automatic pt job for an old note
+
+
+def test_audio_jobs_run_before_screenshot_jobs(sweep_vault, monkeypatch):
+    vault = sweep_vault
+    set_audio_settings(vault)
+    audio, audio_note = add_audio_note(vault)
+    relative = audio_note.relative_to(vault).as_posix()
+    add_screenshot_note(vault, date="2026-10-14")
+    order = []
+
+    def transcript(*args, **kwargs):
+        order.append("transcript")
+        raise RuntimeError("stop after the order is recorded")
+
+    def audio_translation(note_text, *args, **kwargs):
+        order.append("audio")
+        return note_text, []
+
+    monkeypatch.setattr(worker, "transcribe_v2_job", transcript)
+    monkeypatch.setattr(worker, "apply_translation", audio_translation)
+    monkeypatch.setattr(worker, "review_translation", lambda *args, **kwargs: None)
+    monkeypatch.setattr(worker, "screenshot_translation", lambda *args, **kwargs: order.append("screenshot"))
+    write_job(vault, "translations", SHOT + "\nru", status="queued", note=SHOT, target="ru", lang="en",
+              screenshot=True)
+    write_job(vault, "translations", audio + "\nru", status="queued", audio=audio, note=relative, target="ru",
+              source_lang="pt", source_langs=["pt"])
+    write_job(vault, "transcripts", audio, status="queued", audio=audio, note=relative, lang="pt")
+    worker.run_once(vault, now=NOW, state_path=vault / "state.json", translate=shot_fake_translate(""))
+    assert order == ["transcript", "audio", "screenshot"]
+
+
+def test_prune_removes_only_queued_auto_old_screenshot_jobs(sweep_vault):
+    vault = sweep_vault
+    add_screenshot_note(vault, date="2026-10-01")  # 13 days old
+    recent = "screenshots/2026/10/shot-1111111111111111.typ"
+    add_screenshot_note(vault, date="2026-10-13", name=recent)
+
+    def shot(note, target, status, auto=True):
+        fields = {"note": note, "target": target, "lang": "en", "screenshot": True, "status": status}
+        if auto:
+            fields["auto"] = True
+        return write_job(vault, "translations", note + "\n" + target, **fields)
+
+    old_queued = shot(SHOT, "ru", "queued")
+    old_processing = shot(SHOT, "pt", "processing")
+    old_done = shot(SHOT, "de", "done")
+    old_failed = shot(SHOT, "fr", "failed")
+    old_explicit = shot(SHOT, "es", "queued", auto=False)
+    recent_queued = shot(recent, "de", "queued")
+    audio_queued = write_job(vault, "translations", "Audio x.m4a\nru", status="queued", audio="Audio x.m4a",
+                             note="notes/Audio x.typ", target="ru", source_lang="pt")
+
+    assert worker.prune_screenshot_backlog(vault, NOW) == 1
+    assert not old_queued.exists()
+    for kept in (old_processing, old_done, old_failed, old_explicit, recent_queued, audio_queued):
+        assert kept.exists()
+
+
+def test_run_once_prunes_queued_auto_old_screenshot_jobs_first(sweep_vault, shot_llm):
+    vault = sweep_vault
+    set_audio_settings(vault, on_the_fly=True)
+    add_screenshot_note(vault, date="2026-10-01")
+    job = write_job(vault, "translations", SHOT + "\nru", status="queued", note=SHOT, target="ru", lang="en",
+                    screenshot=True, auto=True)
+    worker.run_once(vault, now=NOW, state_path=vault / "state.json", translate=shot_fake_translate(""))
+    assert not job.exists()
+    assert not shot_llm
