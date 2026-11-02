@@ -302,18 +302,18 @@ Codex (luna/terra) for major UI tasks, haiku for small ones, Claude reviews at g
 - [x] D1 Search opens the result before closing; failure says so (bcbf623, 1784 tests); confirm on P30
 - [x] A1 Processing screen with retry, More > Views + badge (1f6bbf2)
 - [x] A2 every add action shows "Queued -> see Processing"
-- [ ] B1 tabs Comments · Text · Properties; no Translate tab/button; missing language chip with progress/retry; Re-process in ⋮ (T39, fixit 11-02)
+- [x] B1 tabs Comments · Text · Properties; no Translate tab/button; missing language chip with progress/retry; Re-process in ⋮ (T39, fixit 11-02)
 - [ ] B2 screenshots: same Text view, OCR + ru/en/pt (T40)
 - [ ] B3 song playback speed/pitch (T38)
-- [ ] C1 copy line / copy all (original, RU, EN, PT, side by side)
+- [x] C1 copy line / copy all (original, RU, EN, PT, side by side)
 - [ ] C2 export Markdown / PDF via share sheet
 - [ ] C3 "Open as page": translation as an editable linked note
 - [ ] D2 pasted OCR text finds nothing in search (fixit 10-05)
 - [ ] D3 @ autocomplete: hang on @fixit, jumps, popup covers text, new page at bottom (10-05, 10-07)
 - [x] D4 indent typed after a list glyph now nests (dcf94b0)
 - [ ] D4b no Tab/Shift-Tab and no mobile indent/outdent control exists: add them
-- [ ] D5 screenshot/link zones collapsed by default on phone (10-27)
+- [x] D5 already folded under the More row since 51bcbe2 (no change); confirm on P30
 - [x] D7 screenshots library: newest first, no grouping (ec7b48f)
-- [ ] D8 screenshot shelf sort/group choice is not persisted (shelfPrefs const {}): remember the user's choice
+- [x] D8 screenshot shelf sort/group choice is not persisted (shelfPrefs const {}): remember the user's choice
 - [ ] D6 entry lost offline (10-07): sync_trace first
 - Deferred: image wrap/crop/anchors (10-07) - separate design
