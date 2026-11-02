@@ -313,9 +313,10 @@ Codex (luna/terra) for major UI tasks, haiku for small ones, Claude reviews at g
 - [x] D2 OCR written after a screenshot's first projection stayed out of full-text search; now re-projected on hash change (423fa84); confirm 'MONSANTOS' on P30/Mac real vault
 - [x] D3 @ autocomplete: hang on @fixit, jumps, popup covers text, new page at bottom (10-05, 10-07)
 - [x] D4 indent typed after a list glyph now nests (dcf94b0)
-- [ ] D4b no Tab/Shift-Tab and no mobile indent/outdent control exists: add them
+- [x] D4b no Tab/Shift-Tab and no mobile indent/outdent control exists: add them
 - [x] D5 already folded under the More row since 51bcbe2 (no change); confirm on P30
 - [x] D7 screenshots library: newest first, no grouping (ec7b48f)
 - [x] D8 screenshot shelf sort/group choice is not persisted (shelfPrefs const {}): remember the user's choice
+- [ ] P30 check of the wave (release build, real vault): Processing, search, tabs/copy/export/open as page, screenshots Text, @ autocomplete, indent, OCR search
 - [ ] D6 entry lost offline (10-07): sync_trace first
 - Deferred: image wrap/crop/anchors (10-07) - separate design
