@@ -96,6 +96,112 @@ void main() {
     }
   });
 
+  test(
+    'async mention lookup yields, cancels during folding and rebuilds cleanly',
+    () async {
+      final cache = MentionQueryCache();
+      final index = _mentionIndex();
+      var cancelled = false;
+      final pending = cache.queryAsync(
+        index,
+        'fixit',
+        const {},
+        isCancelled: () => cancelled,
+      );
+      // The scan yields before folding the first batch, leaving the UI responsive.
+      await Future<void>.delayed(Duration.zero);
+      cancelled = true;
+      expect(await pending, isEmpty);
+      final results = await cache.queryAsync(
+        index,
+        'fix',
+        _mentionRecency,
+        excludedIds: _mentionExcluded,
+        isCancelled: () => false,
+      );
+      expect(results, hasLength(8));
+      expect(results.first.path, 'notes/7.typ');
+      expect(
+        results.any((note) => _mentionExcluded.contains(note.id)),
+        isFalse,
+      );
+      // Cancellation also stops the cached matching pass, not just cache building.
+      cancelled = false;
+      final cached = cache.queryAsync(
+        index,
+        'fix',
+        const {},
+        isCancelled: () => cancelled,
+      );
+      cancelled = true;
+      expect(await cached, isEmpty);
+      final replacement = VaultIndex(
+        notesByPath: {
+          'notes/only.typ': _note('only', 'notes/only.typ', 'Fixit'),
+        },
+        backlinksByTarget: const {},
+      );
+      expect(
+        (await cache.queryAsync(
+          replacement,
+          'fixit',
+          const {},
+          revision: 1,
+          isCancelled: () => false,
+        )).single.id,
+        'only',
+      );
+    },
+  );
+
+  test(
+    'async equal-title mentions have deterministic order across refreshes',
+    () async {
+      final a = _note('a', 'notes/a.typ', 'Fixit');
+      final b = _note('b', 'notes/b.typ', 'Fixit');
+      final cache = MentionQueryCache();
+      for (final notes in [
+        [b, a],
+        [a, b],
+      ]) {
+        final index = VaultIndex(
+          notesByPath: {for (final note in notes) note.path: note},
+          backlinksByTarget: const {},
+        );
+        expect(
+          await cache.queryAsync(
+            index,
+            'fixit',
+            const {},
+            isCancelled: () => false,
+          ),
+          [a, b],
+        );
+      }
+    },
+  );
+
+  test(
+    'mention refinement preserves surviving rows and puts creation first',
+    () {
+      const a = MentionSuggestion(id: 'a', title: 'A');
+      const b = MentionSuggestion(id: 'b', title: 'B');
+      const c = MentionSuggestion(id: 'c', title: 'C');
+      const create = MentionSuggestion(id: 'new', title: 'New', create: true);
+      expect(orderMentionSuggestions([b, c, create, a], previous: [a, b]), [
+        create,
+        a,
+        b,
+        c,
+      ]);
+      expect(orderMentionSuggestions([c, create, b], previous: [a, b]), [
+        create,
+        b,
+        c,
+      ]);
+    },
+  );
+
   test('mention cache rebuilds for replacement and in-place index refresh', () {
     final cache = MentionQueryCache();
     final first = _note('first', 'notes/first.typ', 'First');

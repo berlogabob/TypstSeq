@@ -53,6 +53,50 @@ Future<List<String>> transcriptJobLangs(
 String translationJobPath(String audioPath, String target) =>
     '_system/jobs/translations/${sha1.convert(utf8.encode('$audioPath\n$target'))}.json';
 
+/// Screenshot translations use the note path as the key and store `lang` here.
+Future<Map<String, Object?>?> readTranslationJob(
+  VaultStorage storage,
+  String sourcePath,
+  String target,
+) => _readJob(storage, translationJobPath(sourcePath, target));
+
+/// Same key and payload as the worker's screenshot sweep, including old notes.
+Future<void> enqueueScreenshotTranslation(
+  VaultStorage storage, {
+  required String notePath,
+  required String target,
+  required String sourceLang,
+  DateTime? now,
+}) async {
+  final previous = await readTranslationJob(storage, notePath, target);
+  final status = previous?['status'];
+  if (status != null && status != 'failed') return;
+  final job = {
+    ...?previous,
+    'note': notePath,
+    'target': target,
+    'lang': sourceLang,
+    'screenshot': true,
+    'requested_at': (now ?? DateTime.now()).toUtc().toIso8601String(),
+    'status': 'queued',
+  };
+  // Keep worker line provenance for merging user edits, but make this manual.
+  for (final key in [
+    'auto',
+    'error',
+    'finished_at',
+    'processing_at',
+    'started_at',
+  ]) {
+    job.remove(key);
+  }
+  await storage.createDirectory('_system/jobs/translations');
+  await storage.writeText(
+    translationJobPath(notePath, target),
+    jsonEncode(job),
+  );
+}
+
 Future<String?> translationJobStatus(
   VaultStorage storage,
   String audioPath,

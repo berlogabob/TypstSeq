@@ -156,7 +156,8 @@ const _defaultAutocompleteDebounce = Duration(milliseconds: 150);
 const _autocompleteRowHeight = 48.0;
 const _autocompleteMaxVisible = 6;
 
-class _TyLogRichEditorState extends State<TyLogRichEditor> {
+class _TyLogRichEditorState extends State<TyLogRichEditor>
+    with WidgetsBindingObserver {
   late final FocusNode focusNode;
   final GlobalKey _editorKey = GlobalKey();
   final ScrollController _taskScroll = ScrollController();
@@ -165,6 +166,8 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   Timer? _debounce;
   Timer? _revealTimer;
   int _mentionQueryToken = 0;
+  Completer<void> _mentionQueryCancelled = Completer<void>();
+  bool _popupLayoutPending = false;
   final GlobalKey _headingButtonKey = GlobalKey();
   final GlobalKey _highlightButtonKey = GlobalKey();
   TyLogWindowController? _window;
@@ -183,6 +186,10 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _autocomplete.addListener(_schedulePopupLayout);
+    _taskScroll.addListener(_schedulePopupLayout);
+    _windowScroll.addListener(_schedulePopupLayout);
     if (debugEnableEditorWindow) _attachWindow();
     focusNode = widget.focusNode ?? FocusNode();
     focusNode.onKeyEvent = _handleKey;
@@ -337,6 +344,24 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     return KeyEventResult.handled;
   }
 
+  void _invalidateMentionQuery() {
+    _mentionQueryToken++;
+    _mentionQueryCancelled.complete();
+    _mentionQueryCancelled = Completer<void>();
+  }
+
+  @override
+  void didChangeMetrics() => _schedulePopupLayout();
+
+  void _schedulePopupLayout() {
+    if (_popupLayoutPending || _overlayEntry == null) return;
+    _popupLayoutPending = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _popupLayoutPending = false;
+      if (mounted) _overlayEntry?.markNeedsBuild();
+    });
+  }
+
   void _handleControllerChanged() {
     if (_taskField != null) {
       final c = widget.controller;
@@ -358,7 +383,13 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
       _cancelAutocomplete();
       return;
     }
-    if (_autocomplete.value?.trigger != trigger) _mentionQueryToken++;
+    // IME composing/selection notifications for the same trigger must not
+    // restart a pending query or reset keyboard selection.
+    if (_autocomplete.value?.trigger == trigger) {
+      _schedulePopupLayout();
+      return;
+    }
+    _invalidateMentionQuery();
     if (trigger.kind == AutocompleteTriggerKind.command) {
       _debounce?.cancel();
       _autocomplete.value = _AutocompleteState(
@@ -390,13 +421,26 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     final previous = _autocomplete.value;
     final samePosition =
         previous != null &&
-        _isMentionLike(previous.trigger.kind) &&
+        previous.trigger.kind == trigger.kind &&
         previous.trigger.start == trigger.start;
     _autocomplete.value = _AutocompleteState(
       trigger: trigger,
-      mentionItems: samePosition ? previous.mentionItems : const [],
+      mentionItems: samePosition
+          ? [
+              for (final item in previous.mentionItems)
+                if (!item.create)
+                  item
+                else
+                  MentionSuggestion(
+                    id: trigger.query,
+                    title: trigger.query,
+                    subtitle: item.subtitle,
+                    create: true,
+                  ),
+            ]
+          : const [],
       commandItems: const [],
-      highlighted: 0,
+      highlighted: samePosition ? previous.highlighted : 0,
       loading: true,
     );
     _ensureOverlay();
@@ -417,21 +461,42 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
 
   Future<void> _runMentionQuery(AutocompleteTrigger trigger) async {
     final onMentionQuery = widget.onMentionQuery;
-    if (onMentionQuery == null) return;
     final token = _mentionQueryToken;
-    final results = await onMentionQuery(trigger.query, trigger.kind);
-    if (!mounted || token != _mentionQueryToken) return;
+    List<MentionSuggestion>? results;
+    try {
+      results = await Future.any<List<MentionSuggestion>?>([
+        onMentionQuery?.call(trigger.query, trigger.kind) ??
+            Future.value(const []),
+        _mentionQueryCancelled.future.then((_) => null),
+      ]).timeout(const Duration(seconds: 3));
+    } catch (_) {
+      if (mounted && token == _mentionQueryToken) {
+        showSnack(context, 'Could not find mentions. Try typing again.');
+      }
+      results = const [];
+    }
+    if (!mounted || token != _mentionQueryToken || results == null) return;
     final current = _autocomplete.value;
     if (current == null ||
         !_isMentionLike(current.trigger.kind) ||
         current.trigger.start != trigger.start) {
       return;
     }
+    final items = orderMentionSuggestions(
+      results,
+      previous: current.mentionItems,
+    );
+    final selected = current.highlighted < current.mentionItems.length
+        ? current.mentionItems[current.highlighted]
+        : null;
+    final highlighted = items.indexWhere(
+      (item) => item.id == selected?.id && item.create == selected?.create,
+    );
     _autocomplete.value = _AutocompleteState(
       trigger: current.trigger,
-      mentionItems: orderMentionSuggestions(results),
+      mentionItems: items,
       commandItems: const [],
-      highlighted: 0,
+      highlighted: math.max(0, highlighted),
       loading: false,
     );
   }
@@ -743,7 +808,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     _taskFieldText = null;
     _debounce?.cancel();
     _debounce = null;
-    _mentionQueryToken++;
+    _invalidateMentionQuery();
     if (_autocomplete.value != null) _autocomplete.value = null;
     _removeOverlay();
   }
@@ -770,73 +835,90 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
     history?.remove();
   }
 
-  Widget _buildOverlayContent(BuildContext context) =>
-      ValueListenableBuilder<_AutocompleteState?>(
-        valueListenable: _autocomplete,
-        builder: (context, state, _) {
-          final editable = _editableIn(_editorKey.currentContext);
-          if (state == null || editable == null) return const SizedBox.shrink();
-          final overlay =
-              Overlay.of(context).context.findRenderObject()! as RenderBox;
-          final selection = (_window ?? widget.controller).selection;
-          final local = editable.getLocalRectForCaret(
-            TextPosition(offset: selection.extentOffset),
-          );
-          final caret = Rect.fromPoints(
-            editable.localToGlobal(local.topLeft, ancestor: overlay),
-            editable.localToGlobal(local.bottomRight, ancestor: overlay),
-          );
-          final count = _isMentionLike(state.trigger.kind)
-              ? math.max(1, state.mentionItems.length)
-              : _taskField == 'repeat'
-              ? taskRepeats.length
-              : _taskField == 'priority'
-              ? taskPriorities.length
-              : _taskField != null
-              ? 2 + _dateCandidates.length
-              : math.max(1, state.taskItems.length + state.commandItems.length);
-          final editorBox =
-              _editorKey.currentContext!.findRenderObject()! as RenderBox;
-          final editorBottom = editorBox
-              .localToGlobal(
-                Offset(0, editorBox.size.height),
-                ancestor: overlay,
-              )
-              .dy;
-          final safeTop = MediaQuery.paddingOf(context).top;
-          final bottom = math.min(
-            math.min(
-              overlay.size.height - MediaQuery.viewInsetsOf(context).bottom,
-              editorBottom,
-            ),
-            widget.popupBottomY?.call() ?? overlay.size.height,
-          );
-          final rect = autocompletePopupRect(
-            caret.shift(Offset(0, -safeTop)),
-            Size(overlay.size.width, math.max(0, bottom - safeTop)),
-            Size(
-              320,
-              _autocompleteRowHeight * math.min(count, _autocompleteMaxVisible),
-            ),
-          ).shift(Offset(0, safeTop));
-          return Positioned.fromRect(
-            rect: rect,
-            child: TextFieldTapRegion(
-              child: Material(
-                key: const Key('autocomplete-popup'),
-                elevation: 6,
-                borderRadius: BorderRadius.circular(kRadiusMedium),
-                clipBehavior: Clip.antiAlias,
-                child: _taskField != null
-                    ? _taskFieldList(state)
-                    : _isMentionLike(state.trigger.kind)
-                    ? _mentionList(state)
-                    : _commandList(state),
-              ),
-            ),
-          );
-        },
+  Widget _buildOverlayContent(
+    BuildContext context,
+  ) => ValueListenableBuilder<_AutocompleteState?>(
+    valueListenable: _autocomplete,
+    builder: (context, state, _) {
+      final editable = _window != null
+          ? _windowEditable()
+          : _editableIn(_editorKey.currentContext);
+      if (state == null || editable == null) return const SizedBox.shrink();
+      final overlay =
+          Overlay.of(context).context.findRenderObject()! as RenderBox;
+      final selection = (_window ?? widget.controller).selection;
+      if (!selection.isValid) return const SizedBox.shrink();
+      // The overlay can build before the field consumes the latest edit.
+      final caretLocal = editable.getLocalRectForCaret(
+        TextPosition(
+          offset: math.min(selection.extentOffset, editable.plainText.length),
+        ),
       );
+      final extra = math.max(
+        0.0,
+        editable.preferredLineHeight - caretLocal.height,
+      );
+      final local = Rect.fromLTRB(
+        caretLocal.left,
+        caretLocal.top - extra / 2,
+        caretLocal.right,
+        caretLocal.bottom + extra / 2,
+      );
+      final caret = Rect.fromPoints(
+        editable.localToGlobal(local.topLeft, ancestor: overlay),
+        editable.localToGlobal(local.bottomRight, ancestor: overlay),
+      );
+      final count = _isMentionLike(state.trigger.kind)
+          ? math.max(1, state.mentionItems.length)
+          : _taskField == 'repeat'
+          ? taskRepeats.length
+          : _taskField == 'priority'
+          ? taskPriorities.length
+          : _taskField != null
+          ? 2 + _dateCandidates.length
+          : math.max(1, state.taskItems.length + state.commandItems.length);
+      final editorBox =
+          _editorKey.currentContext!.findRenderObject()! as RenderBox;
+      final editorBottom = editorBox
+          .localToGlobal(Offset(0, editorBox.size.height), ancestor: overlay)
+          .dy;
+      final safeTop = MediaQuery.paddingOf(context).top;
+      final bottom = math.min(
+        math.min(
+          overlay.size.height - MediaQuery.viewInsetsOf(context).bottom,
+          editorBottom,
+        ),
+        widget.popupBottomY?.call() ?? overlay.size.height,
+      );
+      final rect = autocompletePopupRect(
+        caret.shift(Offset(0, -safeTop)),
+        Size(overlay.size.width, math.max(0, bottom - safeTop)),
+        Size(
+          320,
+          _autocompleteRowHeight *
+              (_isMentionLike(state.trigger.kind)
+                  ? _autocompleteMaxVisible
+                  : math.min(count, _autocompleteMaxVisible)),
+        ),
+      ).shift(Offset(0, safeTop));
+      return Positioned.fromRect(
+        rect: rect,
+        child: TextFieldTapRegion(
+          child: Material(
+            key: const Key('autocomplete-popup'),
+            elevation: 6,
+            borderRadius: BorderRadius.circular(kRadiusMedium),
+            clipBehavior: Clip.antiAlias,
+            child: _taskField != null
+                ? _taskFieldList(state)
+                : _isMentionLike(state.trigger.kind)
+                ? _mentionList(state)
+                : _commandList(state),
+          ),
+        ),
+      );
+    },
+  );
 
   Widget _mentionList(_AutocompleteState state) {
     if (state.loading && state.mentionItems.isEmpty) {
@@ -1014,6 +1096,9 @@ class _TyLogRichEditorState extends State<TyLogRichEditor> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _autocomplete.removeListener(_schedulePopupLayout);
+    _invalidateMentionQuery();
     _taskMenu.remove();
     _taskScroll.dispose();
     _windowScroll.dispose();

@@ -5150,6 +5150,47 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  Widget _screenshotView(NoteRef screenshot, {VoidCallback? onBack}) {
+    final currentVault = vault!;
+    return ScreenshotView(
+      note: screenshot,
+      source: _currentSource(),
+      imageResolver: _readAsset,
+      onEdit: () => setState(() => _editScreenshot = true),
+      onBack: onBack,
+      readSource: () => currentVault.storage.readText(screenshot.path),
+      translationJob: (target) =>
+          readTranslationJob(currentVault.storage, screenshot.path, target),
+      requestTranslation: (target, language) async {
+        if (!mounted || vault != currentVault) return;
+        await enqueueScreenshotTranslation(
+          currentVault.storage,
+          notePath: screenshot.path,
+          target: target,
+          sourceLang: language,
+        );
+        _processingJobWritten(
+          currentVault,
+          translationJobPath(screenshot.path, target),
+        );
+      },
+      onOpenAsPage: (language, lines) async {
+        if (!mounted || vault != currentVault) return;
+        final path = await createAudioTextPage(
+          workspace,
+          screenshot,
+          language,
+          lines,
+        );
+        if (!mounted || vault != currentVault) return;
+        if (!await _openNote(path)) {
+          throw StateError('Could not open text page');
+        }
+        unawaited(workspace.refreshIndex(always: true));
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_exiting) return const SizedBox.shrink();
@@ -5168,11 +5209,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final currentNote = current == null ? null : index?.notesByPath[current];
     if (mode == 'read') {
       if (currentNote?.kind == 'screenshot' && !_editScreenshot) {
-        return ScreenshotView(
-          note: currentNote!,
-          source: _currentSource(),
-          imageResolver: _readAsset,
-          onEdit: () => setState(() => _editScreenshot = true),
+        return _screenshotView(
+          currentNote!,
           onBack: _backViews.isEmpty ? _showEditor : _back,
         );
       }
@@ -5472,12 +5510,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         );
       }(),
       'normal' when currentNote?.kind == 'screenshot' && !_editScreenshot =>
-        ScreenshotView(
-          note: currentNote!,
-          source: _currentSource(),
-          imageResolver: _readAsset,
-          onEdit: () => setState(() => _editScreenshot = true),
-        ),
+        _screenshotView(currentNote!),
       'normal' when _usePlainLongEditor => VirtualPlainEditor(
         key: _plainEditorKey,
         onHistoryChanged: () => _plainHistoryRevision.value++,
@@ -5575,13 +5608,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ];
           }
           bool matches(String s) => foldAccents(s).contains(q);
-          final matchedNotes = _mentionQueryCache.query(
+          final mentionText = richController.text;
+          final mentionSelection = richController.selection;
+          bool cancelled() =>
+              !mounted ||
+              vault != v ||
+              richController.text != mentionText ||
+              richController.selection != mentionSelection;
+          final matchedNotes = await _mentionQueryCache.queryAsync(
             index,
             q,
             recency,
             excludedIds: eventIds,
             revision: workspace.indexRevision,
+            isCancelled: cancelled,
           );
+          if (cancelled()) return <MentionSuggestion>[];
           final suggestions = [
             ...eventSuggestions,
             ...matchedNotes

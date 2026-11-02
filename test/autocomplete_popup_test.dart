@@ -31,8 +31,14 @@ void main() {
     await tester.enterText(field, '/task');
     await tester.pumpAndSettle();
     final task = find.byKey(const Key('autocomplete-task-task'));
-    expect(find.descendant(of: task, matching: find.text('Task')), findsOneWidget);
-    expect(find.descendant(of: task, matching: find.text('/task')), findsOneWidget);
+    expect(
+      find.descendant(of: task, matching: find.text('Task')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: task, matching: find.text('/task')),
+      findsOneWidget,
+    );
     await tester.enterText(field, '/todo');
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('autocomplete-task-todo')), findsOneWidget);
@@ -107,6 +113,230 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  testWidgets(
+    '@fixit is debounced and IME notifications do not restart the lookup',
+    (tester) async {
+      final calls = <String>[];
+      final controller = TyLogEditingController(
+        source: '',
+        onSourceChanged: (_) {},
+        onError: (e) => fail('$e'),
+        onProtectedTap: (_) {},
+      );
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TyLogRichEditor(
+              controller: controller,
+              onInsert: () async {},
+              onMentionQuery: (query, _) async {
+                calls.add(query);
+                return const [MentionSuggestion(id: 'fixit', title: 'Fixit')];
+              },
+            ),
+          ),
+        ),
+      );
+      final field = find.byKey(const Key('rich-journal-editor'));
+      await tester.tap(field);
+      for (final text in ['@f', '@fi', '@fix', '@fixit']) {
+        await tester.enterText(field, text);
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(calls, isEmpty);
+      controller.value = controller.value.copyWith(
+        composing: const TextRange(start: 1, end: 6),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump();
+      expect(calls, ['fixit']);
+      expect(
+        find.byKey(const Key('autocomplete-mention-fixit')),
+        findsOneWidget,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
+    'mention rows, popup bounds and keyboard selection survive a narrower query',
+    (tester) async {
+      final pending = Completer<List<MentionSuggestion>>();
+      final controller = TyLogEditingController(
+        source: '',
+        onSourceChanged: (_) {},
+        onError: (e) => fail('$e'),
+        onProtectedTap: (_) {},
+      );
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TyLogRichEditor(
+              controller: controller,
+              onInsert: () async {},
+              onMentionQuery: (query, _) async => query == 'f'
+                  ? const [
+                      MentionSuggestion(id: 'a', title: 'Fix A'),
+                      MentionSuggestion(id: 'b', title: 'Fix B'),
+                      MentionSuggestion(id: 'f', title: 'f', create: true),
+                    ]
+                  : pending.future,
+            ),
+          ),
+        ),
+      );
+      final field = find.byKey(const Key('rich-journal-editor'));
+      await tester.tap(field);
+      await tester.enterText(field, '@f');
+      await tester.pump(const Duration(milliseconds: 150));
+      await tester.pump();
+      final bounds = tester.getRect(
+        find.byKey(const Key('autocomplete-popup')),
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.enterText(field, '@fixit');
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(find.byKey(const Key('autocomplete-mention-b')), findsOneWidget);
+      pending.complete(const [
+        MentionSuggestion(id: 'b', title: 'Fix B'),
+        MentionSuggestion(id: 'a', title: 'Fix A'),
+        MentionSuggestion(id: 'fixit', title: 'fixit', create: true),
+      ]);
+      await tester.pump();
+      await tester.pump();
+      expect(
+        tester.getRect(find.byKey(const Key('autocomplete-popup'))).top,
+        bounds.top,
+      );
+      expect(
+        tester.getRect(find.byKey(const Key('autocomplete-popup'))).size,
+        bounds.size,
+      );
+      expect(
+        tester.getTopLeft(find.byKey(const Key('autocomplete-mention-a'))).dy,
+        lessThan(
+          tester.getTopLeft(find.byKey(const Key('autocomplete-mention-b'))).dy,
+        ),
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(controller.document.toSource(), contains('#tylog.ref-note("b")'));
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
+    'failed or stalled query releases loading and a later query still works',
+    (tester) async {
+      final stalled = Completer<List<MentionSuggestion>>();
+      final controller = TyLogEditingController(
+        source: '',
+        onSourceChanged: (_) {},
+        onError: (e) => fail('$e'),
+        onProtectedTap: (_) {},
+      );
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TyLogRichEditor(
+              controller: controller,
+              onInsert: () async {},
+              onMentionQuery: (query, _) {
+                if (query == 'fixit') return stalled.future;
+                if (query == 'bad') throw StateError('lookup failed');
+                return Future.value(const [
+                  MentionSuggestion(id: 'ok', title: 'Okay'),
+                ]);
+              },
+            ),
+          ),
+        ),
+      );
+      final field = find.byKey(const Key('rich-journal-editor'));
+      await tester.tap(field);
+      for (final text in ['@bad', '@fixit']) {
+        await tester.enterText(field, text);
+        await tester.pump(const Duration(milliseconds: 150));
+        await tester.pump(const Duration(seconds: 3));
+        await tester.pump();
+        expect(find.text('No matches'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      }
+      await tester.enterText(field, '@okay');
+      await tester.pump(const Duration(milliseconds: 150));
+      await tester.pump();
+      expect(find.byKey(const Key('autocomplete-mention-ok')), findsOneWidget);
+      stalled.complete(const [MentionSuggestion(id: 'late', title: 'Late')]);
+      await tester.pump();
+      expect(find.byKey(const Key('autocomplete-mention-late')), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets('popup moves above a low caret and follows editor scrolling', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 360);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final controller = TyLogEditingController(
+      source: '',
+      onSourceChanged: (_) {},
+      onError: (e) => fail('$e'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TyLogRichEditor(
+            controller: controller,
+            onInsert: () async {},
+            onMentionQuery: (_, _) async => const [
+              MentionSuggestion(id: 'fixit', title: 'Fixit'),
+            ],
+          ),
+        ),
+      ),
+    );
+    final field = find.byKey(const Key('rich-journal-editor'));
+    await tester.tap(field);
+    await tester.enterText(
+      field,
+      '${List.filled(15, 'Line').join('\n')}\n@fixit',
+    );
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pumpAndSettle();
+    Rect caretRect() {
+      final editable = tester
+          .state<EditableTextState>(find.byType(EditableText))
+          .renderEditable;
+      return editable
+          .getLocalRectForCaret(
+            TextPosition(offset: editable.selection!.extentOffset),
+          )
+          .shift(editable.localToGlobal(Offset.zero));
+    }
+
+    var popup = tester.getRect(find.byKey(const Key('autocomplete-popup')));
+    expect(popup.overlaps(caretRect()), isFalse);
+    expect(popup.bottom, lessThan(caretRect().top));
+    final scroll = tester.widget<TextField>(field).scrollController!;
+    scroll.jumpTo(
+      (scroll.offset - 40).clamp(0, scroll.position.maxScrollExtent),
+    );
+    await tester.pump();
+    await tester.pump();
+    popup = tester.getRect(find.byKey(const Key('autocomplete-popup')));
+    expect(popup.overlaps(caretRect()), isFalse);
+    expect(popup.bottom, lessThan(caretRect().top));
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('rendered popup stays clear of a multiline query caret', (
     tester,
   ) async {
@@ -148,7 +378,7 @@ void main() {
     expect(popup.top, greaterThan(caret.bottom));
     expect(
       tester.getTopLeft(find.byKey(const Key('autocomplete-mention-new'))).dy,
-      greaterThan(
+      lessThan(
         tester
             .getTopLeft(find.byKey(const Key('autocomplete-mention-near')))
             .dy,
@@ -156,7 +386,7 @@ void main() {
     );
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
-    expect(controller.document.toSource(), contains('#tylog.ref-note("near")'));
+    expect(controller.document.toSource(), contains('#tylog.ref-note("new")'));
   });
   testWidgets('selecting a future class twice creates one note and links it', (
     tester,
@@ -244,13 +474,13 @@ void main() {
       );
     });
   });
-  test('create page follows real matches', () {
+  test('create page precedes real matches', () {
     final rows = orderMentionSuggestions(const [
       MentionSuggestion(id: 'near', title: 'Near'),
       MentionSuggestion(id: 'new', title: 'New', create: true),
     ]);
-    expect(rows.first.create, isFalse);
-    expect(rows.last.create, isTrue);
+    expect(rows.first.create, isTrue);
+    expect(rows.last.create, isFalse);
   });
   test('popup stays below caret or above when space is limited', () {
     const size = Size(400, 600);

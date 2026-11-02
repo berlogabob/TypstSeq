@@ -162,6 +162,74 @@ class MentionQueryCache {
   List<({NoteRef note, String title, String id, List<String> aliases})>
   _fields = [];
 
+  /// Yield during folding and matching so typing can cancel a large-vault scan.
+  Future<List<NoteRef>> queryAsync(
+    VaultIndex? index,
+    String query,
+    Map<String, int> recencyByPath, {
+    Set<String> excludedIds = const {},
+    int revision = 0,
+    required bool Function() isCancelled,
+  }) async {
+    final q = foldAccents(query.trim());
+    if (q.isEmpty || isCancelled()) return [];
+    var fields = _fields;
+    if (!identical(index, _index) || revision != _revision) {
+      fields = [];
+      var count = 0;
+      for (final note in index?.notes.toList() ?? const <NoteRef>[]) {
+        if (count++ % 128 == 0) {
+          await Future<void>.delayed(Duration.zero);
+          if (isCancelled()) return [];
+        }
+        fields.add((
+          note: note,
+          title: foldAccents(note.title),
+          id: foldAccents(note.id),
+          aliases: note.aliases.map(foldAccents).toList(),
+        ));
+      }
+      if (isCancelled()) return [];
+      _index = index;
+      _revision = revision;
+      _fields = fields;
+    }
+    // Keep only the eight best candidates; no large synchronous sort.
+    final best = <({int score, NoteRef note})>[];
+    var count = 0;
+    for (final field in fields) {
+      if (count++ % 128 == 0) {
+        await Future<void>.delayed(Duration.zero);
+        if (isCancelled()) return [];
+      }
+      if (excludedIds.contains(field.note.id) ||
+          (!field.title.contains(q) &&
+              !field.id.contains(q) &&
+              !field.aliases.any((alias) => alias.contains(q)))) {
+        continue;
+      }
+      best.add((
+        score: _mentionScore(
+          field.note,
+          q,
+          field.title,
+          field.id,
+          field.aliases,
+          recencyByPath,
+        ),
+        note: field.note,
+      ));
+      best.sort((a, b) {
+        final score = b.score.compareTo(a.score);
+        if (score != 0) return score;
+        final title = a.note.title.compareTo(b.note.title);
+        return title != 0 ? title : a.note.path.compareTo(b.note.path);
+      });
+      if (best.length > 8) best.removeLast();
+    }
+    return isCancelled() ? [] : best.map((match) => match.note).toList();
+  }
+
   List<NoteRef> query(
     VaultIndex? index,
     String query,
@@ -303,12 +371,22 @@ final _wordChar = RegExp(r'[\p{L}\p{N}]', unicode: true);
 bool _isWhitespace(int code) =>
     code == 0x20 || code == 0x09 || code == 0x0a || code == 0x0d;
 
+/// Keep surviving results in place as the query narrows; new-page is first.
 List<MentionSuggestion> orderMentionSuggestions(
-  List<MentionSuggestion> items,
-) => [
-  ...items.where((item) => !item.create),
-  ...items.where((item) => item.create),
-];
+  List<MentionSuggestion> items, {
+  List<MentionSuggestion> previous = const [],
+}) {
+  final remaining = {
+    for (final item in items.where((item) => !item.create)) item.id: item,
+  };
+  return [
+    ...items.where((item) => item.create),
+    for (final item in previous)
+      if (remaining.remove(item.id) case final MentionSuggestion survivor)
+        survivor,
+    ...remaining.values,
+  ];
+}
 
 const taskCommands = [
   'todo',

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog_core/tylog_core.dart';
 import 'package:tylog/audio/transcript_jobs.dart';
+import 'package:tylog/processing_jobs.dart';
 
 void main() {
   late Directory dir;
@@ -14,6 +15,90 @@ void main() {
     storage = LocalVaultStorage(dir);
     addTearDown(() => dir.delete(recursive: true));
   });
+
+  test(
+    'screenshot request uses the worker key and appears in Processing',
+    () async {
+      const note = 'screenshots/2026/01/shot-old.typ';
+      final now = DateTime.utc(2026, 11, 2);
+      await enqueueScreenshotTranslation(
+        storage,
+        notePath: note,
+        target: 'ru',
+        sourceLang: 'pt',
+        now: now,
+      );
+      expect(await readTranslationJob(storage, note, 'ru'), {
+        'note': note,
+        'target': 'ru',
+        'lang': 'pt',
+        'screenshot': true,
+        'requested_at': now.toIso8601String(),
+        'status': 'queued',
+      });
+      expect(
+        translationJobPath(note, 'ru'),
+        isNot(translationJobPath(note, 'en')),
+      );
+      expect(
+        translationJobPath(note, 'ru'),
+        '_system/jobs/translations/a58fc74de3b02065769baf0e93d4407487f118f8.json',
+      );
+      final jobs = await loadProcessingJobs(storage);
+      expect(jobs.single.kind, 'translations');
+      expect(jobs.single.notePath, note);
+      expect(jobs.single.active, isTrue);
+    },
+  );
+
+  test(
+    'screenshot request preserves claimed jobs and retry line provenance',
+    () async {
+      const note = 'screenshots/shot-old.typ';
+      final path = translationJobPath(note, 'en');
+      for (final status in ['queued', 'processing', 'done']) {
+        final job = jsonEncode({
+          'note': note,
+          'status': status,
+          'claimed_by': 'worker',
+        });
+        await storage.writeText(path, job);
+        await enqueueScreenshotTranslation(
+          storage,
+          notePath: note,
+          target: 'en',
+          sourceLang: 'pt',
+        );
+        expect(await storage.readText(path), job);
+      }
+      const lines = [
+        {'text': 'My correction', 'status': 'user'},
+      ];
+      await storage.writeText(
+        path,
+        jsonEncode({
+          'note': note,
+          'status': 'failed',
+          'auto': true,
+          'error': 'failure',
+          'processing_at': 'old',
+          'lines': lines,
+        }),
+      );
+      await enqueueScreenshotTranslation(
+        storage,
+        notePath: note,
+        target: 'en',
+        sourceLang: 'pt',
+      );
+      final job = (await readTranslationJob(storage, note, 'en'))!;
+      expect(job['status'], 'queued');
+      expect(job['lines'], lines);
+      expect(job.containsKey('auto'), isFalse);
+      expect(job.containsKey('error'), isFalse);
+      expect(job.containsKey('processing_at'), isFalse);
+    },
+  );
 
   test(
     'enqueueTranscript writes a queued JSON job and transcriptJobStatus reads it',

@@ -1,6 +1,10 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'constants.dart';
+import '../audio/audio_note_doc.dart';
+import 'text_note_widgets.dart';
+import 'snack.dart';
 import '../models.dart';
 import 'screenshot_strip.dart';
 import '../controlled_editor.dart' show localTime;
@@ -46,11 +50,21 @@ class ScreenshotView extends StatelessWidget {
     required this.imageResolver,
     this.onEdit,
     this.onBack,
+    this.readSource,
+    this.translationJob,
+    this.requestTranslation,
+    this.onOpenAsPage,
   });
   final NoteRef note;
   final String source;
   final Future<Uint8List?> Function(String path) imageResolver;
   final VoidCallback? onEdit;
+  final Future<String> Function()? readSource;
+  final Future<Map<String, Object?>?> Function(String target)? translationJob;
+  final Future<void> Function(String target, String sourceLanguage)?
+  requestTranslation;
+  final Future<void> Function(String language, List<String> lines)?
+  onOpenAsPage;
 
   /// Shown as an arrow over the picture when this view fills the screen
   /// (read mode has no app bar of its own).
@@ -212,7 +226,7 @@ class ScreenshotView extends StatelessWidget {
     }
 
     final sections = screenshotSections(source);
-    for (final name in ['Description', 'Text']) {
+    for (final name in ['Description']) {
       final body = sections[name];
       if (body == null || body.isEmpty) continue;
       children.add(
@@ -225,7 +239,243 @@ class ScreenshotView extends StatelessWidget {
       children.add(SelectableText(body));
     }
 
+    if (sections['Text']?.isNotEmpty ?? false) {
+      children.add(
+        ScreenshotTextView(
+          key: ValueKey(note.path),
+          source: source,
+          readSource: readSource,
+          translationJob: translationJob,
+          requestTranslation: requestTranslation,
+          onOpenAsPage: onOpenAsPage,
+        ),
+      );
+    }
     return children;
+  }
+}
+
+/// OCR and translations share the audio text controls, with line-order alignment.
+class ScreenshotTextView extends StatefulWidget {
+  const ScreenshotTextView({
+    super.key,
+    required this.source,
+    this.readSource,
+    this.translationJob,
+    this.requestTranslation,
+    this.onOpenAsPage,
+  });
+
+  final String source;
+  final Future<String> Function()? readSource;
+  final Future<Map<String, Object?>?> Function(String target)? translationJob;
+  final Future<void> Function(String target, String sourceLanguage)?
+  requestTranslation;
+  final Future<void> Function(String language, List<String> lines)?
+  onOpenAsPage;
+
+  @override
+  State<ScreenshotTextView> createState() => _ScreenshotTextViewState();
+}
+
+class _ScreenshotTextViewState extends State<ScreenshotTextView> {
+  late String _source = widget.source;
+  String? _language;
+  String? _view;
+  bool _parallel = true;
+  bool _opening = false;
+  bool _refreshing = false;
+  int _generation = 0;
+  final _statuses = <String, String>{};
+  Timer? _poll;
+
+  Map<String, List<AudioComment>> get _translations => {
+    for (final lang in translationLangs(_source))
+      lang: parseTranslation(_source, lang),
+  };
+
+  List<String> get _original => [
+    for (final line in (screenshotSections(_source)['Text'] ?? '').split('\n'))
+      if (line.trim().isNotEmpty) line.trim(),
+  ];
+
+  String get _sourceLanguage => _language ?? 'source';
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_refresh());
+    _poll = Timer.periodic(const Duration(seconds: 8), (_) => _refresh());
+  }
+
+  @override
+  void didUpdateWidget(ScreenshotTextView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.source != oldWidget.source) {
+      _generation++;
+      _source = widget.source;
+    }
+  }
+
+  Future<void> _refresh() async {
+    if (_refreshing) return;
+    _refreshing = true;
+    final generation = _generation;
+    try {
+      final jobs = <String, String>{};
+      String? language;
+      for (final target in {'ru', 'en', 'pt', ...translationLangs(_source)}) {
+        final job = await widget.translationJob?.call(target);
+        if (!mounted || generation != _generation) return;
+        if (job?['status'] case final String status) jobs[target] = status;
+        if (job?['lang'] case final String lang when lang != 'auto') {
+          language = lang;
+        }
+      }
+      final source = await widget.readSource?.call();
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        if (source != null) _source = source;
+        final viewingSource = _view == _sourceLanguage;
+        _language = language ?? _language;
+        if (viewingSource) _view = _sourceLanguage;
+        _statuses.addAll(jobs);
+      });
+    } catch (_) {
+      // A sync replacement can be incomplete; keep the last visible snapshot.
+    } finally {
+      _refreshing = false;
+    }
+  }
+
+  Future<void> _request(String target) async {
+    _generation++;
+    setState(() => _statuses[target] = 'queued');
+    try {
+      await widget.requestTranslation?.call(target, _language ?? 'auto');
+      if (mounted) unawaited(_refresh());
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _statuses[target] = 'failed');
+      showSnack(context, 'Could not request translation: $error');
+    }
+  }
+
+  Future<void> _textAction(bool openPage) async {
+    final translations = _translations;
+    final original = _original;
+    final target = translations.containsKey(_view)
+        ? _view
+        : translations.keys.firstOrNull;
+    final choice = await chooseNoteText(
+      context,
+      originalAvailable: original.isNotEmpty,
+      languages: translations.keys,
+      target: target,
+    );
+    if (choice == null || !mounted) return;
+    final language = choice == 'parallel' ? target! : choice;
+    final translated = translations[language] ?? const <AudioComment>[];
+    final lines = choice == 'original'
+        ? original
+        : choice == 'parallel'
+        ? [
+            for (
+              var i = 0;
+              i < original.length || i < translated.length;
+              i++
+            ) ...[
+              if (i < original.length) original[i],
+              if (i < translated.length)
+                parseTranscriptText(translated[i].text).text,
+            ],
+          ]
+        : translated
+              .map((line) => parseTranscriptText(line.text).text)
+              .toList();
+    if (!openPage) {
+      await copyNoteText(context, lines.join('\n'));
+      return;
+    }
+    setState(() => _opening = true);
+    try {
+      await widget.onOpenAsPage?.call(
+        choice == 'original' ? _sourceLanguage : language,
+        lines,
+      );
+    } catch (error) {
+      if (mounted) showSnack(context, 'Could not open text page: $error');
+    } finally {
+      if (mounted) setState(() => _opening = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final translations = _translations;
+    final view = _view ?? translations.keys.firstOrNull ?? _sourceLanguage;
+    final translation = view == _sourceLanguage ? null : translations[view];
+    final original = _original;
+    final shown = _parallel || translation == null
+        ? original
+        : translation.map((line) => line.text).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Text',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            ),
+            PopupMenuButton<String>(
+              tooltip: 'Text menu',
+              onSelected: (action) => unawaited(_textAction(action == 'page')),
+              itemBuilder: (_) => [
+                const PopupMenuItem(value: 'copy', child: Text('Copy all')),
+                PopupMenuItem(
+                  value: 'page',
+                  enabled: !_opening && widget.onOpenAsPage != null,
+                  child: const Text('Open as page'),
+                ),
+              ],
+            ),
+          ],
+        ),
+        AudioLanguageBar(
+          selected: const [],
+          original: null,
+          sourceLanguage: _sourceLanguage,
+          translated: translations.keys.toSet(),
+          translating: _statuses,
+          view: view,
+          onView: (lang) => setState(() => _view = lang),
+          onRequest: (lang) => unawaited(_request(lang)),
+          canRequest: widget.requestTranslation != null,
+          requestMissing: true,
+          parallel: _parallel,
+          onParallelChanged: (value) => setState(() => _parallel = value),
+        ),
+        for (var i = 0; i < shown.length; i++)
+          AudioTranscriptRow(
+            segment: (ms: 0, text: shown[i]),
+            translation:
+                _parallel && translation != null && i < translation.length
+                ? translation[i].text
+                : null,
+            showTimestamp: false,
+            onTap: () {},
+          ),
+      ],
+    );
   }
 }
 

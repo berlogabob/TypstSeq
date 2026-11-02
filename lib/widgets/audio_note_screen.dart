@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:just_audio/just_audio.dart';
 import 'package:tylog_audio/tylog_audio.dart';
 
@@ -22,6 +21,8 @@ import 'audio_sheets.dart';
 import 'snack.dart';
 import 'processing_screen.dart';
 import 'constants.dart';
+import 'text_note_widgets.dart';
+export 'text_note_widgets.dart' show AudioLanguageBar, AudioTranscriptRow;
 
 /// Sections of the expanded audio screen.
 enum AudioTab { comments, transcribe, properties }
@@ -152,200 +153,6 @@ class _WaveformPainter extends CustomPainter {
       old.peaks != peaks ||
       old.markers != markers ||
       old.played != played;
-}
-
-Future<void> _copyAudioText(BuildContext context, String text) async {
-  await Clipboard.setData(ClipboardData(text: text));
-  if (context.mounted) showSnack(context, 'Copied');
-}
-
-/// Language choices and translation retries for an audio transcript.
-class AudioLanguageBar extends StatelessWidget {
-  const AudioLanguageBar({
-    super.key,
-    required this.selected,
-    required this.original,
-    required this.translated,
-    required this.translating,
-    required this.view,
-    required this.onView,
-    required this.onRequest,
-    required this.canRequest,
-    this.sourceLanguage,
-    this.parallel,
-    this.onParallelChanged,
-  });
-
-  final List<String> selected;
-  final String? original;
-  final String? sourceLanguage;
-  final Set<String> translated;
-  final Map<String, String> translating;
-  final String? view;
-  final ValueChanged<String> onView;
-  final ValueChanged<String> onRequest;
-  final bool canRequest;
-  final bool? parallel;
-  final ValueChanged<bool>? onParallelChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final shown = {
-      'ru',
-      'en',
-      'pt',
-      ...selected,
-      ...translated,
-      ...translating.keys,
-    };
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(
-        horizontal: kSpace12,
-        vertical: kSpace4,
-      ),
-      child: Row(
-        spacing: 8,
-        children: [
-          if (parallel != null) ...[
-            FilterChip(
-              tooltip: 'Side by side',
-              selected: parallel!,
-              label: Icon(
-                parallel! ? Icons.view_column : Icons.view_column_outlined,
-                size: kIconSmall,
-              ),
-              showCheckmark: false,
-              visualDensity: VisualDensity.compact,
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              onSelected: onParallelChanged,
-            ),
-            if (sourceLanguage != null)
-              Tooltip(
-                message: 'Original',
-                child: ChoiceChip(
-                  label: Text(sourceLanguage!.toUpperCase()),
-                  selected: view == sourceLanguage,
-                  onSelected: (_) => onView(sourceLanguage!),
-                  showCheckmark: false,
-                  visualDensity: VisualDensity.compact,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-              ),
-          ],
-          for (final l in shown.where(
-            (l) => parallel == null || l != sourceLanguage,
-          ))
-            if ((original == l) || translated.contains(l))
-              ChoiceChip(
-                label: Text(l.toUpperCase()),
-                selected: view == l,
-                onSelected: (_) => onView(l),
-                visualDensity: VisualDensity.compact,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                showCheckmark: false,
-              )
-            else if (l != sourceLanguage)
-              Chip(
-                avatar:
-                    translating[l] == 'queued' || translating[l] == 'processing'
-                    ? const SizedBox(
-                        width: kIconSmall,
-                        height: kIconSmall,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : null,
-                label: Text(l.toUpperCase()),
-                onDeleted: canRequest && translating[l] == 'failed'
-                    ? () => onRequest(l)
-                    : null,
-                deleteButtonTooltipMessage: 'Retry ${l.toUpperCase()}',
-                deleteIcon: const Icon(Icons.refresh, size: kIconSmall),
-                visualDensity: VisualDensity.compact,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-        ],
-      ),
-    );
-  }
-}
-
-/// One seek target shared by the original line and its optional translation.
-class AudioTranscriptRow extends StatelessWidget {
-  const AudioTranscriptRow({
-    super.key,
-    required this.segment,
-    required this.onTap,
-    this.translation,
-    this.active = false,
-  });
-
-  final AudioComment segment;
-  final String? translation;
-  final bool active;
-  final VoidCallback onTap;
-
-  Widget _text(BuildContext context, String source, {bool muted = false}) {
-    final parsed = parseTranscriptText(source);
-    final theme = Theme.of(context);
-    final color = theme.colorScheme.onSurfaceVariant;
-    final style = theme.textTheme.bodyMedium?.copyWith(
-      color: muted || parsed.doubtful || parsed.nonSpeech || parsed.untranslated
-          ? color
-          : null,
-      fontStyle: parsed.untranslated ? FontStyle.italic : null,
-      decoration: parsed.doubtful ? TextDecoration.underline : null,
-    );
-    if (parsed.nonSpeech) {
-      return Text(parsed.text, style: style);
-    }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (parsed.doubtful) ...[
-          Tooltip(
-            message: 'Doubtful text',
-            child: Badge(
-              backgroundColor: theme.colorScheme.surfaceContainerHighest,
-              textColor: color,
-              label: const Text('?'),
-            ),
-          ),
-          const SizedBox(width: kSpace8),
-        ],
-        Expanded(child: Text(parsed.text, style: style)),
-      ],
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final gap = parseTranscriptText(segment.text).nonSpeech;
-    return ListTile(
-      dense: true,
-      selected: active,
-      leading: Text(
-        formatTimestamp(segment.ms),
-        style: gap
-            ? TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)
-            : null,
-      ),
-      title: _text(context, segment.text),
-      subtitle: translation == null || gap
-          ? null
-          : GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onLongPress: () => unawaited(
-                _copyAudioText(context, parseTranscriptText(translation!).text),
-              ),
-              child: _text(context, translation!, muted: true),
-            ),
-      onTap: onTap,
-      onLongPress: () => unawaited(
-        _copyAudioText(context, parseTranscriptText(segment.text).text),
-      ),
-    );
-  }
 }
 
 /// Context written by the worker, with the same seek targets as transcript rows.
@@ -1225,34 +1032,12 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
     final target = _view != _lang && translations.containsKey(_view)
         ? _view
         : translations.keys.firstOrNull;
-    return showModalBottomSheet<String>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: const Text('Original'),
-              enabled: transcript.isNotEmpty,
-              onTap: () => Navigator.pop(context, 'original'),
-            ),
-            for (final lang in translations.keys)
-              ListTile(
-                title: Text(kLanguageNames[lang] ?? lang.toUpperCase()),
-                onTap: () => Navigator.pop(context, lang),
-              ),
-            if (allowParallel)
-              ListTile(
-                title: const Text('Side by side'),
-                subtitle: target == null
-                    ? null
-                    : Text(kLanguageNames[target] ?? target.toUpperCase()),
-                enabled: target != null && transcript.isNotEmpty,
-                onTap: () => Navigator.pop(context, 'parallel'),
-              ),
-          ],
-        ),
-      ),
+    return chooseNoteText(
+      context,
+      originalAvailable: transcript.isNotEmpty,
+      languages: translations.keys,
+      target: target,
+      allowParallel: allowParallel,
     );
   }
 
@@ -1277,7 +1062,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
   Future<void> _showCopyAll() async {
     final choice = await _chooseText();
     if (choice == null || !mounted) return;
-    await _copyAudioText(context, _textLines(choice).join('\n'));
+    await copyNoteText(context, _textLines(choice).join('\n'));
   }
 
   Future<void> _export() async {
