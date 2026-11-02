@@ -306,7 +306,7 @@ Codex (luna/terra) for major UI tasks, haiku for small ones, Claude reviews at g
 - [x] B2 screenshots: worker translations (9afc241) + app Text view
 - [x] B2b (c488c56, 315 tests; worker reloaded) worker paused 12:25: first sweep queued 207 screenshot jobs (2500 in vault) -> auto only last 7 days, audio first, prune queued backlog; then reload org.tylog.transcribe
 - [x] Songs (T37) re-run done: lyrics recognised (Back to Black, cosas claras), Summary/Scenes/References in ru/en/pt; song translations queued behind the pause
-- [ ] B3 song playback speed/pitch (T38)
+- [ ] B3 song playback speed/pitch (T38), Flor Damico songs only (LAME 3.99, ID3v2.4, ReplayGain side data; Amy's ID3v2.3 file fine). P30 13:06: one AudioTrack started (no double player); pitch can't be measured over adb. Needs user: device + stutter vs constant shift, on the new build
 - [x] C1 copy line / copy all (original, RU, EN, PT, side by side)
 - [x] C2 (a9705f4) export Markdown / PDF via share sheet
 - [x] C3 (a9705f4) "Open as page": translation as an editable linked note
@@ -319,6 +319,7 @@ Codex (luna/terra) for major UI tasks, haiku for small ones, Claude reviews at g
 - [x] D8 screenshot shelf sort/group choice is not persisted (shelfPrefs const {}): remember the user's choice
 - [x] A3 (8b94f9b) P30: Processing lists old October failures first; order running > queued > newest, failures older than 3 days folded under 'Older failures (N)'
 - [x] B4 (3fe46d5; 3 songs re-queued to pick up titles) P30: song notes keep 'Audio 20261101-143642' titles, so searching 'Back to Black' finds nothing; worker sets title 'Artist — Title' from tags when the title is still the default stamp
+- [ ] B5 P30: a song opened from Search shows as 'Entity' in results and opens the generic page view (sections as raw lines) instead of the audio screen with the Text tab
 - [ ] P30 check of the wave (done 12:59: Processing + badge, search opens the tapped result (D1 ok); rest pending) (release build, real vault): Processing, search, tabs/copy/export/open as page, screenshots Text, @ autocomplete, indent, OCR search
 - [ ] D6 entry lost offline (10-07): sync_trace first
 - Deferred: image wrap/crop/anchors (10-07) - separate design
