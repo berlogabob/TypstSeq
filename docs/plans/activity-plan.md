@@ -308,7 +308,7 @@ Codex (luna/terra) for major UI tasks, haiku for small ones, Claude reviews at g
 - [x] C1 copy line / copy all (original, RU, EN, PT, side by side)
 - [ ] C2 export Markdown / PDF via share sheet
 - [ ] C3 "Open as page": translation as an editable linked note
-- [ ] D2 pasted OCR text finds nothing in search (fixit 10-05)
+- [x] D2 OCR written after a screenshot's first projection stayed out of full-text search; now re-projected on hash change (423fa84); confirm 'MONSANTOS' on P30/Mac real vault
 - [ ] D3 @ autocomplete: hang on @fixit, jumps, popup covers text, new page at bottom (10-05, 10-07)
 - [x] D4 indent typed after a list glyph now nests (dcf94b0)
 - [ ] D4b no Tab/Shift-Tab and no mobile indent/outdent control exists: add them
