@@ -303,7 +303,7 @@ Codex (luna/terra) for major UI tasks, haiku for small ones, Claude reviews at g
 - [x] A1 Processing screen with retry, More > Views + badge (1f6bbf2)
 - [x] A2 every add action shows "Queued -> see Processing"
 - [x] B1 tabs Comments · Text · Properties; no Translate tab/button; missing language chip with progress/retry; Re-process in ⋮ (T39, fixit 11-02)
-- [ ] B2 screenshots: worker translates OCR to ru/en/pt (9afc241); app Text view for screenshots still to do
+- [x] B2 screenshots: worker translations (9afc241) + app Text view
 - [x] B2b (c488c56, 315 tests; worker reloaded) worker paused 12:25: first sweep queued 207 screenshot jobs (2500 in vault) -> auto only last 7 days, audio first, prune queued backlog; then reload org.tylog.transcribe
 - [x] Songs (T37) re-run done: lyrics recognised (Back to Black, cosas claras), Summary/Scenes/References in ru/en/pt; song translations queued behind the pause
 - [ ] B3 song playback speed/pitch (T38)
@@ -311,7 +311,7 @@ Codex (luna/terra) for major UI tasks, haiku for small ones, Claude reviews at g
 - [x] C2 (a9705f4) export Markdown / PDF via share sheet
 - [x] C3 (a9705f4) "Open as page": translation as an editable linked note
 - [x] D2 OCR written after a screenshot's first projection stayed out of full-text search; now re-projected on hash change (423fa84); confirm 'MONSANTOS' on P30/Mac real vault
-- [ ] D3 @ autocomplete: hang on @fixit, jumps, popup covers text, new page at bottom (10-05, 10-07)
+- [x] D3 @ autocomplete: hang on @fixit, jumps, popup covers text, new page at bottom (10-05, 10-07)
 - [x] D4 indent typed after a list glyph now nests (dcf94b0)
 - [ ] D4b no Tab/Shift-Tab and no mobile indent/outdent control exists: add them
 - [x] D5 already folded under the More row since 51bcbe2 (no change); confirm on P30
