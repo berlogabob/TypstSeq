@@ -119,6 +119,32 @@ void main() {
       'A sufficiently long body used as fallback title for an idea ',
     );
   });
+
+  test('pending mode lists future requests and all new ideas on today', () {
+    final cache = <String, List>{
+      'activities': [
+        {
+          'id': 1,
+          'title': 'Next week',
+          'status': 'requested',
+          'starts_at': '2026-11-10T10:00:00Z',
+        },
+        {
+          'id': 2,
+          'title': 'Past',
+          'status': 'requested',
+          'starts_at': '2026-10-01T10:00:00Z',
+        },
+      ],
+      'ideas': [
+        {'id': 9, 'body': 'Old idea', 'created_at': '2026-10-01T12:00:00Z'},
+      ],
+    };
+    expect(oltIncomingOnDay(cache, {}, '2026-11-03'), isEmpty);
+    final items = oltIncomingOnDay(cache, {}, '2026-11-03', pending: true);
+    expect(items.map((item) => item.id), ['olt-activity-1', 'olt-idea-9']);
+    expect(items.first.date, '2026-11-10');
+  });
 }
 
 String _localDay(String utc) {

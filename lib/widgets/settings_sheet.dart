@@ -120,7 +120,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final groups = settingsSearchEntries.take(6).toList();
+    final groups = settingsSearchEntries
+        .where((entry) => !entry.path.contains('›'))
+        .toList();
     final wide = MediaQuery.sizeOf(context).width >= 900;
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),

@@ -180,7 +180,7 @@ class ScreenshotStrip extends StatelessWidget {
                               if (note.properties['starts_at'] != null)
                                 ListTile(
                                   title: Text(
-                                    '${localTime(DateTime.parse('${note.properties['starts_at']}').toLocal())}${note.properties['ends_at'] == null ? '' : ' – ${localTime(DateTime.parse('${note.properties['ends_at']}').toLocal())}'}',
+                                    '${note.date == null ? '' : '${note.date} · '}${localTime(DateTime.parse('${note.properties['starts_at']}').toLocal())}${note.properties['ends_at'] == null ? '' : ' – ${localTime(DateTime.parse('${note.properties['ends_at']}').toLocal())}'}',
                                   ),
                                 ),
                               if ('${note.properties['places'] ?? ''}'

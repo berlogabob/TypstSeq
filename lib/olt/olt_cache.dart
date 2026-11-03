@@ -103,8 +103,11 @@ Future<void> addDecidedOltId(Directory dir, String id) async {
 List<NoteRef> oltIncomingOnDay(
   Map<String, List> cache,
   Set<String> decided,
-  String day,
-) {
+  String day, {
+  // Today's inbox: every pending request from today on and every new idea,
+  // not only the ones dated today, so a booking for next week shows now.
+  bool pending = false,
+}) {
   String? localDay(Object? value) {
     final date = DateTime.tryParse('$value')?.toLocal();
     if (date == null) return null;
@@ -117,7 +120,10 @@ List<NoteRef> oltIncomingOnDay(
   };
   final result = <NoteRef>[];
   for (final row in cache['activities'] ?? const []) {
-    if (row['status'] != 'requested' || localDay(row['starts_at']) != day) {
+    final starts = localDay(row['starts_at']);
+    if (row['status'] != 'requested' ||
+        starts == null ||
+        (pending ? starts.compareTo(day) < 0 : starts != day)) {
       continue;
     }
     final id = 'olt-activity-${row['id']}';
@@ -132,7 +138,7 @@ List<NoteRef> oltIncomingOnDay(
         path: 'olt:activities/${row['id']}',
         title: '${row['title'] ?? ''}',
         kind: 'booking',
-        date: day,
+        date: starts,
         outgoingLinks: const [],
         properties: {
           'source': 'openlabtwin',
@@ -144,7 +150,7 @@ List<NoteRef> oltIncomingOnDay(
     );
   }
   for (final row in cache['ideas'] ?? const []) {
-    if (localDay(row['created_at']) != day) continue;
+    if (!pending && localDay(row['created_at']) != day) continue;
     final id = 'olt-idea-${row['id']}';
     if (decided.contains(id)) continue;
     final body = '${row['body'] ?? ''}';

@@ -1726,6 +1726,7 @@ void main() {
         'Sync and storage',
         'Maintenance',
         'About',
+        'OpenLabTwin',
       ],
     );
 

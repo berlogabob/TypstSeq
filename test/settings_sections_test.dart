@@ -130,6 +130,7 @@ void main() {
         'Sync and storage',
         'Maintenance',
         'About',
+        'OpenLabTwin',
       ],
     );
     expect(tester.takeException(), isNull);

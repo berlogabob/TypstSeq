@@ -5862,7 +5862,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     if (documentModes.contains(mode) && currentDaily != null) {
       final day = isoDay(currentDaily);
-      final external = oltIncomingOnDay(_oltCache, _oltDecided, day);
+      final external = oltIncomingOnDay(
+        _oltCache,
+        _oltDecided,
+        day,
+        pending: day == isoDay(DateTime.now()),
+      );
       final incomingCount = incomingOnDay(index, day).length + external.length;
       final referenceCount = dailyMore.isEmpty ? 0 : backlinks.length;
       dailyMore.insert(
