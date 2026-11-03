@@ -227,6 +227,94 @@ void main() {
     expect(created.scopeEntity, 'person-42');
     expect(find.text('Ada'), findsOneWidget);
   });
+  testWidgets(
+    'entity Tree opens and pins nodes and edges without duplicate cards',
+    (tester) async {
+      const root = NoteRef(
+        id: 'root',
+        path: 'root.typ',
+        title: 'Root',
+        kind: 'person',
+        outgoingLinks: [],
+      );
+      const child = NoteRef(
+        id: 'child',
+        path: 'child.typ',
+        title: 'Child',
+        kind: 'person',
+        outgoingLinks: [],
+        partOf: ['root'],
+      );
+      const index = VaultIndex(
+        notesByPath: {'root.typ': root, 'child.typ': child},
+        backlinksByTarget: {},
+      );
+      await tester.runAsync(() async {
+        await storage.writeText('root.typ', 'root');
+        await storage.writeText('child.typ', 'child');
+        await writeBoard(
+          storage,
+          const Board(
+            id: 'root-wb',
+            title: 'Root',
+            layout: 'free',
+            scopeEntity: 'root',
+            cards: [BoardCard(id: 'existing', type: 'entity', ref: 'child')],
+          ),
+        );
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: EntityHeader(
+                note: root,
+                onOpenUrl: (_) {},
+                onOpenTree: () => openEntityWhiteboard(
+                  context,
+                  storage: storage,
+                  index: index,
+                  entityId: root.id,
+                  title: root.title,
+                  initialTree: true,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Tree'));
+      await tester.pump();
+      for (
+        var i = 0;
+        i < 30 && find.text('Pin to whiteboard').evaluate().isEmpty;
+        i++
+      ) {
+        await settleIo(tester);
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('Pin to whiteboard'), findsOneWidget);
+      expect(find.byKey(const ValueKey('board-card-root')), findsOneWidget);
+      await tester.tap(find.text('Pin to whiteboard'));
+      await tester.pump();
+      Board? saved;
+      for (var i = 0; i < 30; i++) {
+        saved = await tester.runAsync<Board?>(
+          () => readBoard(storage, 'root-wb'),
+        );
+        if (saved?.edges.isNotEmpty == true) break;
+        await settleIo(tester);
+      }
+      expect(saved!.cards, hasLength(2));
+      expect(saved.cards.where((c) => c.ref == 'child'), hasLength(1));
+      expect(saved.edges.single.to, 'existing');
+      expect(
+        saved.edges.single.from,
+        saved.cards.singleWhere((c) => c.ref == 'root').id,
+      );
+    },
+  );
   testWidgets('adds note, task, text and link cards', (tester) async {
     const note = NoteRef(
       id: 'n',

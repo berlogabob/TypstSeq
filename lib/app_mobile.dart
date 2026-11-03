@@ -5960,6 +5960,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           if (isEntity)
             EntityHeader(
               note: currentNote,
+              onOpenTree: v == null
+                  ? null
+                  : () async {
+                      try {
+                        await openEntityWhiteboard(
+                          context,
+                          storage: v.storage,
+                          index: index,
+                          entityId: currentNote.id,
+                          title: currentNote.title,
+                          onOpenPath: _openPath,
+                          imageResolver: _readAsset,
+                          initialTree: true,
+                        );
+                      } catch (error) {
+                        if (context.mounted) {
+                          showSnack(context, 'Could not open tree: $error');
+                        }
+                      }
+                    },
               onOpenWhiteboard: v == null
                   ? null
                   : () async {

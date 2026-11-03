@@ -17,6 +17,7 @@ export 'src/report.dart';
 export 'src/scanner.dart';
 export 'src/search_index.dart';
 export 'src/storage.dart';
+export 'src/tree_layout.dart';
 export 'src/validation.dart';
 export 'src/vault.dart';
 export 'src/voronoi.dart';
