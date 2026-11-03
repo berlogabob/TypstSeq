@@ -378,7 +378,7 @@ Issues found:
 - [x] P2-F3b Incoming review item 'GitHub conflict' with Keep mine / Take theirs
 - [x] P2-G issue lines <-> GitHub issues (github: property, Send to GitHub, number written back hidden, closed<->done sync, #n chip)
 - [x] P2-G2 no duplicate issues if local write fails after create (recovery record / match by marker in body) + Send action in Today issue menu (search query used literal '+': fixed by Claude; recovery map .tylog/github-issues.json syncs across devices). Suite 1900 pass
-- [ ] P2 review (docs/plans/2026-11-03-mounts-github/review-p2.md): 9 findings (5 P1). Batch A mounts/outbox #1,2,3,4,6,8; batch B #5 issue identity, #7 GitHub sign-in UI, #9 verify pack before update -> codex terra x2: BLOCKED 17:32, codex usage limit until 19:14 (no partial edits); resume then
+- [x] P2 review (docs/plans/2026-11-03-mounts-github/review-p2.md): 9 findings all fixed (#1 per-vault+repo@ref cache/outbox, no migration). Suite 1910 pass (5 P1). Batch A mounts/outbox #1,2,3,4,6,8; batch B #5 issue identity, #7 GitHub sign-in UI, #9 verify pack before update -> codex terra x2: BLOCKED 17:32, codex usage limit until 19:14 (no partial edits); resume then
 - [ ] P2 macOS verify + P30
 - [ ] USER (11-03 chose reuse GitDoIt app): its client id (Iv1..., a GitHub App) returns 'Not Found' at /login/device/code -> enable Device Flow in the GitHub App settings or create an OAuth app; send client id
 - [x] PT pack repo: lesson rework committed 293ced8, version 1.3.0 (voices/ left untracked: licence unknown)

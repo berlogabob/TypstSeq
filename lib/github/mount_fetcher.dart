@@ -10,6 +10,9 @@ import 'package:tylog_core/tylog_core.dart' show Mount;
 import 'github_client.dart';
 import 'github_outbox.dart';
 
+String mountCacheName(Mount mount) =>
+    '${mount.id}-${sha1.convert(utf8.encode('${mount.source.repo}@${mount.source.ref}')).toString().substring(0, 10)}';
+
 class MountFetcher {
   MountFetcher({
     required this.cache,
@@ -30,7 +33,7 @@ class MountFetcher {
     try {
       return jsonDecode(
             await File(
-              '${cache.path}/${mount.id}/.tylog-mount.json',
+              '${cache.path}/${mountCacheName(mount)}/.tylog-mount.json',
             ).readAsString(),
           )
           as Map<String, dynamic>;
@@ -40,30 +43,32 @@ class MountFetcher {
   }
 
   Future<void> refresh(Mount mount, {bool automatic = false}) {
-    return _flights.putIfAbsent(mount.id, () {
+    return _flights.putIfAbsent(mountCacheName(mount), () {
       final future = _refresh(mount, automatic);
-      future.whenComplete(() => _flights.remove(mount.id)).ignore();
+      future
+          .whenComplete(() => _flights.remove(mountCacheName(mount)))
+          .ignore();
       return future;
     });
   }
 
   Future<void> _refresh(Mount mount, bool automatic) async {
     if (mount.source.kind != 'github') return;
-    final target = Directory('${cache.path}/${mount.id}');
-    final backup = Directory('${cache.path}/${mount.id}.old');
+    final target = Directory('${cache.path}/${mountCacheName(mount)}');
+    final backup = Directory('${cache.path}/${mountCacheName(mount)}.old');
     if (!await target.exists() && await backup.exists()) {
       await backup.rename(target.path);
     }
     final meta = await metadata(mount);
     final fetched =
-        _attempts[mount.id] ??
+        _attempts[mountCacheName(mount)] ??
         DateTime.tryParse(meta?['fetchedAt']?.toString() ?? '');
     if (automatic &&
         fetched != null &&
         DateTime.now().difference(fetched) < const Duration(hours: 6)) {
       return;
     }
-    _attempts[mount.id] = DateTime.now();
+    _attempts[mountCacheName(mount)] = DateTime.now();
     final repo = mount.source.repo!;
     final ref = mount.source.ref!;
     final currentClient = clientProvider == null
@@ -71,7 +76,9 @@ class MountFetcher {
         : await clientProvider!();
     final sha = await currentClient.commitSha(repo, ref);
     if (sha == meta?['sha'] && meta?['blobs'] is Map) {
-      await File('${cache.path}/${mount.id}/.tylog-mount.json').writeAsString(
+      await File(
+        '${cache.path}/${mountCacheName(mount)}/.tylog-mount.json',
+      ).writeAsString(
         jsonEncode({
           ...?meta,
           'sha': sha,
@@ -81,7 +88,7 @@ class MountFetcher {
       return;
     }
     final zip = await currentClient.downloadZipball(repo, sha);
-    final tmp = Directory('${cache.path}/${mount.id}.tmp');
+    final tmp = Directory('${cache.path}/${mountCacheName(mount)}.tmp');
     await cache.create(recursive: true);
     if (await tmp.exists()) await tmp.delete(recursive: true);
     try {

@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:archive/archive.dart';
 import 'package:tylog/github/github_client.dart';
+import 'package:tylog/github/mount_fetcher.dart';
+import 'package:tylog_core/tylog_core.dart' show Mount, MountSource;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
 import 'package:drift/native.dart';
@@ -41,6 +43,58 @@ const _labUrl = 'https://example.org/lab.ics';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('GitHub paths isolate vaults and repository refs', () async {
+    final root = await Directory.systemTemp.createTemp('mount-paths');
+    addTearDown(() => root.delete(recursive: true));
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+      mountCacheDirectory: Directory('${root.path}/mounts'),
+    );
+    addTearDown(controller.dispose);
+    Mount mount(String ref) => Mount(
+      id: 'repo',
+      name: 'Repo',
+      source: MountSource(kind: 'github', repo: 'a/b', ref: ref),
+      push: false,
+    );
+    Future<void> open(String id) async {
+      final dir = Directory('${root.path}/$id');
+      await controller.openVault(
+        VaultEntry(id: id, name: id, path: dir.path),
+        storage: LocalVaultStorage(dir),
+      );
+    }
+
+    await open('one');
+    final cacheOne = await controller.mountCache;
+    final outboxOne = await controller.githubOutbox;
+    final firstFetcher = await controller.mountFetcher;
+    expect(cacheOne.path, '${root.path}/mounts/fe05bcdcdc49');
+    expect(outboxOne.dir.path, '${root.path}/github-outbox/fe05bcdcdc49');
+    await outboxOne.enqueue(
+      mountId: 'repo',
+      path: 'note.typ',
+      baseSha: null,
+      message: 'edit',
+      device: 'test',
+    );
+    expect(mountCacheName(mount('main')), 'repo-3c48e66eac');
+    expect(
+      mountCacheName(mount('other')),
+      isNot(mountCacheName(mount('main'))),
+    );
+    await open('two');
+    expect((await controller.mountCache).path, isNot(cacheOne.path));
+    final outboxTwo = await controller.githubOutbox;
+    expect(outboxTwo.dir.path, isNot(outboxOne.dir.path));
+    expect(await outboxTwo.entriesFor('repo'), isEmpty);
+    expect(
+      (await controller.mountFetcher).cache.path,
+      isNot(firstFetcher.cache.path),
+    );
+  });
   test('vault publishes before mount settings become readable', () async {
     final storage = _GatedMountStorage();
     final controller = WorkspaceController(
@@ -144,7 +198,7 @@ void main() {
     final root = await Directory.systemTemp.createTemp('mount-race');
     addTearDown(() => root.delete(recursive: true));
     final cache = Directory('${root.path}/mounts');
-    final mountDir = Directory('${cache.path}/repo');
+    final mountDir = Directory('${cache.path}/939bb46a04c3/repo-3c48e66eac');
     await mountDir.create(recursive: true);
     await File('${mountDir.path}/note.typ').writeAsString('original');
     await File('${mountDir.path}/.tylog-mount.json').writeAsString(
@@ -203,7 +257,7 @@ void main() {
     final root = await Directory.systemTemp.createTemp('mount-push');
     addTearDown(() => root.delete(recursive: true));
     final cache = Directory('${root.path}/mounts');
-    final mountDir = Directory('${cache.path}/repo');
+    final mountDir = Directory('${cache.path}/939bb46a04c3/repo-17a31e6abc');
     await mountDir.create(recursive: true);
     await File('${mountDir.path}/note.typ').writeAsString('original');
     await File('${mountDir.path}/.tylog-mount.json').writeAsString(

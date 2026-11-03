@@ -84,7 +84,9 @@ void main() {
     await tester.runAsync(() async {
       root = await Directory.systemTemp.createTemp('github-debounce');
       final vault = Directory('${root.path}/vault');
-      final cache = Directory('${root.path}/cache/repo');
+      final cache = Directory(
+        '${root.path}/cache/a94a8fe5ccb1/repo-177930ea21',
+      );
       await cache.create(recursive: true);
       await File('${cache.path}/note.typ').writeAsString('= Note');
       await File(
@@ -95,7 +97,7 @@ void main() {
         inspector: _Inspector(),
         reconcileTasks: (_) async {},
         githubClientFactory: (_) => client,
-        mountCacheDirectory: cache.parent,
+        mountCacheDirectory: Directory('${root.path}/cache'),
       );
       await workspace.openVault(
         VaultEntry(id: 'test', name: 'Test', path: vault.path),
@@ -138,7 +140,9 @@ void main() {
     await tester.runAsync(() async {
       root = await Directory.systemTemp.createTemp('github-push-page');
       final vault = Directory('${root.path}/vault');
-      final cache = Directory('${root.path}/cache/repo');
+      final cache = Directory(
+        '${root.path}/cache/a94a8fe5ccb1/repo-177930ea21',
+      );
       await cache.create(recursive: true);
       await File('${cache.path}/note.typ').writeAsString('= Note');
       await File(
@@ -149,7 +153,7 @@ void main() {
         inspector: _Inspector(),
         reconcileTasks: (_) async {},
         githubClientFactory: (_) => client,
-        mountCacheDirectory: cache.parent,
+        mountCacheDirectory: Directory('${root.path}/cache'),
       );
       await workspace.openVault(
         VaultEntry(id: 'test', name: 'Test', path: vault.path),

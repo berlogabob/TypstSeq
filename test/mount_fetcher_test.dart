@@ -57,10 +57,10 @@ void main() {
         reloads++;
       },
     );
-    await Directory('${dir.path}/repo').create();
-    await File('${dir.path}/repo/old').writeAsString('old');
+    await Directory('${dir.path}/${mountCacheName(mount)}').create();
+    await File('${dir.path}/${mountCacheName(mount)}/old').writeAsString('old');
     await File(
-      '${dir.path}/repo/.tylog-mount.json',
+      '${dir.path}/${mountCacheName(mount)}/.tylog-mount.json',
     ).writeAsString(jsonEncode({'sha': 'old', 'blobs': {}}));
   });
   tearDown(() async => dir.delete(recursive: true));
@@ -91,12 +91,20 @@ void main() {
   test('changed sha replaces cache and strips subdirectory', () async {
     client.zip = zip('root/typst/note.typ');
     await fetcher.refresh(mount);
-    expect(await File('${dir.path}/repo/note.typ').readAsString(), 'new');
-    expect(await File('${dir.path}/repo/old').exists(), false);
+    expect(
+      await File(
+        '${dir.path}/${mountCacheName(mount)}/note.typ',
+      ).readAsString(),
+      'new',
+    );
+    expect(
+      await File('${dir.path}/${mountCacheName(mount)}/old').exists(),
+      false,
+    );
     expect(reloads, 1);
     final git = await Process.run('git', [
       'hash-object',
-      '${dir.path}/repo/note.typ',
+      '${dir.path}/${mountCacheName(mount)}/note.typ',
     ]);
     expect(git.exitCode, 0);
     expect(
@@ -108,7 +116,7 @@ void main() {
     client.sha = 'old';
     client.zip = zip('root/typst/note.typ');
     await File(
-      '${dir.path}/repo/.tylog-mount.json',
+      '${dir.path}/${mountCacheName(mount)}/.tylog-mount.json',
     ).writeAsString(jsonEncode({'sha': 'old'}));
     await fetcher.refresh(mount);
     expect((await fetcher.metadata(mount))!['blobs']['note.typ'], isNotNull);
@@ -121,8 +129,12 @@ void main() {
       reload: () async {},
       outbox: outbox,
     );
-    await File('${dir.path}/repo/note.typ').writeAsString('mine');
-    await File('${dir.path}/repo/.tylog-mount.json').writeAsString(
+    await File(
+      '${dir.path}/${mountCacheName(mount)}/note.typ',
+    ).writeAsString('mine');
+    await File(
+      '${dir.path}/${mountCacheName(mount)}/.tylog-mount.json',
+    ).writeAsString(
       jsonEncode({
         'sha': 'old',
         'blobs': {'note.typ': 'base'},
@@ -137,22 +149,38 @@ void main() {
     );
     client.zip = zip('root/typst/note.typ');
     await fetcher.refresh(mount);
-    expect(await File('${dir.path}/repo/note.typ').readAsString(), 'mine');
+    expect(
+      await File(
+        '${dir.path}/${mountCacheName(mount)}/note.typ',
+      ).readAsString(),
+      'mine',
+    );
     expect((await fetcher.metadata(mount))!['blobs']['note.typ'], 'base');
   });
   test('recovers interrupted swap before refresh', () async {
-    await Directory('${dir.path}/repo').rename('${dir.path}/repo.old');
+    await Directory(
+      '${dir.path}/${mountCacheName(mount)}',
+    ).rename('${dir.path}/${mountCacheName(mount)}.old');
     client.fail = true;
     await expectLater(fetcher.refresh(mount), throwsStateError);
-    expect(await File('${dir.path}/repo/old').readAsString(), 'old');
+    expect(
+      await File('${dir.path}/${mountCacheName(mount)}/old').readAsString(),
+      'old',
+    );
   });
   test('unsafe archive and network failure preserve cache', () async {
     client.zip = zip('root/typst/../../escape');
     await expectLater(fetcher.refresh(mount), throwsFormatException);
-    expect(await File('${dir.path}/repo/old').readAsString(), 'old');
+    expect(
+      await File('${dir.path}/${mountCacheName(mount)}/old').readAsString(),
+      'old',
+    );
     client.fail = true;
     await expectLater(fetcher.refresh(mount), throwsStateError);
-    expect(await File('${dir.path}/repo/old').readAsString(), 'old');
+    expect(
+      await File('${dir.path}/${mountCacheName(mount)}/old').readAsString(),
+      'old',
+    );
   });
   test('token prefers storage then desktop gh', () async {
     var calls = 0;

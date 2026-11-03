@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:tylog_core/tylog_core.dart'
     show
@@ -130,18 +131,41 @@ class WorkspaceController extends ChangeNotifier {
     }
   }
 
-  Future<Directory> get mountCache async =>
-      mountCacheDirectory ??
-      Directory('${(await getApplicationSupportDirectory()).path}/mounts');
-  Future<GitHubOutbox> get githubOutbox async => GitHubOutbox(
-    Directory('${(await mountCache).parent.path}/outbox/github'),
-  );
-  Future<MountFetcher> get mountFetcher async => _mountFetcher ??= MountFetcher(
-    cache: await mountCache,
-    clientProvider: githubClient,
-    reload: reloadMounts,
-    outbox: await githubOutbox,
-  );
+  String get _vaultKey =>
+      sha1.convert(utf8.encode(entry!.id)).toString().substring(0, 12);
+  Future<Directory> get mountCache async {
+    final key = _vaultKey;
+    final root =
+        mountCacheDirectory ??
+        Directory('${(await getApplicationSupportDirectory()).path}/mounts');
+    // shortcut: old shared mount and outbox directories can be deleted later.
+    return Directory('${root.path}/$key');
+  }
+
+  Future<GitHubOutbox> get githubOutbox async {
+    final key = _vaultKey;
+    final root =
+        mountCacheDirectory?.parent ?? await getApplicationSupportDirectory();
+    return GitHubOutbox(Directory('${root.path}/github-outbox/$key'));
+  }
+
+  Future<MountFetcher> get mountFetcher async {
+    final existing = _mountFetcher;
+    if (existing != null) return existing;
+    final key = _vaultKey;
+    final cache = await mountCache;
+    final fetcher = MountFetcher(
+      cache: cache,
+      clientProvider: githubClient,
+      reload: reloadMounts,
+      outbox: GitHubOutbox(
+        Directory('${cache.parent.parent.path}/github-outbox/$key'),
+      ),
+    );
+    if (entry != null && _vaultKey == key) _mountFetcher ??= fetcher;
+    return fetcher;
+  }
+
   Future<GitHubClient> githubClient() async =>
       (githubClientFactory ?? GitHubClient.new)(await githubToken());
   List<GitHubOutboxEntry> githubConflicts = [];
@@ -174,7 +198,7 @@ class WorkspaceController extends ChangeNotifier {
     final mount = mounts.firstWhere((mount) => mount.id == entry.mountId);
     final outbox = await githubOutbox;
     final meta = File(
-      '${(await mountCache).path}/${mount.id}/.tylog-mount.json',
+      '${(await mountCache).path}/${mountCacheName(mount)}/.tylog-mount.json',
     );
     await _withMountLock(mount.id, () async {
       if (action == 'keep-mine') {
@@ -216,7 +240,7 @@ class WorkspaceController extends ChangeNotifier {
         () => outbox.pushAll(
           client,
           mount,
-          File('${cache.path}/${mount.id}/.tylog-mount.json'),
+          File('${cache.path}/${mountCacheName(mount)}/.tylog-mount.json'),
         ),
       );
     }
@@ -563,6 +587,7 @@ class WorkspaceController extends ChangeNotifier {
     // The search file is a cache; a vault that vanished mid-close just loses it.
     _workerShutdowns.add(flushSearch().catchError((_) {}));
     _vaultGeneration++;
+    _mountFetcher = null;
     _feedFlight = null;
     _eventCreates.clear();
     if (_foregroundGeneration != null) {
@@ -652,6 +677,7 @@ class WorkspaceController extends ChangeNotifier {
   }) async {
     startupMark('open-start', {'trigger': trigger});
     final generation = ++_vaultGeneration;
+    _mountFetcher = null;
     _feedFlight = null;
     _eventCreates.clear();
     mounts = const [];
@@ -1060,7 +1086,7 @@ class WorkspaceController extends ChangeNotifier {
           if (mount.source.kind == 'folder') {
             root = mount.source.path;
           } else if (mount.source.kind == 'github') {
-            root = '${(await mountCache).path}/${mount.id}';
+            root = '${(await mountCache).path}/${mountCacheName(mount)}';
           } else {
             root = null;
           }
@@ -1644,7 +1670,7 @@ class WorkspaceController extends ChangeNotifier {
     if (mount != null && value != null) {
       final relative = path.split('/').skip(2).join('/');
       final metaFile = File(
-        '${(await mountCache).path}/${mount.id}/.tylog-mount.json',
+        '${(await mountCache).path}/${mountCacheName(mount)}/.tylog-mount.json',
       );
       final meta = await metaFile.exists()
           ? jsonDecode(await metaFile.readAsString()) as Map<String, dynamic>
