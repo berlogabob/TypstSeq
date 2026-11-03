@@ -39,6 +39,8 @@ import 'screenshots_ocr.dart';
 import 'widgets/screenshot_strip.dart';
 import 'olt/olt_client.dart';
 import 'olt/olt_cache.dart';
+import 'connectors/olt_connector.dart';
+import 'widgets/external_entity_page.dart';
 import 'models.dart';
 import 'month_calendar.dart';
 import 'nextcloud_sync.dart';
@@ -452,6 +454,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _oltCacheLoading = false;
 
   void _loadOltForToday() {
+    if (Platform.environment.containsKey('FLUTTER_TEST')) return;
     if (_oltCacheLoading) return;
     if (_oltLastSync != null &&
         DateTime.now().difference(_oltLastSync!) <
@@ -471,12 +474,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           setState(() {
             _oltCache = cached;
             _oltDecided = decided;
+            _setOltEntities(cached);
           });
         }
         try {
           await syncOltCache(_oltClient, dir);
           final updated = await loadOltCache(dir);
-          if (mounted) setState(() => _oltCache = updated);
+          if (mounted) {
+            setState(() {
+              _oltCache = updated;
+              _setOltEntities(updated);
+            });
+          }
         } catch (_) {}
       } catch (_) {
       } finally {
@@ -485,12 +494,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }());
   }
 
+  void _setOltEntities(Map<String, List> cache) {
+    final connector = OltConnector(() async => cache);
+    unawaited(
+      connector.refresh().then((_) {
+        if (mounted) workspace.setExternalEntities(connector.entities());
+      }),
+    );
+  }
+
   void _markOltDecided(String id) {
     setState(() => _oltDecided = {..._oltDecided, id});
   }
 
   Vault? get vault => workspace.vault;
-  VaultIndex? get index => workspace.index;
+  VaultIndex? get index => workspace.entityIndex;
   set index(VaultIndex? value) => workspace.index = value;
 
   List<NoteRef>? _pagedLibraryNotes;
@@ -1553,6 +1571,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     int? searchOffset,
   }) async {
     final request = generation ??= ++_openGeneration;
+    final external = workspace.externalEntities.where(
+      (item) => item.id == path,
+    );
+    if (external.isNotEmpty) {
+      if (dirty && !await _save()) return false;
+      if (!mounted) return false;
+      unawaited(
+        Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (context) => ExternalEntityPage(
+              entity: external.first,
+              notes: index?.notes ?? const <NoteRef>[],
+              onOpen: (path) {
+                Navigator.of(context).pop();
+                unawaited(_openPath(path));
+              },
+            ),
+          ),
+        ),
+      );
+      return true;
+    }
     final v = vault;
     if (v == null) return false;
     if (dirty && !await _save()) return false;
@@ -1974,6 +2014,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted) return;
     final v = vault;
     if (v == null) return;
+    _loadOltForToday();
     final generation = ++_destinationGeneration;
     ++_openGeneration;
     final previousDestination = primaryDestination;
@@ -3043,6 +3084,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     String? tag,
     String? status,
   }) async {
+    final externalResults = <PkmsSearchResult>[
+      if (tag == null && status == null)
+        for (final item in workspace.externalEntities)
+          if (query.trim().isEmpty ||
+              [item.title, item.id, ...item.aliases].any(
+                (text) =>
+                    text.toLowerCase().contains(query.trim().toLowerCase()),
+              ))
+            PkmsSearchResult(
+              id: item.id,
+              path: item.id,
+              title: item.title,
+              kind: item.kind,
+              tags: const [],
+              score: 0,
+            ),
+    ];
     final activeEntry = workspace.entry;
     if (activeEntry != null) {
       try {
@@ -3051,27 +3109,34 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           final ids = await db.searchNodeIds(query);
           final byId = {for (final note in fallbackIndex.notes) note.id: note};
           final pathsById = await db.nodePathsForIds(ids);
-          return mergeKeywordResults([
-            for (var i = 0; i < ids.length; i++)
-              if ((byId[ids[i]] ?? fallbackIndex.notesByPath[pathsById[ids[i]]])
-                  case final NoteRef note)
-                if ((tag == null || note.tags.contains(tag)) &&
-                    (status == null || note.properties['status'] == status))
-                  PkmsSearchResult(
-                    id: note.id,
-                    path: note.path,
-                    title: note.title,
-                    kind: note.kind,
-                    tags: note.tags,
-                    score: ids.length - i,
-                  ),
-          ], await workspace.searchNotes(query, tag: tag, status: status));
+          return [
+            ...externalResults,
+            ...mergeKeywordResults([
+              for (var i = 0; i < ids.length; i++)
+                if ((byId[ids[i]] ??
+                        fallbackIndex.notesByPath[pathsById[ids[i]]])
+                    case final NoteRef note)
+                  if ((tag == null || note.tags.contains(tag)) &&
+                      (status == null || note.properties['status'] == status))
+                    PkmsSearchResult(
+                      id: note.id,
+                      path: note.path,
+                      title: note.title,
+                      kind: note.kind,
+                      tags: note.tags,
+                      score: ids.length - i,
+                    ),
+            ], await workspace.searchNotes(query, tag: tag, status: status)),
+          ];
         }
       } catch (_) {
         // The derived index is optional; preserve the existing search path.
       }
     }
-    return workspace.searchNotes(query, tag: tag, status: status);
+    return [
+      ...externalResults,
+      ...await workspace.searchNotes(query, tag: tag, status: status),
+    ];
   }
 
   void _showSettings() {
@@ -4138,13 +4203,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       context: context,
       showDragHandle: false,
       builder: (context) => NotePickerSheet(
-        notes:
-            paged
-                ?.where((item) => !structuralNoteKinds.contains(item.kind))
-                .toList() ??
-            _entities,
+        notes: [
+          ...?paged?.where((item) => !structuralNoteKinds.contains(item.kind)),
+          if (paged == null) ..._entities,
+          if (paged != null)
+            ...workspace.externalEntities.map((e) => e.toNoteRef()),
+        ],
         createLabel: 'New entity',
-        subtitleFor: (note) => note.kind,
+        subtitleFor: (note) =>
+            note.path.startsWith('olt:place:') ? 'OpenLabTwin' : note.kind,
       ),
     );
     if (chosen is NoteRef) return chosen;

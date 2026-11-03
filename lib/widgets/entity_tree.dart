@@ -67,6 +67,9 @@ class EntityTree extends StatelessWidget {
       return ListTile(
         leading: Icon(iconForKind(note.kind)),
         title: Text(note.title),
+        subtitle: note.path.startsWith('olt:place:')
+            ? const Text('OpenLabTwin')
+            : null,
         onTap: () => onOpen(note.path),
       );
     }
@@ -77,6 +80,9 @@ class EntityTree extends StatelessWidget {
       initiallyExpanded: expand,
       leading: Icon(iconForKind(note.kind)),
       title: InkWell(onTap: () => onOpen(note.path), child: Text(note.title)),
+      subtitle: note.path.startsWith('olt:place:')
+          ? const Text('OpenLabTwin')
+          : null,
       children: [
         for (final child in node.children)
           Padding(padding: const EdgeInsets.only(left: 16), child: _row(child)),

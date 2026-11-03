@@ -60,7 +60,7 @@ Future<void> syncOltCache(OltClient client, Directory dir) async {
         'select=id,title,layer,kind,place_ids,location_text,starts_at,ends_at,status,requester_display&starts_at=gte.${Uri.encodeQueryComponent(from.toIso8601String())}&order=starts_at',
     'ideas':
         'select=id,body,status,created_at,ai_title,ai_summary&status=eq.new',
-    'places': 'select=id,name,kind',
+    'places': 'select=id,name,kind,code,parent_id,tier',
   };
   for (final entry in tables.entries) {
     final rows = await client.get(entry.key, entry.value);

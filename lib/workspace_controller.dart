@@ -16,6 +16,7 @@ import 'package:tylog_core/tylog_core.dart'
 import 'package:tylog_core/graph.dart';
 
 import 'calendar_feeds.dart';
+import 'connectors/connector.dart';
 import 'github/github_auth.dart';
 import 'github/github_client.dart';
 import 'github/github_outbox.dart';
@@ -294,6 +295,33 @@ class WorkspaceController extends ChangeNotifier {
   Map<String, String> _mountPaths = const {};
   VaultEntry? entry;
   VaultIndex? index;
+  List<ExternalEntity> externalEntities = const [];
+
+  void setExternalEntities(List<ExternalEntity> entities) {
+    externalEntities = List.unmodifiable(entities);
+    searchRevision++;
+    notifyListeners();
+  }
+
+  VaultIndex? get entityIndex {
+    final current = index;
+    if (current == null || externalEntities.isEmpty) return current;
+    return VaultIndex(
+      version: current.version,
+      queryVersion: current.queryVersion,
+      notesByPath: {
+        ...current.notesByPath,
+        for (final entity in externalEntities) entity.id: entity.toNoteRef(),
+      },
+      backlinksByTarget: current.backlinksByTarget,
+      attachmentBacklinksByPath: current.attachmentBacklinksByPath,
+      problems: current.problems,
+      tasks: current.tasks,
+      issues: current.issues,
+      issueLines: current.issueLines,
+    );
+  }
+
   String? note;
   Mount? _pushMountFor(String path) {
     final parts = path.split('/');

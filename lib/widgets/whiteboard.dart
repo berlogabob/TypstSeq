@@ -830,14 +830,17 @@ class _WhiteboardState extends State<Whiteboard> {
                 ),
               ],
             ),
-            FutureBuilder<String>(
-              future: noteContent(note),
-              builder: (_, s) => Text(
-                s.data ?? '',
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
+            if (note.path.startsWith('olt:place:'))
+              const Text('OpenLabTwin')
+            else
+              FutureBuilder<String>(
+                future: noteContent(note),
+                builder: (_, s) => Text(
+                  s.data ?? '',
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-            ),
           ],
         );
       }
