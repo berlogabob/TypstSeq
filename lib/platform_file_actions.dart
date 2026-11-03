@@ -9,6 +9,9 @@ Future<void> importPlatformFile(
   String path,
   File source,
 ) async {
+  if (storage is CompositeVaultStorage && !path.startsWith('ext/')) {
+    storage = storage.main;
+  }
   if (storage is AndroidTreeVaultStorage) {
     await AndroidTreeVaultStorage.invoke(
       AndroidTreeVaultStorage.channel.invokeMethod<void>(
@@ -27,6 +30,9 @@ Future<void> openPlatformFile(
   String path, {
   Directory? localRoot,
 }) async {
+  if (storage is CompositeVaultStorage && !path.startsWith('ext/')) {
+    storage = storage.main;
+  }
   if (storage is AndroidTreeVaultStorage) {
     await AndroidTreeVaultStorage.invoke(
       AndroidTreeVaultStorage.channel.invokeMethod<void>(

@@ -77,6 +77,14 @@ void main() {
       storage.delete('ext/course/notes/x.typ'),
       throwsUnsupportedError,
     );
+    await expectLater(
+      storage.writeText('ext/removed/note.typ', 'bad'),
+      throwsUnsupportedError,
+    );
+    await expectLater(
+      storage.createDirectory('ext/removed'),
+      throwsUnsupportedError,
+    );
     expect(await main.exists('ext'), isFalse);
     expect(await source.readText('notes/x.typ'), contains('target'));
     final index = await scanVaultStorage(storage);

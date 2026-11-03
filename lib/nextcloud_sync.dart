@@ -425,7 +425,9 @@ class NextcloudSync {
     final done = Completer<void>();
     _vaultRuns[key] = done.future;
     await previous;
-    final storage = vault.storage;
+    final storage = vault.storage is CompositeVaultStorage
+        ? (vault.storage as CompositeVaultStorage).main
+        : vault.storage;
     var acquired = false;
     try {
       if (storage is AndroidTreeVaultStorage) {

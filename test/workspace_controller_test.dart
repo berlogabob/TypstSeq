@@ -39,6 +39,69 @@ const _labUrl = 'https://example.org/lab.ics';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('mounts load, index and disappear after removal and reopen', () async {
+    final root = await Directory.systemTemp.createTemp('mount-controller');
+    addTearDown(() => root.delete(recursive: true));
+    final external = Directory('${root.path}/external');
+    final vaultDir = Directory('${root.path}/vault');
+    await external.create();
+    await File(
+      '${external.path}/reference.typ',
+    ).writeAsString('= External reference');
+    final storage = LocalVaultStorage(vaultDir);
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    final entry = VaultEntry(id: 'local', name: 'Local', path: vaultDir.path);
+    await controller.openVault(entry, storage: storage);
+    await controller.refreshIndex(always: true);
+    await storage.writeText(
+      '_system/settings/mounts.json',
+      jsonEncode([
+        {
+          'id': 'ref',
+          'name': 'Reference',
+          'source': {'kind': 'folder', 'path': external.path},
+          'push': false,
+        },
+        {
+          'id': 'missing',
+          'name': 'Missing',
+          'source': {'kind': 'folder', 'path': '${root.path}/missing'},
+          'push': false,
+        },
+      ]),
+    );
+    await controller.reloadMounts();
+    expect(controller.mounts.length, 2);
+    expect(controller.index!.notesByPath, contains('ext/ref/reference.typ'));
+    expect(
+      await controller.vault!.storage.readText('ext/ref/reference.typ'),
+      contains('External reference'),
+    );
+    controller.close('Closed');
+    await controller.openVault(entry, storage: storage);
+    await controller.refreshIndex(always: true);
+    expect(controller.mounts.length, 2);
+    expect(controller.index!.notesByPath, contains('ext/ref/reference.typ'));
+    await storage.writeText('_system/settings/mounts.local.json', '[]');
+    await controller.reloadMounts();
+    expect(
+      controller.index!.notesByPath,
+      isNot(contains('ext/ref/reference.typ')),
+    );
+    controller.close('Closed');
+    await controller.openVault(entry, storage: storage);
+    await controller.refreshIndex(always: true);
+    expect(controller.mounts, isEmpty);
+    expect(
+      controller.index!.notesByPath,
+      isNot(contains('ext/ref/reference.typ')),
+    );
+  });
   test(
     'kind registry loads on open, reloads peer edits, and clears on close',
     () async {

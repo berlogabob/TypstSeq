@@ -362,11 +362,18 @@ Issues found:
 ## Wave 16 (2026-11-03): P2 mounts + GitHub (plan: docs/plans/2026-11-03-mounts-github/README.md)
 - [x] P1.1 entity page: Part of/Contains in header card, compact header; editor >= 50% of 632 px (90 -> 330 px)
 - [x] P2-A composite storage + mount registry (core): 506 core tests pass
-- [ ] P2-B Settings > Extensions, index via composite, ext/ read-only, sync excludes ext/
+- [x] P2-B1 controller loads mounts.json + index/scan through CompositeVaultStorage (worker too)
+- [ ] P2-B2 ext/ notes read-only in editor + badge
+- [ ] P2-B3 Settings > Extensions page (folder add/remove/refresh)
+- [x] P2-B0 composite rejects ext/ writes, sync excludes ext/ (codex, partial P2-B run)
 - [x] P2-C GitHub client + device-flow auth (lib/github, 4 tests; UI comes with P2-B/D)
+- [ ] P2-C2 desktop: use existing `gh auth token` (GitHub CLI login) when present; device flow only for phones (user 11-03: official login, no key creation)
 - [ ] P2-D GitHub pull mount
 - [ ] P2-E pack update channel (PT course)
 - [ ] P2-F GitHub push (contents API, keep-both conflicts)
 - [ ] P2-G issue lines <-> GitHub issues
 - [ ] P2 review + full suite + macOS verify + P30
-- [ ] USER: confirm OAuth app (reuse GitDoIt client id or new TyLog app); publish PT pack GitHub release
+- [ ] USER (11-03 chose reuse GitDoIt app): its client id (Iv1..., a GitHub App) returns 'Not Found' at /login/device/code -> enable Device Flow in the GitHub App settings or create an OAuth app; send client id
+- [x] PT pack repo: lesson rework committed 293ced8, version 1.3.0 (voices/ left untracked: licence unknown)
+- [ ] PT pack 1.3.0 build (user 11-03: pause Ornith ~1h): bootout enrich+worker, unload Ornith, Chatterbox TTS --force -> check_audio -> pack -> pack-validate (scratchpad pt_pack_build.sh, running)
+- [ ] PT pack: publish GitHub release v1.3.0 with the .tylogpack (user asked 11-03)

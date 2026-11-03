@@ -3,6 +3,14 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:tylog_core/tylog_core.dart'
+    show
+        Mount,
+        parseMounts,
+        mountsSettingsPath,
+        CompositeVaultStorage,
+        ReadOnlyVaultStorage;
 
 import 'package:tylog_core/graph.dart';
 
@@ -66,6 +74,8 @@ class WorkspaceController extends ChangeNotifier {
   final Future<TyLogDatabase?> Function(VaultEntry entry)? databaseForVault;
 
   Vault? vault;
+  List<Mount> mounts = const [];
+  Map<String, String> _mountPaths = const {};
   VaultEntry? entry;
   VaultIndex? index;
   String? note;
@@ -366,6 +376,8 @@ class WorkspaceController extends ChangeNotifier {
     feedEvents = [];
     calendarSettings = {};
     kindRegistry.value = const {};
+    mounts = const [];
+    _mountPaths = const {};
     vault = null;
     entry = null;
     note = null;
@@ -451,7 +463,9 @@ class WorkspaceController extends ChangeNotifier {
     _indexPending = true;
     _indexFailed = false;
     try {
-      final opened = Vault.withStorage(storage ?? next.storage);
+      final opened = Vault.withStorage(
+        CompositeVaultStorage(storage ?? next.storage, {}),
+      );
       flushStartupTraceWhenReady(opened);
       await opened.ensureCreated(
         createIfMissing:
@@ -515,13 +529,19 @@ class WorkspaceController extends ChangeNotifier {
       kindRegistry.value = const {};
       await reloadKindRegistry();
       if (!_owns(opened, generation)) return;
+      await reloadMounts(rescan: false);
+      if (!_owns(opened, generation)) return;
       entry = next;
       note = today;
       // The worker owns the production index cache. Decoding the complete
       // compressed index here duplicates its work and can stall the root
       // isolate before the editor is usable; in-process callers still retain
       // the warm-cache fast path.
-      final loaded = _useWorker ? null : await opened.loadIndex();
+      final cached = _useWorker ? null : await opened.loadIndex();
+      final loaded =
+          cached?.notesByPath.keys.any((p) => p.startsWith('ext/')) == true
+          ? null
+          : cached;
       if (_disposed || generation != _vaultGeneration) return;
       index = loaded;
       // Not via _retainIndex — a new vault must not inherit the previous one's
@@ -565,7 +585,7 @@ class WorkspaceController extends ChangeNotifier {
       startupMark('today-readable');
       if (initialRead.editRevision == editRevision) source = initialRead.source;
       if (_disposed || generation != _vaultGeneration) return;
-      status = 'Vault opened — indexing…';
+      status = _mountWarning ?? 'Vault opened — indexing…';
       notifyListeners();
       startupMark('fast-path-done');
       if (inspector == null) {
@@ -745,6 +765,63 @@ class WorkspaceController extends ChangeNotifier {
       status = 'Could not read kind registry: $error';
       notifyListeners();
     }
+  }
+
+  String? _mountWarning;
+
+  Future<void> reloadMounts({bool rescan = true}) async {
+    final opened = vault;
+    final generation = _vaultGeneration;
+    if (opened == null) return;
+    final storage = opened.storage as CompositeVaultStorage;
+    try {
+      final path = await settingsPathFor(storage, mountsSettingsPath);
+      final loaded = await storage.existsNow(path)
+          ? parseMounts(await storage.readText(path))
+          : <Mount>[];
+      final paths = <String, String>{};
+      final unavailable = <String>[];
+      for (final mount in loaded) {
+        try {
+          final String? root;
+          if (mount.source.kind == 'folder') {
+            root = mount.source.path;
+          } else if (mount.source.kind == 'github') {
+            root =
+                '${(await getApplicationSupportDirectory()).path}/mounts/${mount.id}';
+          } else {
+            root = null;
+          }
+          if (root == null || !await Directory(root).exists()) {
+            unavailable.add(mount.name);
+          } else {
+            await for (final _ in Directory(root).list()) {
+              break;
+            }
+            paths[mount.id] = root;
+          }
+        } catch (_) {
+          unavailable.add(mount.name);
+        }
+      }
+      if (!_owns(opened, generation)) return;
+      mounts = loaded;
+      _mountPaths = paths;
+      storage.replaceMounts({
+        for (final e in paths.entries)
+          e.key: ReadOnlyVaultStorage(LocalVaultStorage(Directory(e.value))),
+      });
+      _mountWarning = unavailable.isEmpty
+          ? null
+          : 'Unavailable extensions: ${unavailable.join(', ')}';
+      if (_mountWarning != null) status = _mountWarning!;
+      if (rescan) await _scan(opened, generation: generation);
+    } catch (error) {
+      if (!_owns(opened, generation)) return;
+      _mountWarning = 'Could not read extensions: $error';
+      status = _mountWarning!;
+    }
+    if (_owns(opened, generation)) notifyListeners();
   }
 
   Future<void> configureKind(
@@ -1513,6 +1590,7 @@ class WorkspaceController extends ChangeNotifier {
     VaultIndex? indexedIndex;
     await for (final event in worker.run(
       RebuildIndexCommand(
+        mountPaths: _mountPaths,
         force: force,
         stale: stale,
         hashStale: opened.pendingSyncWrites,
@@ -2297,6 +2375,7 @@ class WorkspaceController extends ChangeNotifier {
     var localContentChanged = false;
     var calendarsChanged = false;
     var kindsChanged = false;
+    var mountsChanged = false;
     // Inside the try from here on. `_startSyncForeground` swallows its own
     // throws, but a platform channel that never *completes* would strand
     // `syncing` at true with no sync running — and every Sync-dashboard action
@@ -2344,6 +2423,7 @@ class WorkspaceController extends ChangeNotifier {
           opened.markLocallyWritten(path);
           if (path == calendarsSyncPath) calendarsChanged = true;
           if (path == kindsSyncPath) kindsChanged = true;
+          if (path == mountsSettingsPath) mountsChanged = true;
         },
       );
       final result = await sync.sync(
@@ -2358,6 +2438,7 @@ class WorkspaceController extends ChangeNotifier {
       // next launch (the A24 kept an old unfiltered list until a restart).
       if (calendarsChanged) unawaited(refreshCalendarFeeds(force: true));
       if (kindsChanged) await reloadKindRegistry();
+      if (mountsChanged) await reloadMounts();
       if (!_owns(opened, generation)) return false;
       final revisionConflicts = await _ingestRevisions(
         opened,
@@ -2952,7 +3033,11 @@ class WorkspaceController extends ChangeNotifier {
     // contents.
     _publishCalendar(next);
     final current = index;
-    if (current == null || current.version != next.version) return next;
+    if (current == null ||
+        identical(current, next) ||
+        current.version != next.version) {
+      return next;
+    }
     current.notesByPath
       ..clear()
       ..addAll(next.notesByPath);

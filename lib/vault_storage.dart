@@ -11,6 +11,7 @@ import 'package:tylog_core/storage.dart';
 export 'package:tylog_core/storage.dart'
     show
         LocalVaultStorage,
+        CompositeVaultStorage,
         VaultStorage,
         VaultStorageEntry,
         validateVaultPath,
@@ -235,6 +236,7 @@ class AndroidTreeVaultStorage extends VaultStorage {
 /// trace append ~8 s behind the scan (A24). Other storages keep it in the
 /// vault's own `.tylog/`.
 Future<VaultStorage> deviceLocalStorage(VaultStorage storage) async {
+  if (storage is CompositeVaultStorage) storage = storage.main;
   if (storage is! AndroidTreeVaultStorage) return storage;
   final id = sha1.convert(utf8.encode(storage.uri)).toString();
   final cached = _deviceLocal[id];

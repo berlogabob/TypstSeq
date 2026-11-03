@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:isolate';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:tylog_core/graph.dart';
 import 'package:tylog_core/index_donor.dart';
 import 'package:tylog_core/maintenance.dart';
+import 'package:tylog_core/storage.dart';
 
 import 'models.dart';
 import 'package:tylog_core/validation.dart';
@@ -73,11 +75,13 @@ sealed class VaultWorkerCommand {
 class RebuildIndexCommand extends VaultWorkerCommand {
   const RebuildIndexCommand({
     required this.stale,
+    this.mountPaths = const {},
     this.hashStale,
     this.force = false,
   });
 
   final bool force;
+  final Map<String, String> mountPaths;
 
   /// The root isolate's pending [Vault.staleNotes] — the worker's own `Vault`
   /// never saw those saves.
@@ -224,7 +228,10 @@ Future<void> vaultWorkerMain(VaultWorkerBoot boot) async {
 }
 
 class _VaultWorker {
-  _VaultWorker(this._boot) : _vault = Vault.withStorage(_boot.entry.storage);
+  _VaultWorker(this._boot)
+    : _vault = Vault.withStorage(
+        CompositeVaultStorage(_boot.entry.storage, {}),
+      );
 
   final VaultWorkerBoot _boot;
   final Vault _vault;
@@ -320,9 +327,15 @@ class _VaultWorker {
     _cancelled = false;
     VaultWorkerEvent terminal = const WorkDoneEvent();
     try {
+      (_vault.storage as CompositeVaultStorage).replaceMounts({
+        for (final e in command.mountPaths.entries)
+          e.key: ReadOnlyVaultStorage(LocalVaultStorage(Directory(e.value))),
+      });
       if (!_indexSent) {
         final cached = await _vault.loadIndex();
-        if (cached != null && cached.version == kVaultIndexVersion) {
+        if (cached != null &&
+            cached.version == kVaultIndexVersion &&
+            !cached.notesByPath.keys.any((p) => p.startsWith('ext/'))) {
           _send(IndexBuiltEvent(cached, fromCache: true));
           _indexSent = true;
         }

@@ -298,7 +298,7 @@ class ReadOnlyVaultStorage extends VaultStorage {
 
 class CompositeVaultStorage extends VaultStorage {
   CompositeVaultStorage(this.main, Map<String, VaultStorage> mounts)
-    : mounts = Map.unmodifiable(mounts) {
+    : mounts = Map.of(mounts) {
     for (final id in mounts.keys) {
       if (!RegExp(r'^[a-z0-9][a-z0-9-]{0,40}$').hasMatch(id)) {
         throw ArgumentError.value(id, 'mounts', 'Invalid mount id');
@@ -307,6 +307,13 @@ class CompositeVaultStorage extends VaultStorage {
   }
   final VaultStorage main;
   final Map<String, VaultStorage> mounts;
+
+  void replaceMounts(Map<String, VaultStorage> next) {
+    mounts
+      ..clear()
+      ..addAll(CompositeVaultStorage(main, next).mounts);
+  }
+
   @override
   Object get syncIdentity => main.syncIdentity;
 
@@ -390,21 +397,33 @@ class CompositeVaultStorage extends VaultStorage {
   Future<Uint8List> readBytesNow(String path) =>
       (_mount(path)?.$1 ?? main).readBytesNow(_mount(path)?.$2 ?? path);
   @override
+  Future<String> readText(String path) =>
+      (_mount(path)?.$1 ?? main).readText(_mount(path)?.$2 ?? path);
+  @override
+  Future<void> writeText(String path, String value) async =>
+      _writable(path).writeText(path, value);
+  @override
   Stream<List<int>>? openRead(String path, [int? start, int? end]) =>
       (_mount(path)?.$1 ?? main).openRead(_mount(path)?.$2 ?? path, start, end);
   @override
   Future<String> hash(String path) =>
       (_mount(path)?.$1 ?? main).hash(_mount(path)?.$2 ?? path);
   @override
-  Future<void> createDirectory(String path) =>
-      (_mount(path)?.$1 ?? main).createDirectory(_mount(path)?.$2 ?? path);
+  Future<void> createDirectory(String path) async =>
+      _writable(path).createDirectory(path);
   @override
-  Future<void> writeBytes(String path, List<int> bytes) =>
-      (_mount(path)?.$1 ?? main).writeBytes(_mount(path)?.$2 ?? path, bytes);
+  Future<void> writeBytes(String path, List<int> bytes) async =>
+      _writable(path).writeBytes(path, bytes);
   @override
-  Future<void> delete(String path) =>
-      (_mount(path)?.$1 ?? main).delete(_mount(path)?.$2 ?? path);
+  Future<void> delete(String path) async => _writable(path).delete(path);
   @override
-  Future<void> deleteEmptyDirectory(String path) =>
-      (_mount(path)?.$1 ?? main).deleteEmptyDirectory(_mount(path)?.$2 ?? path);
+  Future<void> deleteEmptyDirectory(String path) async =>
+      _writable(path).deleteEmptyDirectory(path);
+
+  VaultStorage _writable(String path) {
+    if (path == 'ext' || path.startsWith('ext/')) {
+      throw UnsupportedError('Read-only extension storage');
+    }
+    return main;
+  }
 }

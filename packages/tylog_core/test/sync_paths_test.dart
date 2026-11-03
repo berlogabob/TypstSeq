@@ -8,4 +8,9 @@ void main() {
       expect(isSyncableVaultPath('$root/x.json'), isTrue);
     }
   });
+
+  test('extension notes are never syncable', () {
+    expect(isSyncableVaultPath('ext/course/notes/a.typ'), isFalse);
+    expect(isSyncableVaultPath('notes/a.typ'), isTrue);
+  });
 }

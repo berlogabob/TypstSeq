@@ -41,6 +41,36 @@ void main() {
     );
   }
 
+  test('worker indexes and removes mounted notes', () async {
+    final seeded = await seed(0);
+    final folder = await Directory.systemTemp.createTemp('worker_mount_');
+    addTearDown(() => folder.delete(recursive: true));
+    await File('${folder.path}/external.typ').writeAsString('= Mounted note');
+    final worker = await VaultWorkerClient.spawn(entry: seeded.entry);
+    addTearDown(worker.dispose);
+    final first = await worker
+        .run(
+          RebuildIndexCommand(
+            stale: const {},
+            mountPaths: {'ref': folder.path},
+          ),
+        )
+        .toList();
+    expect(first.whereType<WorkFailedEvent>(), isEmpty);
+    expect(
+      first.whereType<IndexBuiltEvent>().last.index.notesByPath,
+      contains('ext/ref/external.typ'),
+    );
+    final second = await worker
+        .run(const RebuildIndexCommand(stale: {}))
+        .toList();
+    expect(second.whereType<WorkFailedEvent>(), isEmpty);
+    expect(
+      second.whereType<IndexBuiltEvent>().last.index.notesByPath,
+      isNot(contains('ext/ref/external.typ')),
+    );
+  });
+
   test('a rebuild round-trips through the worker isolate', () async {
     final vault = await seed(4);
     final worker = await VaultWorkerClient.spawn(entry: vault.entry);
