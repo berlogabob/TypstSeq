@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:tylog_core/tylog_core.dart' show VaultStorage;
+import 'whiteboard.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'agenda_timeline.dart';
@@ -506,8 +508,10 @@ class LibraryView extends StatelessWidget {
     this.noteToCluster = const {},
     this.shelfPrefs = const {},
     this.onShelfPrefsChanged,
+    this.boardStorage,
   });
 
+  final VaultStorage? boardStorage;
   final Future<Uint8List?> Function(String)? imageResolver;
   final int initialTab;
   final ValueChanged<int>? onTabChanged;
@@ -540,7 +544,7 @@ class LibraryView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => DefaultTabController(
-    length: audioShelf == null ? 5 : 6,
+    length: (audioShelf == null ? 5 : 6) + (boardStorage == null ? 0 : 1),
     initialIndex: initialTab,
     child: Builder(
       builder: (context) => NotificationListener<ScrollNotification>(
@@ -564,6 +568,7 @@ class LibraryView extends StatelessWidget {
                 const Tab(text: 'Tasks'),
                 const Tab(text: 'Calendar'),
                 if (audioShelf != null) const Tab(text: 'Audio'),
+                if (boardStorage != null) const Tab(text: 'Boards'),
               ],
             ),
             Expanded(
@@ -632,6 +637,12 @@ class LibraryView extends StatelessWidget {
                   if (audioShelf != null)
                     audioShelf!(
                       pagedNotes ?? index?.notes ?? const <NoteRef>[],
+                    ),
+                  if (boardStorage != null)
+                    BoardsTab(
+                      storage: boardStorage!,
+                      index: index,
+                      imageResolver: imageResolver,
                     ),
                 ],
               ),

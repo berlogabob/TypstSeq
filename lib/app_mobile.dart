@@ -70,6 +70,7 @@ import 'widgets/date_format.dart';
 import 'widgets/note_picker_sheet.dart';
 import 'widgets/entity_header.dart';
 import 'widgets/entity_board.dart';
+import 'widgets/whiteboard.dart';
 import 'github/send_issue.dart';
 import 'package:tylog_core/tylog_core.dart' show hasBoardItems;
 import 'widgets/kind_icon_picker.dart';
@@ -5496,6 +5497,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         },
       ),
       'library' => LibraryView(
+        boardStorage: v?.storage,
         initialTab: _libraryTab,
         onTabChanged: (tab) => _libraryTab = tab,
         articleJobs: _articleJobs,
@@ -5958,6 +5960,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           if (isEntity)
             EntityHeader(
               note: currentNote,
+              onOpenWhiteboard: v == null
+                  ? null
+                  : () async {
+                      try {
+                        await openEntityWhiteboard(
+                          context,
+                          storage: v.storage,
+                          index: index,
+                          entityId: currentNote.id,
+                          title: currentNote.title,
+                          imageResolver: _readAsset,
+                        );
+                      } catch (error) {
+                        if (context.mounted) {
+                          showSnack(
+                            context,
+                            'Could not open whiteboard: $error',
+                          );
+                        }
+                      }
+                    },
               onGithubChanged: (value) =>
                   _setNoteProperty(currentNote, 'github', value.trim()),
               relationships: EntityRelationships(

@@ -17,6 +17,7 @@ class EntityHeader extends StatelessWidget {
     this.imageResolver,
     this.onChangeKindIcon,
     this.onOpenBoard,
+    this.onOpenWhiteboard,
     this.relationships,
     this.onGithubChanged,
   });
@@ -25,6 +26,7 @@ class EntityHeader extends StatelessWidget {
   final Widget? relationships;
   final VoidCallback? onChangeKindIcon;
   final VoidCallback? onOpenBoard;
+  final VoidCallback? onOpenWhiteboard;
   final NoteRef note;
   final void Function(String url) onOpenUrl;
   final Future<Uint8List?> Function(String path)? imageResolver;
@@ -85,6 +87,11 @@ class EntityHeader extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (onOpenWhiteboard != null)
+                  TextButton(
+                    onPressed: onOpenWhiteboard,
+                    child: const Text('Whiteboard'),
+                  ),
                 if (onOpenBoard != null)
                   TextButton.icon(
                     key: const Key('entity-board-button'),
