@@ -3,6 +3,32 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## 0.20.8+166
+
+### New
+
+- Processing screen (More > Processing, badge while work runs): queued,
+  running and failed jobs with Retry; every add action says "Queued — see
+  Processing".
+- Audio and screenshot notes share one Text view: Comments · Text ·
+  Properties, original and translation side by side, long-press to copy a
+  line, Copy all, Export (Markdown or PDF) and Open as page (an editable
+  page per language, linked back). Screenshots get ru/en/pt translations of
+  their text (last 7 days automatically, older on request).
+- Songs: tagged music is transcribed whole (choruses kept), the language is
+  detected from the lyrics, the note takes "Artist — Title", and the summary
+  explains what the song is about.
+- Editor: Tab / Shift-Tab and toolbar buttons indent and outdent lists.
+
+### Fixed
+
+- Search opens the page you tapped, not today; audio notes show as Audio and
+  open on the audio screen; text from screenshots is found by search.
+- @ autocomplete no longer hangs, keeps its list steady, doesn't cover the
+  line, and lists "new page" first.
+- Screenshots library defaults to newest first, no grouping, and remembers
+  your choice.
+
 ## 0.20.7+165
 
 ### Changed
