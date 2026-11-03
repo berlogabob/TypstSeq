@@ -80,7 +80,7 @@ void main() {
         'id': 'b',
         'scope': {'entity': 'p', 'future': 3},
         'columns': {'future': true},
-      }).moveCard('a', 'done');
+      }).moveCardToColumn('a', 'done');
       expect(board.toJson()['scope'], containsPair('future', 3));
       expect(board.toJson()['columns'], containsPair('future', true));
     });
@@ -169,7 +169,7 @@ void main() {
           'todo': ['x', 'card', 'card'],
           'doing': ['card', 'y'],
         },
-      ).moveCard('card', 'done');
+      ).moveCardToColumn('card', 'done');
 
       expect(result.order, {
         'todo': ['x'],
@@ -179,20 +179,117 @@ void main() {
     });
 
     test('moves within a column to an index', () {
-      expect(board().moveCard('a', 'todo', index: 1).order['todo'], ['b', 'a']);
+      expect(board().moveCardToColumn('a', 'todo', index: 1).order['todo'], [
+        'b',
+        'a',
+      ]);
     });
 
     test('clamps indices below and above the column bounds', () {
-      expect(board().moveCard('c', 'todo', index: -10).order['todo'], [
+      expect(board().moveCardToColumn('c', 'todo', index: -10).order['todo'], [
         'c',
         'a',
         'b',
       ]);
-      expect(board().moveCard('c', 'todo', index: 99).order['todo'], [
+      expect(board().moveCardToColumn('c', 'todo', index: 99).order['todo'], [
         'a',
         'b',
         'c',
       ]);
+    });
+  });
+
+  group('free board', () {
+    test('schema 2 and unknown fields survive serialization and edits', () {
+      final board = Board.fromJson({
+        'schema': 2,
+        'id': 'b',
+        'title': 'Map',
+        'layout': 'free',
+        'future': 1,
+        'scope': {'entity': 'e', 'future': 2},
+        'columns': {'future': 3},
+        'cards': [
+          {
+            'id': 'a',
+            'type': 'note',
+            'ref': 'n',
+            'x': 1,
+            'y': 2,
+            'w': 20,
+            'h': 20,
+            'future': 4,
+          },
+        ],
+        'frames': [
+          {
+            'id': 'f',
+            'title': 'F',
+            'x': 0,
+            'y': 0,
+            'w': 100,
+            'h': 100,
+            'future': 5,
+          },
+        ],
+        'edges': [
+          {'id': 'e', 'from': 'a', 'to': 'b', 'label': '', 'future': 6},
+        ],
+        'viewport': {'x': 1, 'y': 2, 'zoom': 2, 'future': 7},
+      }).moveCard('a', 9, -9).moveFrame('f', 10, 10);
+      final json = board.toJson();
+      expect(Board.fromJson(json).toJson(), json);
+      expect(json['future'], 1);
+      expect(json['scope'], containsPair('future', 2));
+      expect(json['columns'], containsPair('future', 3));
+      expect((json['cards'] as List).first, containsPair('future', 4));
+      expect((json['frames'] as List).first, containsPair('future', 5));
+      expect((json['edges'] as List).first, containsPair('future', 6));
+      expect(json['viewport'], containsPair('future', 7));
+      expect(Board(id: 'b', title: 'T', layout: 'free').schema, 2);
+    });
+
+    test('card, edge, culling and frame helpers', () {
+      final board =
+          Board(
+                id: 'b',
+                title: 'T',
+                layout: 'free',
+                frames: [
+                  BoardFrame(id: 'f', title: 'F', x: 0, y: 0, w: 100, h: 100),
+                ],
+              )
+              .addCard(
+                BoardCard(id: 'a', type: 'text', x: 1, y: 1, w: 20, h: 20),
+              )
+              .addCard(
+                BoardCard(id: 'b', type: 'note', x: 90, y: 90, w: 30, h: 30),
+              )
+              .addCard(BoardCard(id: 'c', type: 'text', x: 200, y: 200));
+      final moved = board.moveCard('a', 13, -5).resizeCard('a', 30, 40);
+      expect(
+        [
+          moved.cards.first.x,
+          moved.cards.first.y,
+          moved.cards.first.w,
+          moved.cards.first.h,
+        ],
+        [16, -8, 30, 40],
+      );
+      expect(board.cardsInRect(100, 100, 10, 10).map((c) => c.id), ['b']);
+      final framed = board.moveFrame('f', 10, 20);
+      expect([framed.cards[0].x, framed.cards[0].y], [11, 21]);
+      expect([framed.cards[1].x, framed.cards[1].y], [90, 90]);
+      expect([framed.frames.first.x, framed.frames.first.y], [10, 20]);
+      final edges = board
+          .addEdge(BoardEdge(id: '1', from: 'a', to: 'b'))
+          .addEdge(BoardEdge(id: '2', from: 'a', to: 'b'))
+          .addEdge(BoardEdge(id: '3', from: 'a', to: 'a'))
+          .addEdge(BoardEdge(id: '4', from: 'b', to: 'c'));
+      expect(edges.edges.map((e) => e.id), ['1', '4']);
+      final removed = edges.removeCard('a');
+      expect(removed.cards.map((c) => c.id), ['b', 'c']);
+      expect(removed.edges.map((e) => e.id), ['4']);
     });
   });
 

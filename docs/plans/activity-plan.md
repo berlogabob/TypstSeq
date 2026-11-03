@@ -389,7 +389,7 @@ Issues found:
 - [ ] PT pack: re-score all clips (script kept only last 25: 6 at 0.80-0.89); redo low clips in 1.3.1
 
 ## Wave 17 (2026-11-03): P3 whiteboard (plan: docs/plans/2026-11-03-whiteboard/README.md)
-- [ ] P3-A board model v2: free layout cards (note/entity/task/asset/url/text, x/y/w/h, frames, edges) in boards/<id>.board.json, backward compatible with v1 columns
+- [x] P3-A board model v2: free layout cards (note/entity/task/asset/url/text, x/y/w/h, frames, edges) in boards/<id>.board.json, backward compatible with v1 columns
 - [ ] P3-B canvas: Boards list, open/create whiteboard, pan/zoom, drag cards, positions persisted
 - [ ] P3-C add content: note/entity/task picker, paste image (copied to assets/boards/<id>/), URL card, text card, connect cards with arrows
 - [ ] P3-D tree view: auto layout over part_of from an entity (database/heritage tree), "Pin to whiteboard"
