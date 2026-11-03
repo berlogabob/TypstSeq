@@ -20,8 +20,10 @@ class EntityBoard extends StatefulWidget {
     required this.refreshIndex,
     this.githubClient,
     this.onOpenUrl,
+    this.boardId,
   });
 
+  final String? boardId;
   final Future<GitHubClient> Function()? githubClient;
   final void Function(String)? onOpenUrl;
   final NoteRef entity;
@@ -36,9 +38,9 @@ class EntityBoard extends StatefulWidget {
 }
 
 class _EntityBoardState extends State<EntityBoard> {
-  late final String id = base64Url
-      .encode(utf8.encode(widget.entity.id))
-      .replaceAll('=', '');
+  late final String id =
+      widget.boardId ??
+      base64Url.encode(utf8.encode(widget.entity.id)).replaceAll('=', '');
   late Board board = Board(
     id: id,
     title: widget.entity.title,

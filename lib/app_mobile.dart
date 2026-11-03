@@ -5498,6 +5498,41 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       'library' => LibraryView(
         boardStorage: v?.storage,
+        boardDeviceId: vaultRegistry?.deviceId ?? 'unknown',
+        onOpenColumns: (context, board) {
+          if (v == null) return;
+          final boardIndex =
+              index ?? const VaultIndex(notesByPath: {}, backlinksByTarget: {});
+          final entityId = board.scopeEntity ?? board.id;
+          final entity =
+              boardIndex.notes
+                  .where((note) => note.id == entityId)
+                  .firstOrNull ??
+              NoteRef(
+                id: entityId,
+                path: '',
+                title: board.title,
+                outgoingLinks: const [],
+              );
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => EntityBoard(
+                entity: entity,
+                boardId: board.id,
+                vault: v,
+                index: boardIndex,
+                setStatus: _setTaskStatus,
+                mutateNote: workspace.mutateNote,
+                githubClient: workspace.githubClient,
+                onOpenUrl: _openUrl,
+                refreshIndex: () async {
+                  await workspace.waitForMutationRefresh();
+                  return index;
+                },
+              ),
+            ),
+          );
+        },
         initialTab: _libraryTab,
         onTabChanged: (tab) => _libraryTab = tab,
         articleJobs: _articleJobs,
@@ -5968,6 +6003,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           context,
                           storage: v.storage,
                           index: index,
+                          deviceId: vaultRegistry?.deviceId ?? 'unknown',
                           entityId: currentNote.id,
                           title: currentNote.title,
                           onOpenPath: _openPath,
@@ -5988,6 +6024,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           context,
                           storage: v.storage,
                           index: index,
+                          deviceId: vaultRegistry?.deviceId ?? 'unknown',
                           entityId: currentNote.id,
                           title: currentNote.title,
                           onOpenPath: _openPath,

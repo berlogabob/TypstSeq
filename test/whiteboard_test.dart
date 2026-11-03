@@ -5,6 +5,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/widgets/entity_header.dart';
 import 'package:tylog/widgets/whiteboard.dart';
+import 'package:tylog/widgets/entity_board.dart';
+import 'package:tylog/vault.dart';
 import 'package:tylog_core/tylog_core.dart';
 
 void main() {
@@ -66,6 +68,184 @@ void main() {
     }
     expect(find.text('Research map'), findsOneWidget);
     expect(find.text('free · 2 cards'), findsOneWidget);
+  });
+
+  testWidgets('Library opens each board layout in its matching editor', (
+    tester,
+  ) async {
+    const entity = NoteRef(
+      id: 'project',
+      path: 'p.typ',
+      title: 'Project',
+      outgoingLinks: [],
+    );
+    const index = VaultIndex(
+      notesByPath: {'p.typ': entity},
+      backlinksByTarget: {},
+    );
+    await tester.runAsync(() async {
+      await writeBoard(
+        storage,
+        const Board(id: 'cols', title: 'Columns', scopeEntity: 'project'),
+      );
+      await writeBoard(
+        storage,
+        const Board(id: 'free', title: 'Canvas', layout: 'free'),
+      );
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: BoardsTab(
+            storage: storage,
+            index: index,
+            onOpenColumns: (context, board) => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => EntityBoard(
+                  entity: entity,
+                  boardId: board.id,
+                  vault: Vault.withStorage(storage),
+                  index: index,
+                  setStatus: (_, _) async {},
+                  mutateNote: (_, _) async => false,
+                  refreshIndex: () async => index,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    for (var i = 0; i < 30 && find.text('Columns').evaluate().isEmpty; i++) {
+      await settleIo(tester);
+    }
+    await tester.tap(find.text('Columns'));
+    await tester.pump(const Duration(milliseconds: 400));
+    for (
+      var i = 0;
+      i < 30 &&
+          find.byKey(const ValueKey('board-column-todo')).evaluate().isEmpty;
+      i++
+    ) {
+      await settleIo(tester);
+    }
+    expect(find.byType(EntityBoard), findsOneWidget);
+    expect(find.byKey(const ValueKey('board-column-todo')), findsOneWidget);
+    await tester.pageBack();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text('Canvas'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(Whiteboard), findsOneWidget);
+  });
+
+  testWidgets('back waits for a dragged card to save', (tester) async {
+    const board = Board(
+      id: 'back',
+      title: 'Back board',
+      layout: 'free',
+      cards: [BoardCard(id: 'card', type: 'text', text: 'Move', x: 30, y: 30)],
+    );
+    await tester.runAsync(() => writeBoard(storage, board));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) =>
+                      Whiteboard(board: board, storage: storage, index: null),
+                ),
+              ),
+              child: const Text('Open'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Open'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await settleIo(tester);
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const ValueKey('board-card-card'))),
+    );
+    await gesture.moveBy(const Offset(50, 50));
+    await gesture.moveBy(const Offset(50, 50));
+    await gesture.up();
+    await tester.pump();
+    await tester.tap(find.byType(BackButton));
+    for (
+      var i = 0;
+      i < 30 && find.byType(Whiteboard).evaluate().isNotEmpty;
+      i++
+    ) {
+      await settleIo(tester);
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(Whiteboard), findsNothing);
+    final saved = await pollIo(tester, () async {
+      final b = await readBoard(storage, 'back');
+      return b != null && b.cards.single.x != 30 ? b : null;
+    });
+    expect(saved?.cards.single.x, greaterThan(30));
+  });
+
+  testWidgets('disk change preserves local board as a conflict copy', (
+    tester,
+  ) async {
+    const board = Board(
+      id: 'conflict',
+      title: 'Local',
+      layout: 'free',
+      cards: [BoardCard(id: 'card', type: 'text', text: 'Move', x: 30, y: 30)],
+    );
+    await tester.runAsync(() => writeBoard(storage, board));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Whiteboard(
+          board: board,
+          storage: storage,
+          index: null,
+          deviceId: 'phone',
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await settleIo(tester);
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const ValueKey('board-card-card'))),
+    );
+    await gesture.moveBy(const Offset(50, 50));
+    await gesture.moveBy(const Offset(50, 50));
+    await gesture.up();
+    await tester.pump();
+    await tester.runAsync(
+      () => writeBoard(
+        storage,
+        const Board(id: 'conflict', title: 'Remote', layout: 'free'),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+    final copy = await pollIo(
+      tester,
+      () => readBoard(storage, 'conflict.conflict-phone'),
+    );
+    for (var i = 0; i < 20 && find.text('Remote').evaluate().isEmpty; i++) {
+      await settleIo(tester);
+    }
+    expect(copy?.cards.single.x, greaterThan(30));
+    expect(find.text('Remote'), findsOneWidget);
+    expect(
+      find.text(
+        'Board changed on another device - your version saved as a copy',
+      ),
+      findsOneWidget,
+    );
+    final remote = await tester.runAsync(() => readBoard(storage, 'conflict'));
+    expect(remote?.title, 'Remote');
   });
 
   testWidgets("New whiteboard creates a board file", (tester) async {

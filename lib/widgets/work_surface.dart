@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:tylog_core/tylog_core.dart' show VaultStorage;
+import 'package:tylog_core/tylog_core.dart' show VaultStorage, Board;
 import 'whiteboard.dart';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -509,9 +509,13 @@ class LibraryView extends StatelessWidget {
     this.shelfPrefs = const {},
     this.onShelfPrefsChanged,
     this.boardStorage,
+    this.onOpenColumns,
+    this.boardDeviceId = 'unknown',
   });
 
   final VaultStorage? boardStorage;
+  final void Function(BuildContext, Board)? onOpenColumns;
+  final String boardDeviceId;
   final Future<Uint8List?> Function(String)? imageResolver;
   final int initialTab;
   final ValueChanged<int>? onTabChanged;
@@ -641,6 +645,8 @@ class LibraryView extends StatelessWidget {
                   if (boardStorage != null)
                     BoardsTab(
                       storage: boardStorage!,
+                      onOpenColumns: onOpenColumns,
+                      deviceId: boardDeviceId,
                       index: index,
                       onOpenPath: onOpenPath,
                       imageResolver: imageResolver,

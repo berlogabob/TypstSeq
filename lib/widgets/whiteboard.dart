@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:crypto/crypto.dart';
@@ -19,7 +20,11 @@ class BoardsTab extends StatefulWidget {
     required this.index,
     this.imageResolver,
     this.onOpenPath,
+    this.onOpenColumns,
+    this.deviceId = 'unknown',
   });
+  final void Function(BuildContext, Board)? onOpenColumns;
+  final String deviceId;
   final VaultStorage storage;
   final VaultIndex? index;
   final Future<Uint8List?> Function(String)? imageResolver;
@@ -30,13 +35,17 @@ class BoardsTab extends StatefulWidget {
 
 class _BoardsTabState extends State<BoardsTab> {
   late Future<List<Board>> boards = load();
+  final hashes = <String, String>{};
   Future<List<Board>> load() async {
     final entries = await widget.storage.list(path: 'boards');
     final result = <Board>[];
     for (final entry in entries) {
       if (!entry.isDirectory && entry.path.endsWith('.board.json')) {
         try {
-          result.add(parseBoard(await widget.storage.readText(entry.path)));
+          final text = await widget.storage.readText(entry.path);
+          final board = parseBoard(text);
+          hashes[board.id] = sha256.convert(utf8.encode(text)).toString();
+          result.add(board);
         } catch (_) {
           /* Keep other boards accessible. */
         }
@@ -46,12 +55,21 @@ class _BoardsTabState extends State<BoardsTab> {
   }
 
   Future<void> open(Board board, {bool create = false}) async {
-    if (create) await writeBoard(widget.storage, board);
+    if (create) {
+      await writeBoard(widget.storage, board);
+      hashes[board.id] = await widget.storage.hash(boardPath(board.id));
+    }
+    if (board.layout == 'columns') {
+      if (mounted) widget.onOpenColumns?.call(context, board);
+      return;
+    }
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => Whiteboard(
           board: board,
+          initialHash: hashes[board.id],
+          deviceId: widget.deviceId,
           storage: widget.storage,
           index: widget.index,
           imageResolver: widget.imageResolver,
@@ -117,18 +135,28 @@ Future<void> openEntityWhiteboard(
   Future<Uint8List?> Function(String)? imageResolver,
   ValueChanged<String>? onOpenPath,
   bool initialTree = false,
+  String deviceId = 'unknown',
 }) async {
   final id = '$entityId-wb';
-  var board = await readBoard(storage, id);
-  if (board == null) {
+  final path = boardPath(id);
+  late Board board;
+  late String hash;
+  if (await storage.exists(path)) {
+    final text = await storage.readText(path);
+    board = parseBoard(text);
+    hash = sha256.convert(utf8.encode(text)).toString();
+  } else {
     board = Board(id: id, title: title, layout: 'free', scopeEntity: entityId);
     await writeBoard(storage, board);
+    hash = await storage.hash(path);
   }
   if (!context.mounted) return;
   await Navigator.of(context).push(
     MaterialPageRoute<void>(
       builder: (_) => Whiteboard(
-        board: board!,
+        board: board,
+        initialHash: hash,
+        deviceId: deviceId,
         initialTree: initialTree,
         storage: storage,
         index: index,
@@ -148,7 +176,11 @@ class Whiteboard extends StatefulWidget {
     this.imageResolver,
     this.onOpenPath,
     this.initialTree = false,
+    this.initialHash,
+    this.deviceId = 'unknown',
   });
+  final String? initialHash;
+  final String deviceId;
   final bool initialTree;
   final Board board;
   final VaultStorage storage;
@@ -166,6 +198,11 @@ class _WhiteboardState extends State<Whiteboard> {
   Matrix4? freeViewport;
   Timer? timer;
   Future<void> writes = Future.value();
+  String? savedHash;
+  late Future<void> hashReady;
+  bool saveFailed = false;
+  int generation = 0;
+  bool leaving = false;
   String? selected;
   String? selectedEdge;
   bool connecting = false;
@@ -177,6 +214,13 @@ class _WhiteboardState extends State<Whiteboard> {
   @override
   void initState() {
     super.initState();
+    hashReady = () async {
+      savedHash = widget.initialHash;
+      if (savedHash == null &&
+          await widget.storage.exists(boardPath(board.id))) {
+        savedHash = await widget.storage.hash(boardPath(board.id));
+      }
+    }();
     final v = board.viewport;
     transform = TransformationController(
       Matrix4.identity()
@@ -235,20 +279,91 @@ class _WhiteboardState extends State<Whiteboard> {
     timer?.cancel();
     timer = null;
     final snapshot = board;
+    final saveGeneration = generation;
     writes = writes
-        .then((_) => writeBoard(widget.storage, snapshot))
+        .then((_) async {
+          await hashReady;
+          if (saveGeneration != generation) return;
+          final path = boardPath(snapshot.id);
+          final currentHash = await widget.storage.exists(path)
+              ? await widget.storage.hash(path)
+              : null;
+          if (currentHash != null && currentHash != savedHash) {
+            var copyId = '${snapshot.id}.conflict-${widget.deviceId}';
+            if (await widget.storage.exists(boardPath(copyId))) {
+              copyId = '$copyId-${DateTime.now().microsecondsSinceEpoch}';
+            }
+            timer?.cancel();
+            timer = null;
+            await widget.storage.writeText(
+              boardPath(copyId),
+              encodeBoard(Board.fromJson({...board.toJson(), 'id': copyId})),
+            );
+            final text = await widget.storage.readText(path);
+            final synced = parseBoard(text);
+            savedHash = sha256.convert(utf8.encode(text)).toString();
+            generation++;
+            if (mounted) {
+              setState(() => board = synced);
+              if (!treeMode) {
+                final v = synced.viewport;
+                transform.removeListener(viewportChanged);
+                transform.value = Matrix4.identity()
+                  ..translateByDouble(
+                    v.x.toDouble() - origin * v.zoom,
+                    v.y.toDouble() - origin * v.zoom,
+                    0,
+                    1,
+                  )
+                  ..scaleByDouble(v.zoom.toDouble(), v.zoom.toDouble(), 1, 1);
+                transform.addListener(viewportChanged);
+              }
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Board changed on another device - your version saved as a copy',
+                  ),
+                ),
+              );
+            }
+            return;
+          }
+          await writeBoard(widget.storage, snapshot);
+          saveFailed = false;
+          savedHash = await widget.storage.hash(path);
+        })
         .catchError((Object e) {
           if (mounted) {
             ScaffoldMessenger.of(
               context,
             ).showSnackBar(SnackBar(content: Text('Could not save board: $e')));
           }
+          saveFailed = true;
         });
+  }
+
+  Future<void> leave() async {
+    if (leaving) return;
+    leaving = true;
+    if (timer != null) save();
+    try {
+      await writes;
+      if (mounted && !saveFailed) {
+        Navigator.of(context).pop();
+      } else {
+        leaving = false;
+      }
+    } catch (_) {
+      leaving = false;
+    }
   }
 
   @override
   void dispose() {
-    if (timer != null) save();
+    if (timer != null) {
+      save();
+      unawaited(writes.catchError((Object _) {}));
+    }
     transform.removeListener(viewportChanged);
     transform.dispose();
     super.dispose();
@@ -683,8 +798,17 @@ class _WhiteboardState extends State<Whiteboard> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) => PopScope(
+    canPop: false,
+    onPopInvokedWithResult: (didPop, _) {
+      if (!didPop) leave();
+    },
+    child: buildCanvas(),
+  );
+
+  Widget buildCanvas() => Scaffold(
     appBar: AppBar(
+      leading: BackButton(onPressed: leave),
       title: Text(board.title),
       actions: [
         if (board.scopeEntity != null)
