@@ -3,6 +3,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/controlled_editor.dart';
 
 void main() {
+  test('issue preview omits leading project and marker references', () {
+    const line =
+        '- 09:15 #tylog.ref-note("project")[TyLog] '
+        '#tylog.ref-note("marker:fixit")[fixit] P2 issue sync test';
+    expect(issuePreview(line), 'P2 issue sync test');
+  });
+
   test('issue metadata is absent from linked-reference excerpts', () {
     const line =
         '- #tylog.ref-note("p")[Project] bug #metadata(("tylog-issue-status": "done"))';

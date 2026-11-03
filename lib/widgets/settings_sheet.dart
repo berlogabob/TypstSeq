@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'date_format.dart' show shortStamp;
 import '../calendar_feeds.dart' show isValidFeedUrl;
 import '../workspace_controller.dart';
+import '../github/github_auth.dart' show githubToken;
 import 'app_icons.dart';
 import '../ai/ai_settings.dart';
 import '../nextcloud_sync.dart';
@@ -183,14 +184,25 @@ class _SettingsSheetState extends State<SettingsSheet> {
               for (final entry in entries)
                 ListTile(
                   title: Text(entry.title),
-                  subtitle: Text(
-                    // A top-level page's path is just its own name.
-                    _query.trim().isEmpty || entry.path == entry.title
-                        ? _subtitle(entry)
-                        : entry.path,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  subtitle:
+                      entry.title == 'Extensions' &&
+                          (_query.trim().isEmpty || entry.path == entry.title)
+                      ? FutureBuilder<String?>(
+                          future: githubToken(),
+                          builder: (context, snapshot) => Text(
+                            _extensionsSummary(snapshot.data != null),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        )
+                      : Text(
+                          // A top-level page's path is just its own name.
+                          _query.trim().isEmpty || entry.path == entry.title
+                              ? _subtitle(entry)
+                              : entry.path,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => _open(entry, wide: wide),
                 ),
@@ -211,6 +223,14 @@ class _SettingsSheetState extends State<SettingsSheet> {
     'About' => 'Version, updates, help',
     _ => entry.path,
   };
+
+  String _extensionsSummary(bool signedIn) {
+    final count = widget.workspace?.mounts.length ?? 0;
+    final mounts = count == 0
+        ? 'None'
+        : '$count ${count == 1 ? 'extension' : 'extensions'}';
+    return '$mounts · ${signedIn ? 'signed in' : 'not signed in'}';
+  }
 
   Future<void> _open(SettingsSearchEntry entry, {required bool wide}) async {
     if (wide) {

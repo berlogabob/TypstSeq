@@ -335,12 +335,19 @@ final issueStatusMetadata = RegExp(
   r'#metadata\(\(\s*(?:"tylog-issue-status"\s*:\s*"(?:todo|doing|done|cancelled)"|"tylog-issue-gh"\s*:\s*\d+)\s*,?\s*\)\)',
 );
 
-String issuePreview(String source) => _inlinePreview(
-  source.replaceFirst(
+String issuePreview(String source) {
+  var readable = source.replaceFirst(
     RegExp(r'^\s*(?:(?:\\-|[-+*]|\d+\.)\s+)?(?:\d{1,2}:\d{2}\s+)?'),
     '',
-  ),
-).trim();
+  );
+  // Board context supplies the project and marker; keep their reference
+  // titles out of the readable issue text (the marker is shown as a chip).
+  readable = readable.replaceFirst(
+    RegExp(r'^(?:#tylog\.ref-note\("(?:\\.|[^"])*"\)\[[^\]]*\]\s*)+'),
+    '',
+  );
+  return _inlinePreview(readable).trim();
+}
 
 String? _namedString(String source, String name) {
   final match = RegExp('$name\\s*:\\s*"((?:\\\\.|[^"])*)"').firstMatch(source);

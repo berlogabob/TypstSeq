@@ -206,7 +206,7 @@ void main() {
     await settleIo();
     expect(find.text('fixit'), findsOneWidget);
     final gesture = await tester.startGesture(
-      tester.getCenter(find.text('Child fixit bug')),
+      tester.getCenter(find.text('bug')),
     );
     await tester.pump(const Duration(milliseconds: 600));
     await gesture.moveTo(
