@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:archive/archive.dart';
+import 'package:tylog/github/github_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
 import 'package:drift/native.dart';
@@ -39,6 +41,32 @@ const _labUrl = 'https://example.org/lab.ics';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('vault publishes before mount settings become readable', () async {
+    final storage = _GatedMountStorage();
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    final published = Completer<void>();
+    controller.addListener(() {
+      if (controller.note != null && !published.isCompleted) {
+        published.complete();
+      }
+    });
+    final opening = controller.openVault(
+      const VaultEntry(id: 'gate', name: 'Gate', path: '/unused'),
+      storage: storage,
+    );
+    await storage.started.future;
+    try {
+      await published.future.timeout(const Duration(seconds: 2));
+    } finally {
+      storage.gate.complete();
+      await opening;
+    }
+  });
   test('mounts load, index and disappear after removal and reopen', () async {
     final root = await Directory.systemTemp.createTemp('mount-controller');
     addTearDown(() => root.delete(recursive: true));
@@ -110,6 +138,65 @@ void main() {
     expect(
       controller.index!.notesByPath,
       isNot(contains('ext/ref/reference.typ')),
+    );
+  });
+  test('save during refresh waits and keeps the edit', () async {
+    final root = await Directory.systemTemp.createTemp('mount-race');
+    addTearDown(() => root.delete(recursive: true));
+    final cache = Directory('${root.path}/mounts');
+    final mountDir = Directory('${cache.path}/repo');
+    await mountDir.create(recursive: true);
+    await File('${mountDir.path}/note.typ').writeAsString('original');
+    await File('${mountDir.path}/.tylog-mount.json').writeAsString(
+      jsonEncode({
+        'sha': 'old',
+        'blobs': {'note.typ': 'old-blob'},
+      }),
+    );
+    final storage = LocalVaultStorage(Directory('${root.path}/vault'));
+    final client = _GatedGitHub();
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+      mountCacheDirectory: cache,
+      githubClientFactory: (_) => client,
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      VaultEntry(id: 'local', name: 'Local', path: '${root.path}/vault'),
+      storage: storage,
+    );
+    await storage.writeText(
+      '_system/settings/mounts.json',
+      jsonEncode([
+        {
+          'id': 'repo',
+          'name': 'Repo',
+          'source': {'kind': 'github', 'repo': 'a/b', 'ref': 'main'},
+          'push': true,
+        },
+      ]),
+    );
+    await controller.reloadMounts(rescan: false);
+    controller.replaceNote('ext/repo/note.typ', 'original');
+    controller.edit('edited');
+    final refresh = controller.refreshMount(controller.mounts.single);
+    await client.started.future;
+    var saved = false;
+    final save = controller.save(syncAfter: false).then((result) {
+      saved = true;
+      return result;
+    });
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(saved, isFalse);
+    client.release.complete();
+    await refresh;
+    expect(await save, isTrue);
+    expect(await File('${mountDir.path}/note.typ').readAsString(), 'edited');
+    expect(
+      await (await controller.githubOutbox).entriesFor('repo'),
+      hasLength(1),
     );
   });
   test('push mount saves to cache and queues the cached blob sha', () async {
@@ -253,14 +340,19 @@ void main() {
       reconcileTasks: (_) async {},
     );
     addTearDown(controller.dispose);
+    final initialIndex = Completer<void>();
+    controller.addListener(() {
+      if (controller.index != null &&
+          !controller.indexing &&
+          !initialIndex.isCompleted) {
+        initialIndex.complete();
+      }
+    });
     await controller.openVault(
       VaultEntry(id: 'local', name: 'Local', path: dir.path),
     );
     expect(controller.vault, isNotNull, reason: controller.status);
-    await _waitUntil(
-      () => controller.index != null && !controller.indexing,
-      timeout: const Duration(seconds: 30),
-    );
+    await initialIndex.future;
     await storage.writeText(
       'notes/log.typ',
       '- fixit #tylog.ref-note("project")[Project] bug',
@@ -5227,4 +5319,36 @@ class _ResolveResponse extends Stream<List<int>> implements HttpClientResponse {
   ).listen(onData, onError: onError, onDone: onDone, cancelOnError: cancelOnError);
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+class _GatedMountStorage extends _MemoryStorage {
+  final started = Completer<void>();
+  final gate = Completer<void>();
+  @override
+  Future<bool> existsNow(String path) async {
+    if (path.endsWith('mounts.json') || path.endsWith('mounts.local.json')) {
+      if (!started.isCompleted) started.complete();
+      await gate.future;
+    }
+    return super.existsNow(path);
+  }
+}
+
+class _GatedGitHub extends GitHubClient {
+  final started = Completer<void>();
+  final release = Completer<void>();
+  @override
+  Future<String> commitSha(String repo, String ref) async {
+    started.complete();
+    await release.future;
+    return 'new';
+  }
+
+  @override
+  Future<Uint8List> downloadZipball(String repo, String ref) async =>
+      Uint8List.fromList(
+        ZipEncoder().encode(
+          Archive()..addFile(ArchiveFile.string('root/note.typ', 'remote')),
+        ),
+      );
 }

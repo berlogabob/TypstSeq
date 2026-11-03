@@ -654,6 +654,9 @@ class WorkspaceController extends ChangeNotifier {
     final generation = ++_vaultGeneration;
     _feedFlight = null;
     _eventCreates.clear();
+    mounts = const [];
+    _mountPaths = const {};
+    _mountWarning = null;
     _cancelTimers();
     _shutdownWorker();
     _noteMutations.clear();
@@ -738,8 +741,6 @@ class WorkspaceController extends ChangeNotifier {
       kindRegistry.value = const {};
       await reloadKindRegistry();
       if (!_owns(opened, generation)) return;
-      await reloadMounts(rescan: false);
-      if (!_owns(opened, generation)) return;
       entry = next;
       note = today;
       // The worker owns the production index cache. Decoding the complete
@@ -801,9 +802,6 @@ class WorkspaceController extends ChangeNotifier {
       if (!Platform.environment.containsKey('FLUTTER_TEST')) {
         unawaited(checkModuleUpdates(automatic: true));
       }
-      for (final mount in mounts.where((m) => m.source.kind == 'github')) {
-        unawaited(refreshMount(mount, automatic: true));
-      }
       if (inspector == null) {
         unawaited(refreshCalendarFeeds(force: true));
         _feedTimer = Timer.periodic(
@@ -850,6 +848,25 @@ class WorkspaceController extends ChangeNotifier {
       // then: a failed sync must still leave the vault indexed.
       // A storage override can't be rebuilt from `next` inside the isolate, so
       // that (test-only) path stays in-process.
+      unawaited(() async {
+        await reloadMounts(rescan: false);
+        if (!_owns(opened, generation)) return;
+        if (_mountPaths.isNotEmpty) {
+          if (coldIndex && firstSync != null) {
+            try {
+              await firstSync;
+            } catch (_) {
+              // The startup scan also proceeds after a failed sync.
+            }
+          }
+          if (!_owns(opened, generation)) return;
+          await _scan(opened, generation: generation);
+        }
+        if (!_owns(opened, generation)) return;
+        for (final mount in mounts.where((m) => m.source.kind == 'github')) {
+          unawaited(refreshMount(mount, automatic: true));
+        }
+      }());
       unawaited(
         coldIndex && firstSync != null
             ? firstSync.whenComplete(() async {
@@ -988,6 +1005,7 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   String? _mountWarning;
+  int _mountLoadGeneration = 0;
 
   Future<void> addMount(Mount mount) async {
     if (mounts.any((item) => item.id == mount.id)) {
@@ -1028,6 +1046,7 @@ class WorkspaceController extends ChangeNotifier {
     final generation = _vaultGeneration;
     if (opened == null) return;
     final storage = opened.storage as CompositeVaultStorage;
+    final loadGeneration = ++_mountLoadGeneration;
     try {
       final path = await settingsPathFor(storage, mountsSettingsPath);
       final loaded = await storage.existsNow(path)
@@ -1045,19 +1064,25 @@ class WorkspaceController extends ChangeNotifier {
           } else {
             root = null;
           }
-          if (root == null || !await Directory(root).exists()) {
+          if (root == null ||
+              !await Directory(
+                root,
+              ).exists().timeout(const Duration(seconds: 2))) {
             unavailable.add(mount.name);
           } else {
-            await for (final _ in Directory(root).list()) {
-              break;
-            }
+            await Directory(
+              root,
+            ).list().isEmpty.timeout(const Duration(seconds: 2));
             paths[mount.id] = root;
           }
         } catch (_) {
           unavailable.add(mount.name);
         }
       }
-      if (!_owns(opened, generation)) return;
+      if (!_owns(opened, generation) ||
+          loadGeneration != _mountLoadGeneration) {
+        return;
+      }
       mounts = loaded;
       _mountPaths = paths;
       storage.replaceMounts(
@@ -1077,7 +1102,10 @@ class WorkspaceController extends ChangeNotifier {
       if (rescan) await _scan(opened, generation: generation);
       if (_owns(opened, generation)) await loadGitHubConflicts();
     } catch (error) {
-      if (!_owns(opened, generation)) return;
+      if (!_owns(opened, generation) ||
+          loadGeneration != _mountLoadGeneration) {
+        return;
+      }
       _mountWarning = 'Could not read extensions: $error';
       status = _mountWarning!;
     }
