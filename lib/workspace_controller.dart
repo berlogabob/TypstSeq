@@ -16,6 +16,9 @@ import 'package:tylog_core/tylog_core.dart'
 import 'package:tylog_core/graph.dart';
 
 import 'calendar_feeds.dart';
+import 'github/github_auth.dart';
+import 'github/github_client.dart';
+import 'github/mount_fetcher.dart';
 import 'kind_registry.dart';
 import 'widgets/constants.dart' show kindRegistry, kindIconPalette;
 import 'database/note_persistence.dart';
@@ -55,9 +58,37 @@ class WorkspaceController extends ChangeNotifier {
     this.databaseForVault,
     DateTime Function()? now,
     bool? useForegroundService,
+    this.githubClientFactory,
+    this.mountCacheDirectory,
   }) : _reconcileTasks = reconcileTasks ?? taskScheduler.reconcile,
        _now = now ?? DateTime.now,
        _useForegroundService = useForegroundService ?? Platform.isAndroid;
+
+  final GitHubClient Function(String?)? githubClientFactory;
+  final Directory? mountCacheDirectory;
+  MountFetcher? _mountFetcher;
+  Future<Directory> get mountCache async =>
+      mountCacheDirectory ??
+      Directory('${(await getApplicationSupportDirectory()).path}/mounts');
+  Future<MountFetcher> get mountFetcher async => _mountFetcher ??= MountFetcher(
+    cache: await mountCache,
+    client: (githubClientFactory ?? GitHubClient.new)(await githubToken()),
+    reload: reloadMounts,
+  );
+  Future<GitHubClient> githubClient() async =>
+      (githubClientFactory ?? GitHubClient.new)(await githubToken());
+  Future<void> refreshMount(Mount mount, {bool automatic = false}) async {
+    final opened = vault;
+    final generation = _vaultGeneration;
+    try {
+      await (await mountFetcher).refresh(mount, automatic: automatic);
+    } catch (error) {
+      if (opened != null && _owns(opened, generation)) {
+        status = 'Could not refresh ${mount.name}: $error';
+        notifyListeners();
+      }
+    }
+  }
 
   final Future<String> Function(String) fetchFeed;
   List<FeedEvent> feedEvents = [];
@@ -596,6 +627,9 @@ class WorkspaceController extends ChangeNotifier {
       status = _mountWarning ?? 'Vault opened — indexing…';
       notifyListeners();
       startupMark('fast-path-done');
+      for (final mount in mounts.where((m) => m.source.kind == 'github')) {
+        unawaited(refreshMount(mount, automatic: true));
+      }
       if (inspector == null) {
         unawaited(refreshCalendarFeeds(force: true));
         _feedTimer = Timer.periodic(
@@ -817,8 +851,7 @@ class WorkspaceController extends ChangeNotifier {
           if (mount.source.kind == 'folder') {
             root = mount.source.path;
           } else if (mount.source.kind == 'github') {
-            root =
-                '${(await getApplicationSupportDirectory()).path}/mounts/${mount.id}';
+            root = '${(await mountCache).path}/${mount.id}';
           } else {
             root = null;
           }

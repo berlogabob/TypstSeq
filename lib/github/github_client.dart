@@ -129,6 +129,10 @@ class GitHubClient {
             ),
           )
           as Map<String, dynamic>;
+  Future<String> defaultBranch(String repo) async =>
+      (await _json('GET', _uri('/repos/${_repo(repo)}')))['default_branch']
+          as String;
+
   Future<String> commitSha(String repo, String ref) async =>
       (await _json(
             'GET',

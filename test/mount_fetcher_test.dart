@@ -1,0 +1,122 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:archive/archive.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:tylog/github/github_auth.dart';
+import 'package:tylog/github/github_client.dart';
+import 'package:tylog/github/mount_fetcher.dart';
+import 'package:tylog_core/tylog_core.dart';
+
+class FakeGitHub extends GitHubClient {
+  String sha = 'new';
+  Uint8List zip = Uint8List(0);
+  int downloads = 0;
+  bool fail = false;
+  @override
+  Future<String> commitSha(String repo, String ref) async {
+    if (fail) throw StateError('offline');
+    return sha;
+  }
+
+  @override
+  Future<Uint8List> downloadZipball(String repo, String ref) async {
+    downloads++;
+    return zip;
+  }
+}
+
+void main() {
+  late Directory dir;
+  late FakeGitHub client;
+  late MountFetcher fetcher;
+  var reloads = 0;
+  final mount = Mount(
+    id: 'repo',
+    name: 'Repo',
+    source: MountSource(
+      kind: 'github',
+      repo: 'a/b',
+      ref: 'main',
+      subdir: 'typst',
+    ),
+    push: false,
+  );
+  setUp(() async {
+    dir = await Directory.systemTemp.createTemp('mount-fetch');
+    client = FakeGitHub();
+    reloads = 0;
+    fetcher = MountFetcher(
+      cache: dir,
+      client: client,
+      reload: () async {
+        reloads++;
+      },
+    );
+    await Directory('${dir.path}/repo').create();
+    await File('${dir.path}/repo/old').writeAsString('old');
+    await File(
+      '${dir.path}/repo/.tylog-mount.json',
+    ).writeAsString(jsonEncode({'sha': 'old'}));
+  });
+  tearDown(() async => dir.delete(recursive: true));
+  Uint8List zip(String path) => Uint8List.fromList(
+    ZipEncoder().encode(Archive()..addFile(ArchiveFile.string(path, 'new'))),
+  );
+  test('unchanged sha does not download or reload', () async {
+    client.sha = 'old';
+    await fetcher.refresh(mount);
+    expect(client.downloads, 0);
+    expect(reloads, 0);
+  });
+  test('changed sha replaces cache and strips subdirectory', () async {
+    client.zip = zip('root/typst/note.typ');
+    await fetcher.refresh(mount);
+    expect(await File('${dir.path}/repo/note.typ').readAsString(), 'new');
+    expect(await File('${dir.path}/repo/old').exists(), false);
+    expect(reloads, 1);
+  });
+  test('unsafe archive and network failure preserve cache', () async {
+    client.zip = zip('root/typst/../../escape');
+    await expectLater(fetcher.refresh(mount), throwsFormatException);
+    expect(await File('${dir.path}/repo/old').readAsString(), 'old');
+    client.fail = true;
+    await expectLater(fetcher.refresh(mount), throwsStateError);
+    expect(await File('${dir.path}/repo/old').readAsString(), 'old');
+  });
+  test('token prefers storage then desktop gh', () async {
+    var calls = 0;
+    Future<ProcessResult> run(String command, List<String> args) async {
+      calls++;
+      return ProcessResult(1, 0, ' gh-token\n', '');
+    }
+
+    expect(
+      await githubToken(
+        readToken: () async => 'stored',
+        runProcess: run,
+        desktop: true,
+      ),
+      'stored',
+    );
+    expect(calls, 0);
+    expect(
+      await githubToken(
+        readToken: () async => null,
+        runProcess: run,
+        desktop: true,
+      ),
+      'gh-token',
+    );
+    expect(
+      await githubToken(
+        readToken: () async => null,
+        runProcess: run,
+        desktop: false,
+      ),
+      isNull,
+    );
+    expect(calls, 1);
+  });
+}

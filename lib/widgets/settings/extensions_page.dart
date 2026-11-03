@@ -72,6 +72,86 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
     );
   });
 
+  Future<void> _addGitHub() async {
+    final repo = TextEditingController();
+    final ref = TextEditingController();
+    final subdir = TextEditingController();
+    final result = await showDialog<List<String>>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add GitHub repo'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: repo,
+              decoration: const InputDecoration(labelText: 'owner/repo'),
+            ),
+            TextField(
+              controller: ref,
+              decoration: const InputDecoration(labelText: 'Ref (optional)'),
+            ),
+            TextField(
+              controller: subdir,
+              decoration: const InputDecoration(
+                labelText: 'Subdirectory (optional)',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, [
+              repo.text.trim(),
+              ref.text.trim(),
+              subdir.text.trim(),
+            ]),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    if (result == null) return;
+    await _run(() async {
+      final name = result[0];
+      if (!RegExp(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$').hasMatch(name)) {
+        throw const FormatException('Enter owner/repo');
+      }
+      final branch = await (await widget.workspace!.githubClient())
+          .defaultBranch(name);
+      var base = name
+          .toLowerCase()
+          .replaceAll(RegExp('[^a-z0-9]+'), '-')
+          .replaceAll(RegExp(r'^-+|-+$'), '');
+      if (base.isEmpty) base = 'extension';
+      if (base.length > 35) {
+        base = base.substring(0, 35).replaceAll(RegExp(r'-+$'), '');
+      }
+      var id = base;
+      var suffix = 2;
+      while (widget.workspace!.mounts.any((m) => m.id == id)) {
+        id = '$base-${suffix++}';
+      }
+      final mount = Mount(
+        id: id,
+        name: name,
+        source: MountSource(
+          kind: 'github',
+          repo: name,
+          ref: result[1].isEmpty ? branch : result[1],
+          subdir: result[2].isEmpty ? null : result[2],
+        ),
+        push: false,
+      );
+      await widget.workspace!.addMount(mount);
+      await widget.workspace!.refreshMount(mount);
+    });
+  }
+
   Future<void> _remove(Mount mount) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -108,15 +188,43 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
               AppTile(
                 icon: Icons.extension_outlined,
                 title: mount.name,
-                subtitle:
-                    '${mount.source.path ?? mount.source.repo ?? mount.source.kind} · '
-                    '${workspace.index?.notes.where((note) => note.path.startsWith('ext/${mount.id}/')).length ?? 0} notes · '
-                    'Last refresh: ${_lastRefresh == null ? 'not yet' : _lastRefresh!.toLocal().toString().substring(0, 16)}',
-                trailing: IconButton(
-                  tooltip: 'Remove ${mount.name}',
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: _busy ? null : () => _remove(mount),
+                subtitle: mount.source.kind == 'github'
+                    ? null
+                    : '${mount.source.path ?? mount.source.repo ?? mount.source.kind} · '
+                          '${workspace.index?.notes.where((note) => note.path.startsWith('ext/${mount.id}/')).length ?? 0} notes · '
+                          'Last refresh: ${_lastRefresh == null ? 'not yet' : _lastRefresh!.toLocal().toString().substring(0, 16)}',
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (mount.source.kind == 'github')
+                      IconButton(
+                        tooltip: 'Refresh ${mount.name}',
+                        icon: const Icon(Icons.refresh),
+                        onPressed: _busy
+                            ? null
+                            : () => _run(() => workspace.refreshMount(mount)),
+                      ),
+                    IconButton(
+                      tooltip: 'Remove ${mount.name}',
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: _busy ? null : () => _remove(mount),
+                    ),
+                  ],
                 ),
+              ),
+          if (workspace != null)
+            for (final mount in workspace.mounts.where(
+              (m) => m.source.kind == 'github',
+            ))
+              FutureBuilder<Map<String, dynamic>?>(
+                future: workspace.mountFetcher.then((f) => f.metadata(mount)),
+                builder: (context, snapshot) {
+                  final meta = snapshot.data;
+                  final sha = meta?['sha']?.toString() ?? '';
+                  return Text(
+                    '${mount.name}: ${sha.isEmpty ? 'not fetched' : sha.substring(0, sha.length < 7 ? sha.length : 7)} · ${meta?['fetchedAt'] ?? ''}',
+                  );
+                },
               ),
           if (Platform.isLinux || Platform.isMacOS || Platform.isWindows)
             AppTile(
@@ -124,7 +232,11 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
               title: 'Add folder',
               onTap: workspace == null || _busy ? null : _addFolder,
             ),
-          const AppTile(icon: Icons.code, title: 'Add GitHub repo (soon)'),
+          AppTile(
+            icon: Icons.code,
+            title: 'Add GitHub repo',
+            onTap: workspace == null || _busy ? null : _addGitHub,
+          ),
           AppTile(
             icon: Icons.refresh,
             title: 'Refresh',

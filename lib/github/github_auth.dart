@@ -118,3 +118,29 @@ class GitHubAuth {
     }
   }
 }
+
+Future<String?> githubToken({
+  Future<String?> Function()? readToken,
+  Future<ProcessResult> Function(String, List<String>)? runProcess,
+  bool? desktop,
+}) async {
+  String? token;
+  try {
+    token = await (readToken ?? GitHubAuth().token)();
+  } catch (_) {}
+  if (token != null && token.isNotEmpty) return token;
+  if (!(desktop ??
+      (Platform.isLinux || Platform.isMacOS || Platform.isWindows))) {
+    return null;
+  }
+  try {
+    final result = await (runProcess ?? Process.run)('gh', [
+      'auth',
+      'token',
+    ]).timeout(const Duration(seconds: 5));
+    final value = result.stdout.toString().trim();
+    return result.exitCode == 0 && value.isNotEmpty ? value : null;
+  } catch (_) {
+    return null;
+  }
+}

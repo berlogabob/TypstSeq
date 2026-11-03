@@ -367,8 +367,8 @@ Issues found:
 - [x] P2-B3 Settings > Extensions page (test-only issue: scan must run in real async zone; codex full-access fixed). Full suite 1874 pass
 - [x] P2-B0 composite rejects ext/ writes, sync excludes ext/ (codex, partial P2-B run)
 - [x] P2-C GitHub client + device-flow auth (lib/github, 4 tests; UI comes with P2-B/D)
-- [ ] P2-C2 desktop: use existing `gh auth token` (GitHub CLI login) when present; device flow only for phones (user 11-03: official login, no key creation)
-- [ ] P2-D GitHub pull mount
+- [x] P2-C2 desktop: use existing `gh auth token` (GitHub CLI login) when present; device flow only for phones (user 11-03: official login, no key creation)
+- [x] P2-D GitHub pull mount (sha check, zipball, safe extract, atomic swap, 6 h refresh, Add GitHub repo dialog); live fetch check pending in P2 Mac verify. Suite 1880 pass
 - [ ] P2-E pack update channel (PT course)
 - [ ] P2-F GitHub push (contents API, keep-both conflicts)
 - [ ] P2-G issue lines <-> GitHub issues
