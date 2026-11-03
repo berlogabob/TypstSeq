@@ -5970,6 +5970,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           index: index,
                           entityId: currentNote.id,
                           title: currentNote.title,
+                          onOpenPath: _openPath,
                           imageResolver: _readAsset,
                         );
                       } catch (error) {

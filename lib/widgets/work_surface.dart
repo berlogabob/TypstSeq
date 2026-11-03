@@ -642,6 +642,7 @@ class LibraryView extends StatelessWidget {
                     BoardsTab(
                       storage: boardStorage!,
                       index: index,
+                      onOpenPath: onOpenPath,
                       imageResolver: imageResolver,
                     ),
                 ],

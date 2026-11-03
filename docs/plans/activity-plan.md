@@ -392,6 +392,6 @@ Issues found:
 - [x] P3-A board model v2: free layout cards (note/entity/task/asset/url/text, x/y/w/h, frames, edges) in boards/<id>.board.json, backward compatible with v1 columns
 - [x] P3-B canvas: Boards list, open/create whiteboard, pan/zoom, drag cards, positions persisted
 - [ ] FLAKY again: 'worker publishes newly scanned issues' failed in a codex full run after the publish-listener fix (passes in Claude runs)
-- [ ] P3-C add content: note/entity/task picker, paste image (copied to assets/boards/<id>/), URL card, text card, connect cards with arrows
+- [x] P3-C add content: note/entity/task picker, paste image (copied to assets/boards/<id>/), URL card, text card, connect cards with arrows
 - [ ] P3-D tree view: auto layout over part_of from an entity (database/heritage tree), "Pin to whiteboard"
 - [ ] P3 review + full suite + macOS verify + P30
