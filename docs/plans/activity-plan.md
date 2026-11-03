@@ -272,9 +272,9 @@ Spec docs/superpowers/specs/2026-10-31-audio-notes-v2-design.md, plan docs/super
 - [x] T36 (f675cfe, 1765 tests) app: sections follow the selected language chip; source chip (PT) selectable = original only + its sections; legacy unsuffixed sections as fallback
 - [x] Release v0.20.7+165 (user: go): run 41256415780 success, 8 assets, APK has libtypst_flutter.so, installed on P30
 - [x] T37 song mode (1989a1c, 301 tests); 3 songs re-queued 2026-11-02 - songs (2026-11-01: Amy Winehouse 'Back to Black' en; Flor Damico 'cosas claras', 'delincuente' es; MP3 320k 44.1 kHz + cover art, files valid): not transcribed. Causes: Studio offline (no ping) -> Mac fallback small model; VAD cut the singing -> 'you' / [—]; job then failed on the LLM stage (Studio). Need a music mode: no VAD gate, 30 s windows, chorus repeats not treated as loops, language per song (en/es), lyrics-friendly engine on Studio
-- [ ] T38 song playback at wrong speed/pitch (user report): files are clean; suspect two players at once (daily audio card + note screen) or speed state; reproduce on the device the user used
-- [ ] T39 user: Translate tab redundant now that Transcribe shows translations side by side -> rethink the tab/menu line (design with user first)
-- [ ] T40 user: screenshots must get the same ru/en/pt translations as audio notes (OCR text -> Translation sections, same worker path + review); design after T39
+- [x] T38 closed by Wave 14 B3 (source MP3s were sped up) - song playback at wrong speed/pitch (user report): files are clean; suspect two players at once (daily audio card + note screen) or speed state; reproduce on the device the user used
+- [x] T39 closed by Wave 14 B1 - Translate tab redundant now that Transcribe shows translations side by side -> rethink the tab/menu line (design with user first)
+- [x] T40 closed by Wave 14 B2 - screenshots must get the same ru/en/pt translations as audio notes (OCR text -> Translation sections, same worker path + review); design after T39
 - [ ] Monday (user): Mac GUI check; user test with a Russian recording on a familiar topic; release only after user OK
 Issues found during the run:
 - T1: job without a Studio connection still ran local faster-whisper uncapped/unguarded -> T1b
@@ -325,4 +325,9 @@ Codex (luna/terra) for major UI tasks, haiku for small ones, Claude reviews at g
 - [x] P30 check 13:41: Processing + badge, search opens tapped result, song opens on Text with ES/RU/EN/PT, PT summary, side by side, ⋮ Copy all / Export / Open as page / Re-process. Not driven: @ autocomplete, indent, screenshot Text (covered by tests) (release build, real vault): Processing, search, tabs/copy/export/open as page, screenshots Text, @ autocomplete, indent, OCR search
 - [x] D6 closed as unknown: no offline loss path in sync code (path_sync, conflicts, deleteLocal guards); 10-07 revisions intact; no sync trace for that window; reopen if it recurs - entry lost offline (10-07): sync_trace first
 - [x] Release 0.20.8+166 published (8 assets, libtypst_flutter.so in APK), installed on P30
+- [x] E1 (44ed8c3) user 11-03: journal tasks ugly (emoji ✅ glyph on Android, empty flag/date/clock/repeat chips, tall rows): compact row, Material checkbox icons, chips only for set fields; P30 checked
+- [x] E2 (c5ccb09) user 11-03 'where are new bookings': OpenLabTwin missing from Settings root (take(6) predates it); Today Incoming showed requested bookings only on their start day and ideas only on their creation day -> today lists every pending request from today on + every new idea, sheet shows the date
+- [ ] E3 user: sign in to OpenLabTwin on the P30 (email code), then confirm bookings in Today > More · N incoming
+- [ ] E4 user 11-03 new screenshot missing: not on the Nextcloud server (newest 11-02 23:26); Mac watcher fine -> phone (likely A24) Nextcloud auto upload not running; check on A24 via adb
+- [ ] Release 0.20.9 with E1/E2 when user says go
 - Deferred: image wrap/crop/anchors (10-07) - separate design

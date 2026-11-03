@@ -3,6 +3,16 @@
 Notable changes per release. Builds before 0.2.0 were all tagged `0.1.0+N`;
 their history is in the commit log and the GitHub release notes.
 
+## Unreleased
+
+### Fixed
+
+- Journal tasks: compact rows with plain checkbox icons (no colour emoji on
+  Android); field chips only when a field is set.
+- OpenLabTwin is listed in Settings (was reachable only through search).
+- Today's Incoming lists every pending booking request from today on and
+  every new idea, not only those dated today; a booking shows its date.
+
 ## 0.20.8+166
 
 ### New
