@@ -46,3 +46,17 @@ Future<ModulePack> downloadGitHubModule(
   }
   return readModulePackBytes(await client.downloadAsset(assets.first.url));
 }
+
+Future<ModulePack> downloadGitHubModuleUpdate(
+  GitHubClient client,
+  InstalledModule module,
+) async {
+  final pack = await downloadGitHubModule(client, module.github!);
+  if (pack.id != module.id ||
+      compareModuleVersions(pack.version, module.version) <= 0) {
+    throw const FormatException(
+      'Downloaded module is not a newer version of the installed module',
+    );
+  }
+  return pack;
+}

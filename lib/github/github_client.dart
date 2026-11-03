@@ -134,6 +134,8 @@ class GitHubClient {
             ),
           )
           as Map<String, dynamic>;
+  Future<Map<String, dynamic>> currentUser() => _json('GET', _uri('/user'));
+
   Future<String> defaultBranch(String repo) async =>
       (await _json('GET', _uri('/repos/${_repo(repo)}')))['default_branch']
           as String;

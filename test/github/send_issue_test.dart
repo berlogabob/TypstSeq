@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/github/github_client.dart';
 import 'package:tylog/github/send_issue.dart';
@@ -32,7 +34,7 @@ class FakeGithub extends GitHubClient {
   ) async {
     creates++;
     this.body = body;
-    return {'number': 123};
+    return {'number': 122 + creates};
   }
 }
 
@@ -68,6 +70,47 @@ void main() {
     failWrite = false;
   });
   tearDown(() => dir.delete(recursive: true));
+  test('identical lines get distinct recovery identities', () async {
+    source = '- bug\n- bug';
+    await vault.storage.writeText('log.typ', source);
+    Future<void> sendLine(int line) => sendIssueToGithub(
+      issue: IssueRef(
+        notePath: 'log.typ',
+        line: line,
+        text: '- bug',
+        projectId: 'p',
+        marker: 'fixit',
+      ),
+      repo: 'a/b',
+      vault: vault,
+      githubClient: () async => client,
+      mutateNote: (_, edit) async {
+        source = edit(source);
+        await vault.storage.writeText('log.typ', source);
+        return true;
+      },
+    );
+    await sendLine(1);
+    await sendLine(2);
+    expect(client.creates, 2);
+    expect(source, contains('tylog-issue-gh": 123'));
+    expect(source, contains('tylog-issue-gh": 124'));
+  });
+  test('migrates an unambiguous legacy recovery key', () async {
+    final hash = sha256.convert(utf8.encode(issue.text));
+    await vault.storage.createDirectory('.tylog');
+    await vault.storage.writeText(
+      '.tylog/github-issues.json',
+      jsonEncode({'a/b|tylog-issue: log.typ#$hash': 42}),
+    );
+    await send();
+    expect(client.creates, 0);
+    expect(source, contains('tylog-issue-gh": 42'));
+    final data =
+        jsonDecode(await vault.storage.readText('.tylog/github-issues.json'))
+            as Map;
+    expect(data.keys.single, contains(':1:1'));
+  });
   test('retry after write failure recovers created issue', () async {
     failWrite = true;
     await expectLater(send(), throwsStateError);

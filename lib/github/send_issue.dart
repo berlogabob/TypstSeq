@@ -39,7 +39,15 @@ Future<void> sendIssueToGithub({
       : issue.marker;
   final date = DateTime.now().toIso8601String().substring(0, 10);
   final lineHash = sha256.convert(utf8.encode(issue.text)).toString();
-  final marker = 'tylog-issue: ${issue.notePath}#$lineHash';
+  final lines = await vault.storage.exists(issue.notePath)
+      ? (await vault.storage.readText(issue.notePath)).split('\n')
+      : <String>[issue.text];
+  final occurrence = lines
+      .take(issue.line)
+      .where((line) => line == issue.text)
+      .length;
+  final legacyMarker = 'tylog-issue: ${issue.notePath}#$lineHash';
+  final marker = '$legacyMarker:${issue.line}:$occurrence';
   final client = await githubClient();
   final recoveryPath = '.tylog/github-issues.json';
   final recovery = await vault.storage.exists(recoveryPath)
@@ -48,6 +56,21 @@ Future<void> sendIssueToGithub({
       : <String, dynamic>{};
   final recoveryKey = '$repo|$marker';
   int? number = (recovery[recoveryKey] as num?)?.toInt();
+  final legacyKey = '$repo|$legacyMarker';
+  final comparableLines = lines.where(
+    (line) =>
+        line == issue.text ||
+        line.replaceAll(
+              RegExp(
+                r'\s*#metadata\(\(\s*"tylog-issue-gh"\s*:\s*\d+\s*,?\s*\)\)',
+              ),
+              '',
+            ) ==
+            issue.text,
+  );
+  if (number == null && comparableLines.length == 1) {
+    number = (recovery.remove(legacyKey) as num?)?.toInt();
+  }
   if (number == null) {
     try {
       final matches = await client.searchIssues(repo, marker);

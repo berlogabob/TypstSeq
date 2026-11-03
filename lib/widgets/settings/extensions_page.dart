@@ -7,6 +7,7 @@ import 'package:tylog_core/tylog_core.dart' show Mount, MountSource;
 import '../../workspace_controller.dart';
 import '../ds/app_tile.dart';
 import 'settings_page.dart';
+import 'github_sign_in.dart';
 
 class ExtensionsPage extends StatefulWidget {
   const ExtensionsPage({
@@ -195,6 +196,7 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
       builder: (context, _) => SettingsPage(
         title: 'Extensions',
         children: [
+          GitHubSignIn(onChanged: () => setState(_permissions.clear)),
           if (workspace != null)
             for (final mount in workspace.mounts)
               AppTile(

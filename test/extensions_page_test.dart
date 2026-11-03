@@ -123,7 +123,7 @@ void main() {
         }
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }
-      expect(client.pushes, 2);
+      expect(client.pushes, 1);
       workspace.dispose();
       await root.delete(recursive: true);
     });

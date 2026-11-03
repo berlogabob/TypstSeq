@@ -113,6 +113,23 @@ class WorkspaceController extends ChangeNotifier {
   final GitHubClient Function(String?)? githubClientFactory;
   final Directory? mountCacheDirectory;
   MountFetcher? _mountFetcher;
+  final _mountOperations = <String, Future<void>>{};
+
+  Future<T> _withMountLock<T>(String id, Future<T> Function() action) async {
+    final previous = _mountOperations[id];
+    final done = Completer<void>();
+    _mountOperations[id] = done.future;
+    try {
+      if (previous != null) await previous;
+      return await action();
+    } finally {
+      done.complete();
+      if (identical(_mountOperations[id], done.future)) {
+        _mountOperations.remove(id);
+      }
+    }
+  }
+
   Future<Directory> get mountCache async =>
       mountCacheDirectory ??
       Directory('${(await getApplicationSupportDirectory()).path}/mounts');
@@ -121,7 +138,7 @@ class WorkspaceController extends ChangeNotifier {
   );
   Future<MountFetcher> get mountFetcher async => _mountFetcher ??= MountFetcher(
     cache: await mountCache,
-    client: (githubClientFactory ?? GitHubClient.new)(await githubToken()),
+    clientProvider: githubClient,
     reload: reloadMounts,
     outbox: await githubOutbox,
   );
@@ -159,11 +176,13 @@ class WorkspaceController extends ChangeNotifier {
     final meta = File(
       '${(await mountCache).path}/${mount.id}/.tylog-mount.json',
     );
-    if (action == 'keep-mine') {
-      await outbox.keepMine(entry, await githubClient(), mount, meta);
-    } else {
-      await outbox.takeTheirs(entry, meta);
-    }
+    await _withMountLock(mount.id, () async {
+      if (action == 'keep-mine') {
+        await outbox.keepMine(entry, await githubClient(), mount, meta);
+      } else {
+        await outbox.takeTheirs(entry, meta);
+      }
+    });
     await loadGitHubConflicts();
     final resolved = !(await outbox.entriesFor(
       mount.id,
@@ -192,10 +211,13 @@ class WorkspaceController extends ChangeNotifier {
     final cache = await mountCache;
     for (final mount in List<Mount>.of(mounts.where((m) => m.push))) {
       if (!_owns(opened, generation) || _vaultOpens.isNotEmpty) return;
-      await outbox.pushAll(
-        client,
-        mount,
-        File('${cache.path}/${mount.id}/.tylog-mount.json'),
+      await _withMountLock(
+        mount.id,
+        () => outbox.pushAll(
+          client,
+          mount,
+          File('${cache.path}/${mount.id}/.tylog-mount.json'),
+        ),
       );
     }
     if (_owns(opened, generation)) await loadGitHubConflicts();
@@ -216,7 +238,10 @@ class WorkspaceController extends ChangeNotifier {
     final opened = vault;
     final generation = _vaultGeneration;
     try {
-      await (await mountFetcher).refresh(mount, automatic: automatic);
+      await _withMountLock(mount.id, () async {
+        if (opened == null || !_owns(opened, generation)) return;
+        await (await mountFetcher).refresh(mount, automatic: automatic);
+      });
     } catch (error) {
       if (opened != null && _owns(opened, generation)) {
         status = 'Could not refresh ${mount.name}: $error';
@@ -1566,7 +1591,12 @@ class WorkspaceController extends ChangeNotifier {
         ? Future<void>.value()
         : previous.then<void>((_) {}, onError: (_, _) {});
     late final Future<void> operation;
-    operation = wait.then((_) => _writeNote(opened, path, value));
+    operation = wait.then((_) {
+      final mount = _pushMountFor(path);
+      return mount == null
+          ? _writeNote(opened, path, value)
+          : _withMountLock(mount.id, () => _writeNote(opened, path, value));
+    });
     _noteWrites[path] = operation;
     unawaited(
       operation

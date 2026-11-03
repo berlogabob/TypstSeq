@@ -25,13 +25,13 @@ class FakeClient extends GitHubClient {
   }
 }
 
-Uint8List packBytes() {
+Uint8List packBytes({String id = 'course', String version = '1.10.0'}) {
   final content = utf8.encode('lesson');
   final manifest = utf8.encode(
     jsonEncode({
       'schema': 1,
-      'id': 'course',
-      'version': '1.10.0',
+      'id': id,
+      'version': version,
       'files': [
         {'path': 'notes/a.typ', 'sha256': sha256.convert(content).toString()},
       ],
@@ -44,6 +44,32 @@ Uint8List packBytes() {
 }
 
 void main() {
+  test('downloaded update must match installed id and be newer', () async {
+    const module = InstalledModule(
+      id: 'course',
+      name: 'Course',
+      version: '1.2.0',
+      github: 'owner/repo',
+    );
+    const assets = [(name: 'course.tylogpack', url: 'asset')];
+    for (final bytes in [
+      packBytes(id: 'other'),
+      packBytes(version: '1.2.0'),
+      packBytes(version: '1.0.0'),
+    ]) {
+      await expectLater(
+        downloadGitHubModuleUpdate(FakeClient('v2.0.0', assets, bytes), module),
+        throwsFormatException,
+      );
+    }
+    expect(
+      (await downloadGitHubModuleUpdate(
+        FakeClient('v2.0.0', assets, packBytes()),
+        module,
+      )).id,
+      'course',
+    );
+  });
   test('compares semantic versions and v prefix', () {
     expect(compareModuleVersions('1.2.0', '1.10.0'), lessThan(0));
     expect(compareModuleVersions('v1.2.0', '1.2.0'), 0);

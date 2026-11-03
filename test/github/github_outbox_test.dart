@@ -115,14 +115,22 @@ void main() {
         'theirs',
       );
       final entries = await outbox.entriesFor('notes');
-      expect(entries.map((e) => e.state), ['conflict', 'pending']);
+      expect(entries.map((e) => e.state), ['conflict']);
       client.conflicts.clear();
       await outbox.keepMine(entries.first, client, mount, meta);
       expect(client.shas.last, 'remote-sha');
       expect(await File('${meta.parent.path}/a.remote.typ').exists(), false);
-      expect((await outbox.entriesFor('notes')).length, 1);
+      expect(await outbox.entriesFor('notes'), isEmpty);
     },
   );
+
+  test('repeated saves coalesce into one push', () async {
+    await add('a.typ', 1);
+    await add('a.typ', 2);
+    expect(await outbox.entriesFor('notes'), hasLength(1));
+    await outbox.pushAll(client, mount, meta);
+    expect(client.calls, hasLength(1));
+  });
 
   test('take theirs replaces local and removes conflict', () async {
     await add('a.typ', 1);

@@ -14,9 +14,11 @@ class FakeGitHub extends GitHubClient {
   String sha = 'new';
   Uint8List zip = Uint8List(0);
   int downloads = 0;
+  int commits = 0;
   bool fail = false;
   @override
   Future<String> commitSha(String repo, String ref) async {
+    commits++;
     if (fail) throw StateError('offline');
     return sha;
   }
@@ -65,6 +67,21 @@ void main() {
   Uint8List zip(String path) => Uint8List.fromList(
     ZipEncoder().encode(Archive()..addFile(ArchiveFile.string(path, 'new'))),
   );
+  test('refresh resolves current client for each attempt', () async {
+    final second = FakeGitHub()..sha = 'old';
+    var current = client;
+    fetcher = MountFetcher(
+      cache: dir,
+      clientProvider: () async => current,
+      reload: () async {},
+    );
+    client.sha = 'old';
+    await fetcher.refresh(mount);
+    current = second;
+    await fetcher.refresh(mount);
+    expect(second.commits, 1);
+    expect(client.commits, 1);
+  });
   test('unchanged sha does not download or reload', () async {
     client.sha = 'old';
     await fetcher.refresh(mount);
@@ -122,6 +139,12 @@ void main() {
     await fetcher.refresh(mount);
     expect(await File('${dir.path}/repo/note.typ').readAsString(), 'mine');
     expect((await fetcher.metadata(mount))!['blobs']['note.typ'], 'base');
+  });
+  test('recovers interrupted swap before refresh', () async {
+    await Directory('${dir.path}/repo').rename('${dir.path}/repo.old');
+    client.fail = true;
+    await expectLater(fetcher.refresh(mount), throwsStateError);
+    expect(await File('${dir.path}/repo/old').readAsString(), 'old');
   });
   test('unsafe archive and network failure preserve cache', () async {
     client.zip = zip('root/typst/../../escape');

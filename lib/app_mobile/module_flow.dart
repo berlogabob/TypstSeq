@@ -152,9 +152,9 @@ extension _ModuleFlow on _HomeScreenState {
         return;
       }
       if (choice.action == 'update') {
-        final pack = await downloadGitHubModule(
+        final pack = await downloadGitHubModuleUpdate(
           await workspace.githubClient(),
-          module.github!,
+          module,
         );
         await _installModulePack(pack, github: module.github);
         return;

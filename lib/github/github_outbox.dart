@@ -67,6 +67,10 @@ class GitHubOutbox {
     if (!RegExp(r'^[a-z0-9][a-z0-9-]{0,40}$').hasMatch(mountId)) {
       throw const FormatException('Invalid mount id');
     }
+    final existing = (await entriesFor(
+      mountId,
+    )).where((entry) => entry.path == path);
+    if (existing.isNotEmpty) return existing.first;
     final entry = GitHubOutboxEntry(
       id: List.generate(
         16,

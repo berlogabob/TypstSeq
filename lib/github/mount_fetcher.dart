@@ -13,12 +13,14 @@ import 'github_outbox.dart';
 class MountFetcher {
   MountFetcher({
     required this.cache,
-    required this.client,
+    this.client,
+    this.clientProvider,
     required this.reload,
     this.outbox,
   });
   final Directory cache;
-  final GitHubClient client;
+  final GitHubClient? client;
+  final Future<GitHubClient> Function()? clientProvider;
   final Future<void> Function() reload;
   final GitHubOutbox? outbox;
   final Map<String, Future<void>> _flights = {};
@@ -47,6 +49,11 @@ class MountFetcher {
 
   Future<void> _refresh(Mount mount, bool automatic) async {
     if (mount.source.kind != 'github') return;
+    final target = Directory('${cache.path}/${mount.id}');
+    final backup = Directory('${cache.path}/${mount.id}.old');
+    if (!await target.exists() && await backup.exists()) {
+      await backup.rename(target.path);
+    }
     final meta = await metadata(mount);
     final fetched =
         _attempts[mount.id] ??
@@ -59,7 +66,10 @@ class MountFetcher {
     _attempts[mount.id] = DateTime.now();
     final repo = mount.source.repo!;
     final ref = mount.source.ref!;
-    final sha = await client.commitSha(repo, ref);
+    final currentClient = clientProvider == null
+        ? client!
+        : await clientProvider!();
+    final sha = await currentClient.commitSha(repo, ref);
     if (sha == meta?['sha'] && meta?['blobs'] is Map) {
       await File('${cache.path}/${mount.id}/.tylog-mount.json').writeAsString(
         jsonEncode({
@@ -70,10 +80,8 @@ class MountFetcher {
       );
       return;
     }
-    final zip = await client.downloadZipball(repo, sha);
+    final zip = await currentClient.downloadZipball(repo, sha);
     final tmp = Directory('${cache.path}/${mount.id}.tmp');
-    final target = Directory('${cache.path}/${mount.id}');
-    final backup = Directory('${cache.path}/${mount.id}.old');
     await cache.create(recursive: true);
     if (await tmp.exists()) await tmp.delete(recursive: true);
     try {
