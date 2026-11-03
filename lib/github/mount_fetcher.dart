@@ -4,6 +4,7 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
+import 'package:crypto/crypto.dart';
 import 'package:tylog_core/tylog_core.dart' show Mount;
 
 import 'github_client.dart';
@@ -56,9 +57,10 @@ class MountFetcher {
     final repo = mount.source.repo!;
     final ref = mount.source.ref!;
     final sha = await client.commitSha(repo, ref);
-    if (sha == meta?['sha']) {
+    if (sha == meta?['sha'] && meta?['blobs'] is Map) {
       await File('${cache.path}/${mount.id}/.tylog-mount.json').writeAsString(
         jsonEncode({
+          ...?meta,
           'sha': sha,
           'fetchedAt': DateTime.now().toUtc().toIso8601String(),
         }),
@@ -73,11 +75,14 @@ class MountFetcher {
     if (await tmp.exists()) await tmp.delete(recursive: true);
     try {
       await tmp.create();
-      await Isolate.run(() => _extract(zip, tmp.path, mount.source.subdir));
+      final blobs = await Isolate.run(
+        () => _extract(zip, tmp.path, mount.source.subdir),
+      );
       await File('${tmp.path}/.tylog-mount.json').writeAsString(
         jsonEncode({
           'sha': sha,
           'fetchedAt': DateTime.now().toUtc().toIso8601String(),
+          'blobs': blobs,
         }),
       );
       if (await backup.exists()) await backup.delete(recursive: true);
@@ -97,7 +102,12 @@ class MountFetcher {
   }
 }
 
-void _extract(Uint8List bytes, String destination, String? subdir) {
+Map<String, String> _extract(
+  Uint8List bytes,
+  String destination,
+  String? subdir,
+) {
+  final blobs = <String, String>{};
   final prefix = (subdir ?? '').split('/').where((s) => s.isNotEmpty).toList();
   if (prefix.any((s) => s == '.' || s == '..' || s.contains('\\'))) {
     throw const FormatException('Invalid subdirectory');
@@ -127,12 +137,18 @@ void _extract(Uint8List bytes, String destination, String? subdir) {
     if (total > 500 * 1024 * 1024) {
       throw const FormatException('Archive exceeds size limit');
     }
-    final file = File('$destination/${relative.skip(prefix.length).join('/')}');
+    final path = relative.skip(prefix.length).join('/');
+    final file = File('$destination/$path');
     file.parent.createSync(recursive: true);
     final content = entry.content;
     if (content.length != entry.size) {
       throw const FormatException('Invalid archive entry size');
     }
     file.writeAsBytesSync(content);
+    blobs[path] = sha1.convert([
+      ...utf8.encode('blob ${content.length}\u0000'),
+      ...content,
+    ]).toString();
   }
+  return blobs;
 }

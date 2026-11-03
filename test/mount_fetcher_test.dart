@@ -58,7 +58,7 @@ void main() {
     await File('${dir.path}/repo/old').writeAsString('old');
     await File(
       '${dir.path}/repo/.tylog-mount.json',
-    ).writeAsString(jsonEncode({'sha': 'old'}));
+    ).writeAsString(jsonEncode({'sha': 'old', 'blobs': {}}));
   });
   tearDown(() async => dir.delete(recursive: true));
   Uint8List zip(String path) => Uint8List.fromList(
@@ -76,6 +76,24 @@ void main() {
     expect(await File('${dir.path}/repo/note.typ').readAsString(), 'new');
     expect(await File('${dir.path}/repo/old').exists(), false);
     expect(reloads, 1);
+    final git = await Process.run('git', [
+      'hash-object',
+      '${dir.path}/repo/note.typ',
+    ]);
+    expect(git.exitCode, 0);
+    expect(
+      (await fetcher.metadata(mount))!['blobs']['note.typ'],
+      (git.stdout as String).trim(),
+    );
+  });
+  test('unchanged commit upgrades old metadata', () async {
+    client.sha = 'old';
+    client.zip = zip('root/typst/note.typ');
+    await File(
+      '${dir.path}/repo/.tylog-mount.json',
+    ).writeAsString(jsonEncode({'sha': 'old'}));
+    await fetcher.refresh(mount);
+    expect((await fetcher.metadata(mount))!['blobs']['note.typ'], isNotNull);
   });
   test('unsafe archive and network failure preserve cache', () async {
     client.zip = zip('root/typst/../../escape');

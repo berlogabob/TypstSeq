@@ -133,6 +133,11 @@ class GitHubClient {
       (await _json('GET', _uri('/repos/${_repo(repo)}')))['default_branch']
           as String;
 
+  Future<bool> canPush(String repo) async {
+    final data = await _json('GET', _uri('/repos/${_repo(repo)}'));
+    return (data['permissions'] as Map<String, dynamic>?)?['push'] == true;
+  }
+
   Future<String> commitSha(String repo, String ref) async =>
       (await _json(
             'GET',

@@ -370,7 +370,10 @@ Issues found:
 - [x] P2-C2 desktop: use existing `gh auth token` (GitHub CLI login) when present; device flow only for phones (user 11-03: official login, no key creation)
 - [x] P2-D GitHub pull mount (sha check, zipball, safe extract, atomic swap, 6 h refresh, Add GitHub repo dialog); live fetch check pending in P2 Mac verify. Suite 1880 pass
 - [x] P2-E pack updates from GitHub releases (source in install record, not manifest; daily check, persisted notice). Widget tests for Modules page missing -> covered by P2 Mac verify (install v1.3.0 from GitHub)
-- [ ] P2-F GitHub push (contents API, keep-both conflicts)
+- [x] P2-F0 per-file git blob shas in mount cache meta (= git hash-object)
+- [x] P2-F1 outbox + pusher core (lib/github/github_outbox.dart): entries, push in order, sha update, 409 -> conflict record
+- [ ] P2-F2 editing push-enabled ext notes: save -> cache + outbox, Extensions toggle (permissions.push), debounce/resume/Push now
+- [ ] P2-F3 conflict review (Keep mine / Take theirs) + pull skips pending paths
 - [ ] P2-G issue lines <-> GitHub issues
 - [ ] P2 review + full suite + macOS verify + P30
 - [ ] USER (11-03 chose reuse GitDoIt app): its client id (Iv1..., a GitHub App) returns 'Not Found' at /login/device/code -> enable Device Flow in the GitHub App settings or create an OAuth app; send client id
