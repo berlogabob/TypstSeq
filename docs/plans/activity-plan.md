@@ -369,11 +369,12 @@ Issues found:
 - [x] P2-C GitHub client + device-flow auth (lib/github, 4 tests; UI comes with P2-B/D)
 - [x] P2-C2 desktop: use existing `gh auth token` (GitHub CLI login) when present; device flow only for phones (user 11-03: official login, no key creation)
 - [x] P2-D GitHub pull mount (sha check, zipball, safe extract, atomic swap, 6 h refresh, Add GitHub repo dialog); live fetch check pending in P2 Mac verify. Suite 1880 pass
-- [ ] P2-E pack update channel (PT course)
+- [x] P2-E pack updates from GitHub releases (source in install record, not manifest; daily check, persisted notice). Widget tests for Modules page missing -> covered by P2 Mac verify (install v1.3.0 from GitHub)
 - [ ] P2-F GitHub push (contents API, keep-both conflicts)
 - [ ] P2-G issue lines <-> GitHub issues
 - [ ] P2 review + full suite + macOS verify + P30
 - [ ] USER (11-03 chose reuse GitDoIt app): its client id (Iv1..., a GitHub App) returns 'Not Found' at /login/device/code -> enable Device Flow in the GitHub App settings or create an OAuth app; send client id
 - [x] PT pack repo: lesson rework committed 293ced8, version 1.3.0 (voices/ left untracked: licence unknown)
-- [ ] PT pack 1.3.0 build (user 11-03: pause Ornith ~1h): bootout enrich+worker, unload Ornith, Chatterbox TTS --force -> check_audio -> pack -> pack-validate (scratchpad pt_pack_build.sh, running)
-- [ ] PT pack: publish GitHub release v1.3.0 with the .tylogpack (user asked 11-03)
+- [x] PT pack 1.3.0 build (user 11-03: pause Ornith ~1h; 16:02-16:33, Ornith 64k + agents restored): bootout enrich+worker, unload Ornith, Chatterbox TTS --force -> check_audio -> pack -> pack-validate (scratchpad pt_pack_build.sh, running)
+- [x] PT pack: GitHub release v1.3.0 published (tag on 293ced8, asset 29.3 MB, 268 files, 0 validate problems)
+- [ ] PT pack: re-score all clips (script kept only last 25: 6 at 0.80-0.89); redo low clips in 1.3.1

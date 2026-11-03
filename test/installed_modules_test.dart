@@ -27,6 +27,8 @@ void main() {
           'name': 'My course',
           'start': '2026-11-02',
           'files': {},
+          'updateAvailableVersion': '1.2.0',
+          'updateCheckedAt': '2026-11-03T12:00:00.000',
         }),
       );
       await storage.writeText('_system/modules/readme.txt', 'Not a record');
@@ -37,6 +39,8 @@ void main() {
       expect(modules.map((m) => m.id), ['course', 'legacy']);
       expect(modules.first.name, 'My course');
       expect(modules.first.start, DateTime(2026, 11, 2));
+      expect(modules.first.updateAvailableVersion, '1.2.0');
+      expect(modules.first.updateCheckedAt, DateTime(2026, 11, 3, 12));
       expect(modules.last.name, 'legacy');
       expect(modules.last.start, isNull);
     },

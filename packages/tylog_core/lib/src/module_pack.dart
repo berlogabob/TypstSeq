@@ -92,17 +92,17 @@ class ModulePack {
     if (!packPath.startsWith('notes/') || !packPath.endsWith('.typ')) {
       return bytes;
     }
-    final text = utf8
-        .decode(bytes)
-        .replaceAll('{{id}}', id)
-        .replaceAllMapped(RegExp(r'\{\{due:(\d+)\}\}'), (m) {
-          final d = DateTime.utc(
-            start.year,
-            start.month,
-            start.day + int.parse(m[1]!),
-          );
-          return _iso(d);
-        });
+    final text = utf8.decode(bytes).replaceAll('{{id}}', id).replaceAllMapped(
+      RegExp(r'\{\{due:(\d+)\}\}'),
+      (m) {
+        final d = DateTime.utc(
+          start.year,
+          start.month,
+          start.day + int.parse(m[1]!),
+        );
+        return _iso(d);
+      },
+    );
     return Uint8List.fromList(utf8.encode(text));
   }
 }
@@ -129,8 +129,16 @@ class InstalledModule {
     required this.name,
     this.start,
     this.unit = 'tasks',
+    this.version = '0',
+    this.github,
+    this.updateAvailableVersion,
+    this.updateCheckedAt,
   });
 
+  final String version;
+  final String? github;
+  final String? updateAvailableVersion;
+  final DateTime? updateCheckedAt;
   final String id;
   final String name;
   final DateTime? start;
@@ -149,6 +157,14 @@ Future<List<InstalledModule>> listInstalledModules(VaultStorage storage) async {
       InstalledModule(
         id: id,
         name: (record['name'] as String?) ?? id,
+        version: (record['version'] as String?) ?? '0',
+        github: record['source'] is Map
+            ? (record['source'] as Map)['github'] as String?
+            : null,
+        updateAvailableVersion: record['updateAvailableVersion'] as String?,
+        updateCheckedAt: DateTime.tryParse(
+          (record['updateCheckedAt'] as String?) ?? '',
+        ),
         unit: (record['unit'] as String?) ?? 'tasks',
         start: DateTime.tryParse((record['start'] as String?) ?? ''),
       ),
@@ -175,8 +191,15 @@ Future<Map<String, String>> _readRecord(VaultStorage s, String id) async {
 Future<ModuleInstallResult> installModule(
   VaultStorage storage,
   ModulePack pack,
-  DateTime start,
-) async {
+  DateTime start, {
+  String? github,
+}) async {
+  final recordPath = moduleRecordPath(pack.id);
+  final record = await storage.exists(recordPath)
+      ? Map<String, dynamic>.from(
+          jsonDecode(await storage.readText(recordPath)) as Map,
+        )
+      : <String, dynamic>{};
   final owned = await _readRecord(storage, pack.id);
   final installed = <String, String>{};
   final written = <String>[];
@@ -216,6 +239,9 @@ Future<ModuleInstallResult> installModule(
   await storage.writeText(
     moduleRecordPath(pack.id),
     jsonEncode({
+      ...record,
+      if (github != null)
+        'source': {...?(record['source'] as Map?), 'github': github},
       'id': pack.id,
       'name': pack.name,
       'version': pack.version,

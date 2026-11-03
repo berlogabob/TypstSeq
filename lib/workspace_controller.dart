@@ -18,6 +18,9 @@ import 'package:tylog_core/graph.dart';
 import 'calendar_feeds.dart';
 import 'github/github_auth.dart';
 import 'github/github_client.dart';
+import 'github/module_updates.dart';
+import 'package:tylog_core/tylog_core.dart'
+    show ModulePack, listInstalledModules, moduleRecordPath;
 import 'github/mount_fetcher.dart';
 import 'kind_registry.dart';
 import 'widgets/constants.dart' show kindRegistry, kindIconPalette;
@@ -63,6 +66,49 @@ class WorkspaceController extends ChangeNotifier {
   }) : _reconcileTasks = reconcileTasks ?? taskScheduler.reconcile,
        _now = now ?? DateTime.now,
        _useForegroundService = useForegroundService ?? Platform.isAndroid;
+
+  final Map<String, ModulePack> moduleUpdates = {};
+  Future<void> checkModuleUpdates({bool automatic = false}) async {
+    final opened = vault;
+    if (opened == null) return;
+    const stamp = '_system/modules/.update-check';
+    try {
+      if (automatic && await opened.storage.exists(stamp)) {
+        final last = DateTime.tryParse(await opened.storage.readText(stamp));
+        if (last != null &&
+            _now().difference(last) < const Duration(hours: 24)) {
+          return;
+        }
+      }
+      final modules = await listInstalledModules(opened.storage);
+      if (modules.every((m) => m.github == null)) return;
+      await opened.storage.writeText(stamp, _now().toIso8601String());
+      final client = await githubClient();
+      for (final module in modules.where((m) => m.github != null)) {
+        try {
+          final pack = await checkModuleUpdate(client, module);
+          if (vault != opened) return;
+          final path = moduleRecordPath(module.id);
+          final record = Map<String, dynamic>.from(
+            jsonDecode(await opened.storage.readText(path)) as Map,
+          );
+          record['updateAvailableVersion'] = pack?.version;
+          record['updateCheckedAt'] = _now().toIso8601String();
+          await opened.storage.writeText(path, jsonEncode(record));
+          if (pack == null) {
+            moduleUpdates.remove(module.id);
+          } else {
+            moduleUpdates[module.id] = pack;
+          }
+        } catch (_) {
+          /* Other modules can still be checked. */
+        }
+      }
+      if (vault == opened) notifyListeners();
+    } catch (_) {
+      /* A background check must never block opening a vault. */
+    }
+  }
 
   final GitHubClient Function(String?)? githubClientFactory;
   final Directory? mountCacheDirectory;
@@ -627,6 +673,10 @@ class WorkspaceController extends ChangeNotifier {
       status = _mountWarning ?? 'Vault opened — indexing…';
       notifyListeners();
       startupMark('fast-path-done');
+      moduleUpdates.clear();
+      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+        unawaited(checkModuleUpdates(automatic: true));
+      }
       for (final mount in mounts.where((m) => m.source.kind == 'github')) {
         unawaited(refreshMount(mount, automatic: true));
       }

@@ -28,7 +28,8 @@ import 'package:tylog/rich_editor.dart';
 import 'package:tylog/saved_searches.dart';
 import 'package:tylog_core/search_index.dart';
 import 'package:tylog_core/scanner.dart';
-import 'package:tylog_core/tylog_core.dart' show Mount, MountSource;
+import 'package:tylog_core/tylog_core.dart'
+    show Mount, MountSource;
 import 'package:tylog/vault_registry.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_storage.dart';

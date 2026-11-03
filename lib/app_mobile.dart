@@ -87,6 +87,7 @@ import 'audio/audio_note_actions.dart';
 import 'audio/processing_policy.dart';
 import 'audio/transcript_jobs.dart';
 import 'module_pack_io.dart';
+import 'github/module_updates.dart';
 import 'package:tylog_core/tylog_core.dart'
     show
         InstalledModule,

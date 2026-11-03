@@ -8,10 +8,6 @@ extension _ModuleFlow on _HomeScreenState {
     try {
       final modules = await listInstalledModules(v.storage);
       if (!mounted) return;
-      if (modules.isEmpty) {
-        await _installModule();
-        return;
-      }
       final progress = <String, ModuleProgress>{};
       for (final module in modules) {
         progress[module.id] = await moduleProgress(v.storage, module.id);
@@ -27,7 +23,7 @@ extension _ModuleFlow on _HomeScreenState {
             builder: (context) => AppSheet(
               title: 'Modules',
               children: [
-                for (final module in modules)
+                for (final module in modules) ...[
                   AppTile(
                     icon: Icons.school_outlined,
                     title: module.name,
@@ -47,12 +43,53 @@ extension _ModuleFlow on _HomeScreenState {
                             child: Text('Reschedule…'),
                           ),
                         const PopupMenuItem(
+                          value: 'source',
+                          child: Text('Updates from GitHub…'),
+                        ),
+                        const PopupMenuItem(
                           value: 'uninstall',
                           child: Text('Uninstall'),
                         ),
                       ],
                     ),
                   ),
+                  AppTile(
+                    icon: Icons.link,
+                    title: 'Updates from GitHub',
+                    subtitle: module.github ?? 'Not configured',
+                    onTap: () => Navigator.pop(context, (
+                      action: 'source',
+                      module: module,
+                    )),
+                  ),
+                  if (module.updateAvailableVersion case final update?
+                      when module.updateCheckedAt != null &&
+                          DateTime.now().difference(module.updateCheckedAt!) <
+                              const Duration(hours: 24))
+                    AppTile(
+                      icon: Icons.system_update,
+                      title: 'Update available ${module.version} -> $update',
+                      trailing: TextButton(
+                        onPressed: () => Navigator.pop(context, (
+                          action: 'update',
+                          module: module,
+                        )),
+                        child: const Text('Update'),
+                      ),
+                    ),
+                ],
+                AppTile(
+                  icon: Icons.cloud_download_outlined,
+                  title: 'Install from GitHub',
+                  onTap: () =>
+                      Navigator.pop(context, (action: 'github', module: null)),
+                ),
+                AppTile(
+                  icon: Icons.refresh,
+                  title: 'Check for updates',
+                  onTap: () =>
+                      Navigator.pop(context, (action: 'check', module: null)),
+                ),
                 AppTile(
                   icon: Icons.file_open_outlined,
                   title: 'Install from file…',
@@ -67,7 +104,61 @@ extension _ModuleFlow on _HomeScreenState {
         await _installModule();
         return;
       }
+      if (choice.action == 'check') {
+        await workspace.checkModuleUpdates();
+        if (mounted) await _showModules();
+        return;
+      }
+      if (choice.action == 'github') {
+        final repo = await _moduleRepoDialog('Install from GitHub');
+        if (repo == null || !mounted) return;
+        final pack = await downloadGitHubModule(
+          await workspace.githubClient(),
+          repo,
+        );
+        if (mounted) await _installModulePack(pack, github: repo);
+        return;
+      }
       final module = choice.module!;
+      if (choice.action == 'source') {
+        final repo = await _moduleRepoDialog(
+          'Updates from GitHub',
+          initial: module.github,
+        );
+        if (repo == null) return;
+        if (repo.isNotEmpty &&
+            !RegExp(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$').hasMatch(repo)) {
+          throw const FormatException('Enter owner/repo');
+        }
+        final path = moduleRecordPath(module.id);
+        final record =
+            jsonDecode(await v.storage.readText(path)) as Map<String, dynamic>;
+        final source = Map<String, dynamic>.from(
+          record['source'] is Map ? record['source'] as Map : {},
+        );
+        if (repo.isEmpty) {
+          source.remove('github');
+        } else {
+          source['github'] = repo;
+        }
+        if (source.isEmpty) {
+          record.remove('source');
+        } else {
+          record['source'] = source;
+        }
+        await v.storage.writeText(path, jsonEncode(record));
+        workspace.moduleUpdates.remove(module.id);
+        if (mounted) await _showModules();
+        return;
+      }
+      if (choice.action == 'update') {
+        final pack = await downloadGitHubModule(
+          await workspace.githubClient(),
+          module.github!,
+        );
+        await _installModulePack(pack, github: module.github);
+        return;
+      }
       String message;
       if (choice.action == 'reschedule') {
         final oldStart = module.start!;
@@ -124,6 +215,12 @@ extension _ModuleFlow on _HomeScreenState {
       if (mounted) showSnack(context, 'Not a valid module: ${error.message}');
       return;
     }
+    await _installModulePack(pack);
+  }
+
+  Future<void> _installModulePack(ModulePack pack, {String? github}) async {
+    final v = vault;
+    if (v == null || !mounted) return;
     final size = pack.files.values.fold<int>(0, (sum, b) => sum + b.length);
     final notes = pack.files.keys.where((p) => p.startsWith('notes/')).length;
     final installed = await v.storage.exists(moduleRecordPath(pack.id));
@@ -184,8 +281,9 @@ extension _ModuleFlow on _HomeScreenState {
     try {
       final result = await _withModuleProgress(
         'Installing module',
-        () => installModule(v.storage, pack, start),
+        () => installModule(v.storage, pack, start, github: github),
       );
+      workspace.moduleUpdates.remove(pack.id);
       message =
           'Installed ${pack.name}: ${result.written.length} files'
           '${result.skipped.isEmpty ? '' : ', ${result.skipped.length} kept (edited)'}';
@@ -194,6 +292,32 @@ extension _ModuleFlow on _HomeScreenState {
     }
     if (!mounted) return;
     showSnack(context, message);
+  }
+
+  Future<String?> _moduleRepoDialog(String title, {String? initial}) async {
+    final controller = TextEditingController(text: initial);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: 'owner/repo'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return result;
   }
 
   Future<T> _withModuleProgress<T>(
