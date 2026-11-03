@@ -324,5 +324,5 @@ Codex (luna/terra) for major UI tasks, haiku for small ones, Claude reviews at g
 - [x] B7 (00b8e1b) audio screen opens on Comments; open on Text when a transcript exists
 - [x] P30 check 13:41: Processing + badge, search opens tapped result, song opens on Text with ES/RU/EN/PT, PT summary, side by side, ⋮ Copy all / Export / Open as page / Re-process. Not driven: @ autocomplete, indent, screenshot Text (covered by tests) (release build, real vault): Processing, search, tabs/copy/export/open as page, screenshots Text, @ autocomplete, indent, OCR search
 - [x] D6 closed as unknown: no offline loss path in sync code (path_sync, conflicts, deleteLocal guards); 10-07 revisions intact; no sync trace for that window; reopen if it recurs - entry lost offline (10-07): sync_trace first
-- [ ] Release 0.20.8+166 prepared (version + changelog); full suite run before tag; waiting for user go
+- [x] Release 0.20.8+166 published (8 assets, libtypst_flutter.so in APK), installed on P30
 - Deferred: image wrap/crop/anchors (10-07) - separate design
