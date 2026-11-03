@@ -51,7 +51,7 @@ void main() {
   testWidgets('issue status metadata is hidden and edits preserve its bytes', (
     tester,
   ) async {
-    const source = '- bug #metadata(("tylog-issue-status": "done"))';
+    const source = '- bug #metadata(("tylog-issue-status": "done")) #metadata(("tylog-issue-gh": 123))';
     var saved = '';
     final controller = TyLogEditingController(
       source: source,
@@ -68,12 +68,13 @@ void main() {
       ),
     );
     expect(find.text('tylog-issue-status'), findsNothing);
+    expect(find.text('tylog-issue-gh'), findsNothing);
     final at = controller.text.indexOf('bug') + 3;
     controller.value = TextEditingValue(
       text: controller.text.replaceRange(at, at, '!'),
       selection: TextSelection.collapsed(offset: at + 1),
     );
-    expect(saved, '- bug! #metadata(("tylog-issue-status": "done"))');
+    expect(saved, '- bug! #metadata(("tylog-issue-status": "done")) #metadata(("tylog-issue-gh": 123))');
   });
   test('rich paste across a task boundary preserves the task', () async {
     const task = '#tylog.task(id: "t", text: "Keep task", properties: (owner: "Ada",))';

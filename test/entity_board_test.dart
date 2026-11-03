@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog_core/tylog_core.dart';
 import 'package:tylog/vault.dart';
+import 'package:tylog/github/github_client.dart';
 import 'package:tylog/widgets/entity_board.dart';
 
 void main() {
@@ -226,4 +227,125 @@ void main() {
     expect(result, contains('#metadata(("tylog-issue-status": "done"))'));
     expect(result, contains('unsaved edit'));
   });
+  testWidgets('sends and syncs linked issues using a fake client', (
+    tester,
+  ) async {
+    final dir = await tester.runAsync(
+      () => Directory.systemTemp.createTemp('github-issue'),
+    );
+    if (dir == null) throw StateError('No temp directory');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    final client = _FakeGitHub();
+    const project = NoteRef(
+      id: 'p',
+      path: 'p.typ',
+      title: 'P',
+      kind: 'project',
+      outgoingLinks: [],
+      properties: {'github': 'owner/repo'},
+    );
+    var source = '- #tylog.ref-note("p")[P] fixit broken';
+    VaultIndex makeIndex() => VaultIndex(
+      notesByPath: const {'p.typ': project},
+      backlinksByTarget: const {},
+      issues: [
+        IssueRef(
+          notePath: 'log.typ',
+          line: 1,
+          text: source,
+          projectId: 'p',
+          marker: 'fixit',
+          status: source.contains('"done"') ? 'done' : 'todo',
+          githubNumber: source.contains('tylog-issue-gh') ? 123 : null,
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EntityBoard(
+          entity: project,
+          vault: vault,
+          index: makeIndex(),
+          setStatus: (_, _) async {},
+          mutateNote: (_, edit) async {
+            source = edit(source);
+            return true;
+          },
+          refreshIndex: () async => makeIndex(),
+          githubClient: () async => client,
+        ),
+      ),
+    );
+    Future<void> io() async {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 80)),
+      );
+      await tester.pump();
+    }
+
+    await io();
+    await tester.runAsync(() async {
+      await tester.tap(find.byTooltip('Send to GitHub'));
+      for (
+        var i = 0;
+        i < 200 &&
+            !await vault.storage.exists('_system/decisions/github.jsonl');
+        i++
+      ) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+    });
+    await tester.pump();
+    expect(source, contains('"tylog-issue-gh": 123'));
+    final log = await tester.runAsync(
+      () => vault.storage.readText('_system/decisions/github.jsonl'),
+    );
+    expect(log, contains('owner/repo#123'));
+    expect(client.labels, ['fixit']);
+    client.state = 'closed';
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Sync with GitHub'));
+      for (var i = 0; i < 200 && !source.contains('"done"'); i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+    });
+    await tester.pump();
+    expect(source, contains('"tylog-issue-status": "done"'));
+    client.state = 'open';
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Sync with GitHub'));
+      for (var i = 0; i < 200 && client.closed == null; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+    });
+    await tester.pump();
+    expect(client.closed, 123);
+  });
+}
+
+class _FakeGitHub extends GitHubClient {
+  String state = 'open';
+  int? closed;
+  List<String>? labels;
+  @override
+  Future<Map<String, dynamic>> createIssue(
+    String repo,
+    String title,
+    String body,
+    List<String> labels,
+  ) async {
+    this.labels = labels;
+    return {'number': 123};
+  }
+
+  @override
+  Future<Map<String, dynamic>> issue(String repo, int number) async => {
+    'state': state,
+  };
+  @override
+  Future<Map<String, dynamic>> closeIssue(String repo, int number) async {
+    closed = number;
+    return {};
+  }
 }

@@ -29,6 +29,7 @@ String? attentionOf(NoteRef note) {
 
 const decisionsDir = '_system/decisions';
 const decisionActions = [
+  'sent',
   'seen',
   'added-to-today',
   'scheduled',

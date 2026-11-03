@@ -5921,6 +5921,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           if (isEntity)
             EntityHeader(
               note: currentNote,
+              onGithubChanged: (value) =>
+                  _setNoteProperty(currentNote, 'github', value.trim()),
               relationships: EntityRelationships(
                 note: scanNote(currentNote.path, _currentSource()),
                 index: index,
@@ -5936,6 +5938,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       MaterialPageRoute<void>(
                         builder: (_) => EntityBoard(
                           entity: currentNote,
+                          githubClient: workspace.githubClient,
+                          onOpenUrl: _openUrl,
                           vault: v,
                           index: index!,
                           setStatus: _setTaskStatus,

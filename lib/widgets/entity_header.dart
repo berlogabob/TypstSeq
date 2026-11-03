@@ -18,8 +18,10 @@ class EntityHeader extends StatelessWidget {
     this.onChangeKindIcon,
     this.onOpenBoard,
     this.relationships,
+    this.onGithubChanged,
   });
 
+  final ValueChanged<String>? onGithubChanged;
   final Widget? relationships;
   final VoidCallback? onChangeKindIcon;
   final VoidCallback? onOpenBoard;
@@ -39,6 +41,7 @@ class EntityHeader extends StatelessWidget {
         .where(
           (e) =>
               e.key != 'part_of' &&
+              e.key != 'github' &&
               e.value != null &&
               '${e.value}'.trim().isNotEmpty,
         )
@@ -104,6 +107,15 @@ class EntityHeader extends StatelessWidget {
               _Chips(icon: Icons.tag, labels: note.tags),
             ],
             ?relationships,
+            if (note.kind == 'project' && onGithubChanged != null)
+              TextFormField(
+                key: ValueKey('github-${note.id}'),
+                initialValue: note.properties['github'] as String? ?? '',
+                decoration: const InputDecoration(
+                  labelText: 'GitHub repository (owner/repo)',
+                ),
+                onFieldSubmitted: onGithubChanged,
+              ),
             for (final entry in properties)
               _PropertyRow(
                 name: entry.key,

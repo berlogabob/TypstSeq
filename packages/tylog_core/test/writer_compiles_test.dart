@@ -65,6 +65,7 @@ void main() {
       'issue-status-metadata',
       setIssueStatus('$line\n', issue, 'doing'),
     );
+    expectCompiles('issue-github-metadata', setIssueGithubNumber('$line\n', issue, 123));
   });
 
   test('removing a legacy project parent leaves a compiling header', () {

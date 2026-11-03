@@ -3,6 +3,9 @@ part of '../scanner.dart';
 final _issueStatus = RegExp(
   r'#metadata\(\(\s*"tylog-issue-status"\s*:\s*"(todo|doing|done|cancelled)"\s*,?\s*\)\)',
 );
+final _issueGithub = RegExp(
+  r'#metadata\(\(\s*"tylog-issue-gh"\s*:\s*(\d+)\s*,?\s*\)\)',
+);
 final _issueLink = RegExp(r'#tylog\.ref-note\("([^"\n]+)"\)(?:\[[^\]\n]*\])?');
 final _issuePrefix = RegExp(
   r'^\s*(?:(?:\\-|[-+*]|\d+\.)\s+)?(?:\d{1,2}:\d{2}\s+)?',
@@ -37,6 +40,30 @@ String setIssueStatus(String source, IssueRef line, String status) {
   if (!const {'todo', 'doing', 'done', 'cancelled'}.contains(status)) {
     throw ArgumentError.value(status, 'status');
   }
+  return _setIssueMetadata(
+    source,
+    line,
+    _issueStatus,
+    '#metadata(("tylog-issue-status": "$status"))',
+  );
+}
+
+String setIssueGithubNumber(String source, IssueRef line, int number) {
+  if (number <= 0) throw ArgumentError.value(number, 'number');
+  return _setIssueMetadata(
+    source,
+    line,
+    _issueGithub,
+    '#metadata(("tylog-issue-gh": $number))',
+  );
+}
+
+String _setIssueMetadata(
+  String source,
+  IssueRef line,
+  RegExp pattern,
+  String metadata,
+) {
   final lines = source.split('\n');
   if (line.line < 1 ||
       line.line > lines.length ||
@@ -46,11 +73,13 @@ String setIssueStatus(String source, IssueRef line, String status) {
   final text = lines[line.line - 1];
   final comment = _issueCommentStart(text);
   final code = text.substring(0, comment);
-  final matches = _issueStatus.allMatches(code).toList();
+  final matches = pattern.allMatches(code).toList();
   if (matches.length > 1) throw StateError('Duplicate issue status');
-  final metadata = '#metadata(("tylog-issue-status": "$status"))';
+  final status = pattern == _issueGithub ? _issueStatus.firstMatch(code) : null;
   lines[line.line - 1] = matches.isEmpty
-      ? comment < text.length
+      ? status != null
+            ? text.replaceRange(status.end, status.end, ' $metadata')
+            : comment < text.length
             ? '${code.trimRight()} $metadata ${text.substring(comment)}'
             : text.endsWith('\r')
             ? '${text.substring(0, text.length - 1)} $metadata\r'
@@ -168,6 +197,12 @@ Future<List<IssueRef>> _scanIssues(
               text: text,
               projectId: project,
               marker: marker,
+              githubNumber: int.tryParse(
+                _issueGithub
+                        .firstMatch(text.substring(0, _issueCommentStart(text)))
+                        ?.group(1) ??
+                    '',
+              ),
               status:
                   _issueStatus.firstMatch(
                     text.substring(0, _issueCommentStart(text)),

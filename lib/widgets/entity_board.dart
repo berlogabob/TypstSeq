@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:tylog_core/tylog_core.dart';
 
 import '../vault.dart';
+import '../github/github_client.dart';
+import '../kind_registry.dart';
 import '../controlled_editor.dart';
 import 'constants.dart';
 
@@ -16,8 +18,12 @@ class EntityBoard extends StatefulWidget {
     required this.setStatus,
     required this.mutateNote,
     required this.refreshIndex,
+    this.githubClient,
+    this.onOpenUrl,
   });
 
+  final Future<GitHubClient> Function()? githubClient;
+  final void Function(String)? onOpenUrl;
   final NoteRef entity;
   final Vault vault;
   final VaultIndex index;
@@ -63,6 +69,7 @@ class _EntityBoardState extends State<EntityBoard> {
           board = saved ?? board;
           loading = false;
         });
+        await _sync();
       }
     } catch (e) {
       if (mounted) {
@@ -169,6 +176,118 @@ class _EntityBoardState extends State<EntityBoard> {
     }
   }
 
+  String? _repo(IssueRef issue) {
+    final queue = <String>[issue.projectId];
+    final seen = <String>{};
+    while (queue.isNotEmpty) {
+      final id = queue.removeAt(0);
+      if (!seen.add(id)) continue;
+      final note = index.notesByPath.values
+          .where((n) => n.id == id || n.title == id || n.aliases.contains(id))
+          .firstOrNull;
+      if (note == null) continue;
+      final repo = note.properties['github'];
+      if (repo is String && RegExp(r'^[^/\s]+/[^/\s]+$').hasMatch(repo)) {
+        return repo;
+      }
+      queue.addAll(note.partOf);
+    }
+    return null;
+  }
+
+  Future<void> _send(IssueRef issue) async {
+    final repo = _repo(issue);
+    if (repo == null || widget.githubClient == null || busy) return;
+    setState(() => busy = true);
+    try {
+      final registry = await readKindRegistry(widget.vault.storage);
+      final entry = registry[issue.marker];
+      final label = entry is Map && entry['github_label'] is String
+          ? entry['github_label'] as String
+          : issue.marker;
+      final date = DateTime.now().toIso8601String().substring(0, 10);
+      final result = await (await widget.githubClient!()).createIssue(
+        repo,
+        issuePreview(issue.text),
+        'From TyLog ${issue.notePath}, $date',
+        [label],
+      );
+      final number = result['number'] as int;
+      if (!await widget.mutateNote(
+        issue.notePath,
+        (s) => setIssueGithubNumber(s, issue, number),
+      )) {
+        throw StateError('Issue could not be saved');
+      }
+      await widget.vault.storage.createDirectory(decisionsDir);
+      const path = '$decisionsDir/github.jsonl';
+      final old = await widget.vault.storage.exists(path)
+          ? await widget.vault.storage.readText(path)
+          : '';
+      await widget.vault.storage.writeText(
+        path,
+        old +
+            encodeDecisions([
+              Decision(
+                at: DateTime.now().toIso8601String(),
+                device: 'github',
+                item: issue.notePath,
+                source: 'issue',
+                action: 'sent',
+                target: '$repo#$number',
+              ),
+            ]),
+      );
+      final next = await widget.refreshIndex();
+      if (mounted && next != null) index = next;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not send issue: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _sync() async {
+    if (busy || widget.githubClient == null) return;
+    final issues = issuesForEntity(
+      widget.entity.id,
+      index,
+    ).where((i) => i.githubNumber != null && _repo(i) != null).toList();
+    if (issues.isEmpty) return;
+    setState(() => busy = true);
+    try {
+      final client = await widget.githubClient!();
+      for (final issue in issues) {
+        final repo = _repo(issue)!;
+        final remote = await client.issue(repo, issue.githubNumber!);
+        if (remote['state'] == 'closed' && issue.status != 'done') {
+          if (!await widget.mutateNote(
+            issue.notePath,
+            (s) => setIssueStatus(s, issue, 'done'),
+          )) {
+            throw StateError('Issue could not be saved');
+          }
+        } else if (remote['state'] == 'open' && issue.status == 'done') {
+          await client.closeIssue(repo, issue.githubNumber!);
+        }
+      }
+      final next = await widget.refreshIndex();
+      if (mounted && next != null) index = next;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not sync GitHub issues: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final tasks = tasksForEntity(widget.entity.id, index);
@@ -180,7 +299,16 @@ class _EntityBoardState extends State<EntityBoard> {
         'cancelled',
     ];
     return Scaffold(
-      appBar: AppBar(title: Text('${widget.entity.title} Board')),
+      appBar: AppBar(
+        title: Text('${widget.entity.title} Board'),
+        actions: [
+          if (widget.githubClient != null)
+            TextButton(
+              onPressed: busy ? null : _sync,
+              child: const Text('Sync with GitHub'),
+            ),
+        ],
+      ),
       body: loading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
@@ -344,8 +472,43 @@ class _EntityBoardState extends State<EntityBoard> {
                                                             issue.text,
                                                           ),
                                                         ),
+                                                        trailing:
+                                                            issue.githubNumber ==
+                                                                    null &&
+                                                                _repo(issue) !=
+                                                                    null &&
+                                                                widget.githubClient !=
+                                                                    null
+                                                            ? IconButton(
+                                                                tooltip:
+                                                                    'Send to GitHub',
+                                                                onPressed: busy
+                                                                    ? null
+                                                                    : () => _send(
+                                                                        issue,
+                                                                      ),
+                                                                icon: const Icon(
+                                                                  Icons.upload,
+                                                                ),
+                                                              )
+                                                            : null,
                                                         subtitle: Wrap(
                                                           children: [
+                                                            if (issue.githubNumber !=
+                                                                    null &&
+                                                                _repo(issue) !=
+                                                                    null)
+                                                              ActionChip(
+                                                                label: Text(
+                                                                  '#${issue.githubNumber}',
+                                                                ),
+                                                                onPressed: () =>
+                                                                    widget
+                                                                        .onOpenUrl
+                                                                        ?.call(
+                                                                          'https://github.com/${_repo(issue)}/issues/${issue.githubNumber}',
+                                                                        ),
+                                                              ),
                                                             Chip(
                                                               avatar: Icon(
                                                                 iconForKind(

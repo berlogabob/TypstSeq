@@ -332,7 +332,7 @@ String _inlinePreview(String source) {
 }
 
 final issueStatusMetadata = RegExp(
-  r'#metadata\(\(\s*"tylog-issue-status"\s*:\s*"(?:todo|doing|done|cancelled)"\s*,?\s*\)\)',
+  r'#metadata\(\(\s*(?:"tylog-issue-status"\s*:\s*"(?:todo|doing|done|cancelled)"|"tylog-issue-gh"\s*:\s*\d+)\s*,?\s*\)\)',
 );
 
 String issuePreview(String source) => _inlinePreview(
