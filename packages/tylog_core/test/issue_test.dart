@@ -1,0 +1,183 @@
+import 'dart:io';
+import 'package:test/test.dart';
+import 'package:tylog_core/tylog_core.dart';
+
+void main() {
+  test('status is inserted before a comment', () {
+    const text = '- issue // #metadata(("tylog-issue-status": "done"))';
+    const issue = IssueRef(
+      notePath: 'x',
+      line: 1,
+      text: text,
+      projectId: 'p',
+      marker: 'fixit',
+    );
+    expect(
+      setIssueStatus(text, issue, 'doing'),
+      '- issue #metadata(("tylog-issue-status": "doing")) // #metadata(("tylog-issue-status": "done"))',
+    );
+  });
+  test('detects linked and plain markers only with project links', () async {
+    final dir = await Directory.systemTemp.createTemp('issues');
+    addTearDown(() => dir.delete(recursive: true));
+    final storage = LocalVaultStorage(dir);
+    await storage.writeText(
+      '_system/settings/ai.json',
+      '{"tasks":{"enrich":{"markers":["fixit"]}}}',
+    );
+    await storage.writeText(
+      'notes/project.typ',
+      '#show: tylog.note.with(id: "project", title: "Project", kind: "project")',
+    );
+    await storage.writeText(
+      'notes/person.typ',
+      '#show: tylog.note.with(id: "person", title: "Person", kind: "person")',
+    );
+    await storage.writeText(
+      'notes/fixit.typ',
+      '#show: tylog.note.with(id: "fixit", title: "fixit")',
+    );
+    await storage.writeText(
+      'notes/log.typ',
+      '- #tylog.ref-note("project")[Project] #tylog.ref-note("fixit")[fixit] bug // #metadata(("tylog-issue-status": "done"))\n- fixit #tylog.ref-note("project")[Project] bug\n- #tylog.ref-note("person")[Person] #tylog.ref-note("fixit")[fixit] no\n',
+    );
+    final index = await scanVaultStorage(storage);
+    expect(index.issues.map((i) => i.line), [1, 2]);
+    expect(index.issues.first.status, 'todo');
+    expect(VaultIndex.fromJson(index.toJson()).issues.length, 2);
+  });
+  test('cached notes without issue lines are read before reuse', () async {
+    final dir = await Directory.systemTemp.createTemp('issue-cache');
+    addTearDown(() => dir.delete(recursive: true));
+    final storage = LocalVaultStorage(dir);
+    await storage.writeText(
+      '_system/settings/ai.json',
+      '{"tasks":{"enrich":{"markers":["fixit"]}}}',
+    );
+    await storage.writeText(
+      'notes/project.typ',
+      '#show: tylog.note.with(id: "project", title: "Project", kind: "project")',
+    );
+    await storage.writeText(
+      'notes/log.typ',
+      '- fixit #tylog.ref-note("project")[Project] bug',
+    );
+    final first = await scanVaultStorage(storage);
+    final oldCache = VaultIndex(
+      notesByPath: first.notesByPath,
+      backlinksByTarget: first.backlinksByTarget,
+      tasks: first.tasks,
+    );
+    final rebuilt = await scanVaultStorage(storage, previous: oldCache);
+    expect(rebuilt.issues.map((i) => i.marker), ['fixit']);
+  });
+
+  test('donor carries issue candidates for unchanged notes', () async {
+    final dir = await Directory.systemTemp.createTemp('issue-donor');
+    addTearDown(() => dir.delete(recursive: true));
+    final storage = LocalVaultStorage(dir);
+    await storage.writeText(
+      '_system/settings/ai.json',
+      '{"tasks":{"enrich":{"markers":["fixit"]}}}',
+    );
+    await storage.writeText(
+      'notes/project.typ',
+      '#show: tylog.note.with(id: "project", title: "Project", kind: "project")',
+    );
+    await storage.writeText(
+      'notes/log.typ',
+      '- fixit #tylog.ref-note("project")[Project] bug',
+    );
+    final first = await scanVaultStorage(storage);
+    final donors = IndexDonorStore(storage);
+    await donors.publish('one', first);
+    final donor = await donors.load('two');
+    expect(donor, isNotNull);
+    expect(donor!.issueLines['notes/log.typ'], isNotEmpty);
+    final rebuilt = await scanVaultStorage(storage, donor: donor);
+    expect(rebuilt.issues.map((issue) => issue.marker), ['fixit']);
+  });
+
+  test('status edits preserve the line and reject stale source', () {
+    const text =
+        '- #tylog.ref-note("p")[P] #tylog.ref-note("fixit")[fixit] bug';
+    const issue = IssueRef(
+      notePath: 'x',
+      line: 1,
+      text: text,
+      projectId: 'p',
+      marker: 'fixit',
+    );
+    final result = setIssueStatus('$text\nnext', issue, 'doing');
+    expect(result, '$text #metadata(("tylog-issue-status": "doing"))\nnext');
+    expect(
+      () => setIssueStatus('changed\n$text', issue, 'done'),
+      throwsStateError,
+    );
+    final updated = IssueRef(
+      notePath: 'x',
+      line: 1,
+      text: result.split('\n').first,
+      projectId: 'p',
+      marker: 'fixit',
+    );
+    expect(
+      setIssueStatus(result, updated, 'done'),
+      '$text #metadata(("tylog-issue-status": "done"))\nnext',
+    );
+  });
+  test('scope follows descendants', () {
+    const index = VaultIndex(
+      notesByPath: {
+        'p': NoteRef(id: 'p', path: 'p', title: 'P', outgoingLinks: []),
+        'c': NoteRef(
+          id: 'c',
+          path: 'c',
+          title: 'C',
+          outgoingLinks: [],
+          partOf: ['p'],
+        ),
+        'g': NoteRef(
+          id: 'g',
+          path: 'g',
+          title: 'G',
+          outgoingLinks: [],
+          partOf: ['c'],
+        ),
+      },
+      backlinksByTarget: {},
+      issues: [
+        IssueRef(
+          notePath: 'x',
+          line: 1,
+          text: 'a',
+          projectId: 'p',
+          marker: 'fixit',
+        ),
+        IssueRef(
+          notePath: 'x',
+          line: 2,
+          text: 'b',
+          projectId: 'g',
+          marker: 'fixit',
+        ),
+        IssueRef(
+          notePath: 'x',
+          line: 3,
+          text: 'c',
+          projectId: 'other',
+          marker: 'fixit',
+        ),
+      ],
+    );
+    expect(issuesForEntity('p', index).map((i) => i.line), [1, 2]);
+    expect(hasBoardItems('p', index), isTrue);
+    expect(
+      hasBoardItems(
+        'other',
+        const VaultIndex(notesByPath: {}, backlinksByTarget: {}),
+      ),
+      isFalse,
+    );
+  });
+}

@@ -56,7 +56,9 @@ class _CountingInspector implements TypstInspector {
   @override
   Future<List<TypstMetadataRecord>> inspect(TypstDocumentInput input) async {
     inspected.add(input.path);
-    final title = RegExp(r'title: "([^"]*)"').firstMatch(input.source)?.group(1);
+    final title = RegExp(
+      r'title: "([^"]*)"',
+    ).firstMatch(input.source)?.group(1);
     return [
       TypstMetadataRecord(
         label: '<tylog-note>',
@@ -110,16 +112,23 @@ void main() {
     );
   });
 
-  test('an unchanged note is served from cache without being re-read', () async {
-    final first = await scanVaultStorage(storage);
-    expect(first.notes, hasLength(2));
+  test(
+    'an unchanged note is served from cache without being re-read',
+    () async {
+      final first = await scanVaultStorage(storage);
+      expect(first.notes, hasLength(2));
 
-    storage.reads.clear();
-    final second = await scanVaultStorage(storage, previous: first);
+      storage.reads.clear();
+      final second = await scanVaultStorage(storage, previous: first);
 
-    expect(storage.reads, isEmpty, reason: 'cache hit must not read the file');
-    expect(second.notes.map((n) => n.path), first.notes.map((n) => n.path));
-  });
+      expect(
+        storage.reads,
+        isEmpty,
+        reason: 'cache hit must not read the file',
+      );
+      expect(second.notes.map((n) => n.path), first.notes.map((n) => n.path));
+    },
+  );
 
   for (final donorVersion in [11, kVaultIndexVersion]) {
     test(
@@ -231,23 +240,26 @@ void main() {
     expect(storage.reads, containsAll(['notes/a.typ', 'notes/b.typ']));
   });
 
-  test('a stale path is re-read even when its fingerprint is unchanged', () async {
-    final first = await scanVaultStorage(storage);
-    expect(first.notesByPath['notes/a.typ']?.title, 'Alpha');
+  test(
+    'a stale path is re-read even when its fingerprint is unchanged',
+    () async {
+      final first = await scanVaultStorage(storage);
+      expect(first.notesByPath['notes/a.typ']?.title, 'Alpha');
 
-    // Same byte length, so mtime+size can collide with the previous scan when
-    // both land inside one second — exactly the hole `stale` exists to close.
-    await storage.writeText('notes/a.typ', _note('Alpry'));
+      // Same byte length, so mtime+size can collide with the previous scan when
+      // both land inside one second — exactly the hole `stale` exists to close.
+      await storage.writeText('notes/a.typ', _note('Alpry'));
 
-    final second = await scanVaultStorage(
-      storage,
-      previous: first,
-      stale: {'notes/a.typ'},
-    );
+      final second = await scanVaultStorage(
+        storage,
+        previous: first,
+        stale: {'notes/a.typ'},
+      );
 
-    expect(second.notesByPath['notes/a.typ']?.title, 'Alpry');
-    expect(second.notesByPath['notes/b.typ']?.title, 'Bravo');
-  });
+      expect(second.notesByPath['notes/a.typ']?.title, 'Alpry');
+      expect(second.notesByPath['notes/b.typ']?.title, 'Bravo');
+    },
+  );
 
   test('stale does not force a rescan of other notes', () async {
     final first = await scanVaultStorage(storage);
@@ -269,6 +281,7 @@ void main() {
           entry.key: entry.value.copyWith(fingerprint: 'foreign-mtime:0'),
       },
       backlinksByTarget: index.backlinksByTarget,
+      issueLines: index.issueLines,
       tasks: index.tasks,
     );
 
@@ -290,27 +303,34 @@ void main() {
         isEmpty,
         reason: 'the bytes are unchanged, so no note needs a Typst query',
       );
-      expect(storage.reads, isEmpty, reason: 'hashing does not read via readBytes');
+      expect(
+        storage.reads,
+        isEmpty,
+        reason: 'hashing does not read via readBytes',
+      );
       expect(storage.hashes, containsAll(['notes/a.typ', 'notes/b.typ']));
       expect(second.notesByPath['notes/a.typ']?.title, 'Alpha');
     });
 
-    test('the reused entry re-stamps the cheap gate, so the next scan is free', () async {
-      final inspector = _CountingInspector();
-      final first = await scanVaultStorage(storage, inspector: inspector);
-      final second = await scanVaultStorage(
-        storage,
-        inspector: inspector,
-        previous: asIfBuiltElsewhere(first),
-      );
+    test(
+      'the reused entry re-stamps the cheap gate, so the next scan is free',
+      () async {
+        final inspector = _CountingInspector();
+        final first = await scanVaultStorage(storage, inspector: inspector);
+        final second = await scanVaultStorage(
+          storage,
+          inspector: inspector,
+          previous: asIfBuiltElsewhere(first),
+        );
 
-      storage.hashes.clear();
-      storage.reads.clear();
-      await scanVaultStorage(storage, inspector: inspector, previous: second);
+        storage.hashes.clear();
+        storage.reads.clear();
+        await scanVaultStorage(storage, inspector: inspector, previous: second);
 
-      expect(storage.hashes, isEmpty, reason: 'mtime+size gate hits first');
-      expect(storage.reads, isEmpty);
-    });
+        expect(storage.hashes, isEmpty, reason: 'mtime+size gate hits first');
+        expect(storage.reads, isEmpty);
+      },
+    );
 
     test('changed bytes still fall through to a full re-parse', () async {
       final inspector = _CountingInspector();
@@ -364,10 +384,7 @@ void main() {
       );
       expect(second.version, kVaultIndexVersion);
       // And the result is the real thing, not a downgraded entry.
-      expect(
-        second.notesByPath['notes/a.typ']?.metadataSource,
-        'typst-query',
-      );
+      expect(second.notesByPath['notes/a.typ']?.metadataSource, 'typst-query');
       expect(
         second.notesByPath['notes/a.typ']?.title,
         first.notesByPath['notes/a.typ']?.title,
@@ -411,11 +428,7 @@ void main() {
       );
 
       inspector.inspected.clear();
-      await scanVaultStorage(
-        storage,
-        inspector: inspector,
-        previous: oldQuery,
-      );
+      await scanVaultStorage(storage, inspector: inspector, previous: oldQuery);
 
       expect(inspector.inspected, hasLength(2));
     });

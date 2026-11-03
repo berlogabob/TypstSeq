@@ -1,6 +1,59 @@
 part of '../scanner.dart';
 
-String replaceNoteHeader(String source, NoteMetadataDraft draft) {
+/// Replaces selected note fields using the balanced Typst argument parser.
+String replaceNoteFields(String source, Map<String, String> values) {
+  final call = _noteHeader(source);
+  if (call == null) throw StateError('No tylog.note header found');
+  var header = call.source;
+  for (final entry in values.entries) {
+    if (!writableNoteFields.contains(entry.key)) {
+      throw ArgumentError('Unsupported note field: ${entry.key}');
+    }
+    final field = _locateTopLevelField(header, entry.key);
+    header = field == null
+        ? _appendCallField(
+            header,
+            entry.key,
+            entry.value,
+            allowed: writableNoteFields,
+          )
+        : header.replaceRange(field.valueStart, field.valueEnd, entry.value);
+  }
+  return source.replaceRange(call.start, call.end, header);
+}
+
+/// Changes explicit parents while preserving the current metadata and body.
+String replaceNotePartOf(
+  String source,
+  NoteMetadataDraft current,
+  List<String> parents,
+) => replaceNoteHeader(
+  source,
+  NoteMetadataDraft(
+    id: current.id,
+    title: current.title,
+    kind: current.kind,
+    project: current.project,
+    date: current.date,
+    tags: current.tags,
+    aliases: current.aliases,
+    properties: {...current.properties, 'part_of': parents.toSet().toList()},
+  ),
+  propertyKeys: const {'part_of'},
+);
+
+String replaceNoteHeader(
+  String source,
+  NoteMetadataDraft draft, {
+  Set<String>? propertyKeys,
+}) {
+  // Narrow metadata edits must preserve unknown Typst values and header fields.
+  if (propertyKeys != null && _noteHeader(source) != null) {
+    for (final key in propertyKeys) {
+      source = replaceNoteProperty(source, key, draft.properties[key]);
+    }
+    return source;
+  }
   final header = serializeNoteHeader(draft);
   final call = _noteHeader(source);
   final String withHeader;
@@ -309,10 +362,39 @@ String replaceNoteProperty(String source, String key, Object? value) {
   return source.replaceRange(call.start, call.end, newHeader);
 }
 
+/// Removes a property entry without reserializing unrelated header values.
+String removeNoteProperty(String source, String key) {
+  final call = _noteHeader(source);
+  if (call == null) throw StateError('No tylog.note header found');
+  final header = call.source;
+  final props = _locateTopLevelField(header, 'properties');
+  if (props == null) return source;
+  final dict = header.substring(props.valueStart, props.valueEnd);
+  final entry = _locateDictEntry(dict, key);
+  if (entry == null) return source;
+  var start = entry.start;
+  var end = entry.end;
+  // Consume the following comma when available; otherwise consume the prior
+  // comma so the remaining Typst dictionary stays valid.
+  if (end < dict.length && dict.substring(end).trimLeft().startsWith(',')) {
+    end = dict.indexOf(',', end) + 1;
+  } else {
+    final comma = dict.substring(0, start).lastIndexOf(',');
+    if (comma >= 0) start = comma;
+  }
+  final updated = header.replaceRange(
+    props.valueStart + start,
+    props.valueStart + end,
+    '',
+  );
+  return source.replaceRange(call.start, call.end, updated);
+}
+
 /// Parses the `properties: (...)` dictionary out of a `tylog.note.with(...)`
 /// header's source text. Keys are always quoted strings (see
 /// [_typstDictionary]); values are decoded when they're strings, numbers,
-/// booleans, or `none`, and otherwise kept as their raw Typst source text.
+/// booleans, or `none`; `part_of` also decodes string arrays. Other values
+/// are kept as their raw Typst source text.
 Map<String, Object?> _parseProperties(String callSource) {
   final field = _locateTopLevelField(callSource, 'properties');
   if (field == null) return const {};
@@ -339,7 +421,16 @@ Map<String, Object?> _parseProperties(String callSource) {
       RegExp(r'\\(.)'),
       (m) => m.group(1)!,
     );
-    result[key] = _parsePropertyValue(match.group(3)!.trim());
+    final raw = match.group(3)!.trim();
+    if (key == 'part_of' && raw.startsWith('(') && raw.endsWith(')')) {
+      result[key] = _splitTopLevel(raw.substring(1, raw.length - 1))
+          .where((item) => item.trim().isNotEmpty)
+          .map(_parsePropertyValue)
+          .whereType<String>()
+          .toList();
+    } else {
+      result[key] = _parsePropertyValue(raw);
+    }
   }
   return result;
 }
@@ -407,4 +498,3 @@ Object? _parsePropertyValue(String raw) {
   if (number != null) return number;
   return trimmed;
 }
-

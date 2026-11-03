@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'widgets/app_icons.dart';
+import 'widgets/entity_tree.dart';
 import 'models.dart';
 import 'saved_searches.dart';
 import 'retrieval/cosine_search.dart';
@@ -43,8 +44,12 @@ class KnowledgeScreen extends StatefulWidget {
     this.onDeleteSearch,
     this.onSetTaskStatus,
     this.onSetTaskField,
+    this.shelfPrefs = const {},
+    this.onShelfPrefsChanged,
   });
 
+  final Map<String, String> shelfPrefs;
+  final ValueChanged<Map<String, String>>? onShelfPrefsChanged;
   final Future<void> Function(TaskRef, String)? onSetTaskStatus;
   final Future<void> Function(TaskRef, String, String)? onSetTaskField;
   final KnowledgeView initialView;
@@ -111,6 +116,7 @@ class KnowledgeScreen extends StatefulWidget {
 }
 
 class _KnowledgeScreenState extends State<KnowledgeScreen> {
+  late bool _tree = widget.shelfPrefs['knowledge.view'] == 'tree';
   late KnowledgeView view = widget.initialView;
   late String query = widget.initialQuery;
   String? selectedTag;
@@ -400,14 +406,39 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                 ..sort((a, b) => tagCounts[b]!.compareTo(tagCounts[a]!)))
               .take(8)
               .toList();
-    final results = _results;
+    final matchedPaths = _results
+        .where(
+          (r) =>
+              r.kind != 'task' &&
+              r.kind != 'file' &&
+              widget.index.notesByPath.containsKey(r.path),
+        )
+        .map((r) => r.path)
+        .toSet();
+    final treeNodes = _tree
+        ? buildEntityTree(widget.index.notes, matchedPaths)
+        : <EntityTreeNode>[];
+    final results = _tree
+        ? _results
+              .where(
+                (r) =>
+                    r.kind == 'task' ||
+                    r.kind == 'file' ||
+                    !matchedPaths.contains(r.path),
+              )
+              .toList()
+        : _results;
+    final hasTree = treeNodes.isNotEmpty;
     final citations = _citations;
     return ListView.builder(
       padding: const EdgeInsets.all(kSpace16),
       itemCount:
           1 +
           citations.length +
-          (results.isEmpty && citations.isEmpty ? 1 : results.length),
+          (hasTree ? 1 : 0) +
+          (results.isEmpty && citations.isEmpty && !hasTree
+              ? 1
+              : results.length),
       itemBuilder: (context, i) {
         if (i == 0) {
           return Column(
@@ -565,9 +596,32 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                   ),
                 ),
               const SizedBox(height: kSpace8),
+              EntityTreeToggle(
+                tree: _tree,
+                onChanged: (value) {
+                  setState(() => _tree = value);
+                  widget.onShelfPrefsChanged?.call({
+                    'knowledge.view': value ? 'tree' : 'list',
+                  });
+                },
+              ),
             ],
           );
         }
+        if (hasTree && i == 1) {
+          return EntityTree(
+            nodes: treeNodes,
+            expand:
+                query.isNotEmpty ||
+                selectedTag != null ||
+                selectedStatus != null,
+            onOpen: (path) {
+              widget.onOpenSearchNote?.call(path, query) ??
+                  widget.onOpenNote(path);
+            },
+          );
+        }
+        if (hasTree) i--;
         // Keyword results (the user's notes) first, related passages after:
         // passages listed first pushed every note hit below the fold
         // ('пробежка' showed 7 article passages, 50 note hits unseen).
@@ -629,13 +683,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
           );
         }
         return ListTile(
-          leading: Icon(switch (result.kind) {
-            'task' => Icons.task_alt,
-            'file' => Icons.attach_file,
-            'project' => Icons.work_outline,
-            'article' => Icons.article_outlined,
-            _ => Icons.description_outlined,
-          }),
+          leading: Icon(iconForKind(result.kind)),
           title: Text(result.title),
           subtitle: Text(
             labelForKind(result.kind),

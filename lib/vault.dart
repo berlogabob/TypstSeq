@@ -161,7 +161,6 @@ class Vault {
     final safe = title.trim().replaceAll(RegExp(r'[\\/]'), '-');
     if (safe.isEmpty) throw ArgumentError('Page title is empty');
     final directory = switch (kind) {
-      'project' => 'projects',
       'article' => 'articles',
       'screenshot' => 'screenshots',
       _ => 'notes',

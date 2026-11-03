@@ -1,5 +1,35 @@
 part of '../app_mobile.dart';
 
+Widget namespaceImportDialog(
+  BuildContext context,
+  NamespacePlan plan,
+) => AlertDialog(
+  title: const Text('Migrate imported namespace titles'),
+  content: SizedBox(
+    width: 500,
+    child: SingleChildScrollView(
+      child: Text(
+        [
+          for (final c in plan.changes)
+            '${c.existingId == null ? "Create" : "Update"}: ${c.fullPath} → ${c.newTitle}${c.parentPath == null ? "" : " (parent: ${c.parentPath})"}',
+          for (final title in plan.skipped) 'Skipped: $title',
+        ].join('\n'),
+      ),
+    ),
+  ),
+  actions: [
+    TextButton(
+      onPressed: () => Navigator.pop(context, false),
+      child: const Text('Cancel'),
+    ),
+    if (plan.changes.isNotEmpty)
+      FilledButton(
+        onPressed: () => Navigator.pop(context, true),
+        child: const Text('Apply'),
+      ),
+  ],
+);
+
 const _vaultImportAssetLimit = 50 * 1024 * 1024;
 
 enum ImportSourceDecision { importNew, skipUnchanged, importChangedCopy }
@@ -573,6 +603,49 @@ extension _VaultImportFlow on _HomeScreenState {
 
     await workspace.refreshIndex(updateStatus: false, always: true);
     if (!mounted || vault != opened) return;
+    if (dialect == 'logseq' && index != null && writtenPaths.isNotEmpty) {
+      final notes = index!.notes.toList();
+      final full = namespacePlan(notes);
+      final importedIds = notes
+          .where((n) => writtenPaths.contains(n.path))
+          .map((n) => n.id)
+          .toSet();
+      final targets = full.changes
+          .where((c) => importedIds.contains(c.existingId))
+          .map((c) => c.fullPath.toLowerCase())
+          .toList();
+      final changes = full.changes
+          .where(
+            (c) => targets.any(
+              (t) =>
+                  t == c.fullPath.toLowerCase() ||
+                  t.startsWith('${c.fullPath.toLowerCase()}/'),
+            ),
+          )
+          .toList();
+      final plan = NamespacePlan(changes, full.skipped);
+      final confirmed = (changes.isNotEmpty || full.skipped.isNotEmpty)
+          ? await showDialog<bool>(
+              context: context,
+              builder: (context) => namespaceImportDialog(context, plan),
+            )
+          : false;
+      if (!mounted || vault != opened) return;
+      try {
+        if (confirmed == true) {
+          await applyNamespacePlan(
+            opened,
+            notes,
+            plan,
+            mutate: workspace.mutateNote,
+          );
+          await workspace.waitForMutationRefresh();
+          await workspace.refreshIndex(updateStatus: false, always: true);
+        }
+      } catch (error) {
+        report.details.add('Namespace migration stopped: $error');
+      }
+    }
     _queueCloudSync();
     _rebuild(
       () => status = complete

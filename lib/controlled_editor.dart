@@ -39,9 +39,24 @@ ControlledDocument parseControlledTypst(String source) {
   final bodyStart = _bodyStart(source);
   final blocks = <ControlledBlock>[];
   var start = bodyStart;
+  var scan = bodyStart;
+  var semanticEnd = bodyStart;
   for (final separator in RegExp(r'\n[ \t]*\n').allMatches(source, bodyStart)) {
+    while (scan <= separator.start) {
+      final end = _semanticBlockEnd(source, scan, source.length);
+      if (end != null && end > semanticEnd) semanticEnd = end;
+      if (semanticEnd > separator.start) {
+        scan = semanticEnd;
+        break;
+      }
+      final newline = source.indexOf('\n', scan);
+      if (newline < 0) break;
+      scan = newline + 1;
+    }
+    if (separator.start < semanticEnd) continue;
     _addBlocks(source, start, separator.start, blocks);
     start = separator.end;
+    scan = start;
   }
   _addBlocks(source, start, source.length, blocks);
   return ControlledDocument(source: source, blocks: blocks);
@@ -288,7 +303,7 @@ int? _balancedSquareEnd(String source, int open) {
 }
 
 String _inlinePreview(String source) {
-  var value = source;
+  var value = source.replaceAll(issueStatusMetadata, '');
   for (final pattern in [
     RegExp(r'#tylog\.(?:ref-note|date-ref|attachment)\([^)]*\)\[([^\]]*)\]'),
     RegExp(r'#link\([^)]*\)\[([^\]]*)\]'),
@@ -313,8 +328,19 @@ String _inlinePreview(String source) {
       // Legacy `[[wiki]]` links show as their target text.
       .replaceAllMapped(RegExp(r'\[\[([^\]]+)\]\]'), (match) => match.group(1)!)
       .replaceAll(RegExp(r'#image\([^)]*\)'), 'Image');
-  return unescapeMarkup(value);
+  return unescapeMarkup(value).trimRight();
 }
+
+final issueStatusMetadata = RegExp(
+  r'#metadata\(\(\s*"tylog-issue-status"\s*:\s*"(?:todo|doing|done|cancelled)"\s*,?\s*\)\)',
+);
+
+String issuePreview(String source) => _inlinePreview(
+  source.replaceFirst(
+    RegExp(r'^\s*(?:(?:\\-|[-+*]|\d+\.)\s+)?(?:\d{1,2}:\d{2}\s+)?'),
+    '',
+  ),
+).trim();
 
 String? _namedString(String source, String name) {
   final match = RegExp('$name\\s*:\\s*"((?:\\\\.|[^"])*)"').firstMatch(source);

@@ -40,7 +40,7 @@ void main() {
       ),
     );
     expect(find.text('Fernando Marson'), findsOneWidget);
-    expect(find.text('person'), findsOneWidget);
+    expect(find.text('Person'), findsOneWidget);
     expect(find.text('Fernando'), findsOneWidget); // alias chip
     expect(find.text('fernando@example.com'), findsOneWidget);
     await tester.tap(find.text('fernando@example.com'));

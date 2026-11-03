@@ -179,6 +179,7 @@ void main() {
             ).copyWith(contentHash: hash),
         },
         backlinksByTarget: {},
+        issueLines: {for (final entry in receipts.notes!) entry.path: []},
       );
       await IndexDonorStore(receipts).publish('cli-mac', donorIndex);
       await receipts.writeText(

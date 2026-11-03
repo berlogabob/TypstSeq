@@ -1,4 +1,5 @@
 import 'reading_log.dart';
+import 'namespace_migration.dart';
 import 'dart:async';
 import 'widgets/app_icons.dart';
 import 'calendar_feeds.dart';
@@ -68,8 +69,12 @@ import 'widgets/constants.dart';
 import 'widgets/date_format.dart';
 import 'widgets/note_picker_sheet.dart';
 import 'widgets/entity_header.dart';
+import 'widgets/entity_board.dart';
+import 'package:tylog_core/tylog_core.dart' show hasBoardItems;
+import 'widgets/kind_icon_picker.dart';
 import 'widgets/enrich_review.dart';
 import 'widgets/linked_references.dart';
+import 'widgets/entity_relationships.dart';
 import 'widgets/dialogs.dart';
 import 'widgets/editor_panel.dart';
 import 'widgets/journal_feed.dart';
@@ -785,6 +790,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       isComposing: () => richController.isComposing,
       databaseForVault: _databaseForVault,
     )..addListener(_workspaceChanged);
+    kindRegistry.addListener(_kindRegistryChanged);
     WidgetsBinding.instance.addObserver(this);
     _shareChannel.setMethodCallHandler((call) async {
       if (call.method == 'shareAvailable') await _handlePendingShares();
@@ -819,6 +825,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _semantic?.dispose();
     _processingJobs.dispose();
     WidgetsBinding.instance.removeObserver(this);
+    kindRegistry.removeListener(_kindRegistryChanged);
     workspace
       ..removeListener(_workspaceChanged)
       ..dispose();
@@ -902,6 +909,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _additionalDatabases.add(scoped);
           return scoped;
         });
+
+  void _kindRegistryChanged() {
+    if (mounted) setState(() {});
+  }
 
   void _workspaceChanged() {
     if (!mounted || _exiting) return;
@@ -2013,6 +2024,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   }
 
                   return KnowledgeScreen(
+                    shelfPrefs: vaultRegistry?.shelfPrefs ?? const {},
+                    onShelfPrefsChanged: (prefs) {
+                      final registry = vaultRegistry;
+                      if (registry != null) {
+                        unawaited(
+                          registry.updateShelfPrefs({
+                            ...registry.shelfPrefs,
+                            ...prefs,
+                          }),
+                        );
+                      }
+                    },
                     onSetTaskStatus: _setTaskStatus,
                     onSetTaskField: _setTaskField,
                     initialView: initialView,
@@ -2671,6 +2694,62 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     transform: migrateEntityTypeToKind,
   );
 
+  Future<void> _migrateNamespaces() async {
+    final v = vault;
+    final ix = index;
+    if (v == null || ix == null) return;
+    final notes = ix.notes.toList();
+    final plan = namespacePlan(notes);
+    final lines = [
+      for (final c in plan.changes)
+        '${c.existingId == null ? "Create" : "Update"}: ${c.fullPath} → ${c.newTitle}${c.parentPath == null ? "" : " (parent: ${c.parentPath})"}',
+      for (final title in plan.skipped) 'Skipped: $title',
+    ];
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Migrate namespace titles'),
+        content: SizedBox(
+          width: 500,
+          child: SingleChildScrollView(
+            child: Text(
+              lines.isEmpty ? 'No changes needed.' : lines.join('\n'),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          if (plan.changes.isNotEmpty)
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Apply'),
+            ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted || vault != v) return;
+    if (dirty && !await _save(syncAfter: false)) return;
+    try {
+      final affected = plan.changes
+          .map((c) => c.existingId)
+          .whereType<String>()
+          .toSet();
+      await v.snapshotNotes(
+        notes.where((n) => affected.contains(n.id)).map((n) => n.path).toSet(),
+      );
+      await applyNamespacePlan(v, notes, plan, mutate: workspace.mutateNote);
+      await workspace.waitForMutationRefresh();
+      await workspace.refreshIndex(updateStatus: false, always: true);
+      if (mounted) showSnack(context, 'Namespace migration complete');
+    } catch (error) {
+      if (mounted) showSnack(context, 'Namespace migration stopped: $error');
+    }
+  }
+
   /// One-off maintenance: drops the *empty* org-mode drawers and trailing
   /// empty blocks that Logseq exports carry into a note (see
   /// [stripLogseqNoise]). A drawer holding CLOCK: records is left alone — those
@@ -3158,6 +3237,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   onMigrateEntityTypes: () async {
                     _closeSettings(context);
                     await _migrateEntityTypes();
+                  },
+                  onMigrateNamespaces: () async {
+                    _closeSettings(context);
+                    await _migrateNamespaces();
                   },
                   onStripImportNoise: () async {
                     _closeSettings(context);
@@ -4048,7 +4131,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       context: context,
       showDragHandle: false,
       builder: (context) => NotePickerSheet(
-        notes: paged ?? _entities,
+        notes:
+            paged
+                ?.where((item) => !structuralNoteKinds.contains(item.kind))
+                .toList() ??
+            _entities,
         createLabel: 'New entity',
         subtitleFor: (note) => note.kind,
       ),
@@ -4128,6 +4215,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       'address': TextEditingController(),
       'link': TextEditingController(),
     };
+    final selectedIcons = <String, String>{};
     var kindListenerAttached = false;
     final save = await showDialog<bool>(
       context: context,
@@ -4137,9 +4225,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             kindListenerAttached = true;
             kindField.addListener(() => setDialogState(() {}));
           }
-          final fields = entityFieldsForKind(kindField.text);
+          final chosenKind = kindField.text.trim();
+          final needsIcon =
+              chosenKind.isNotEmpty &&
+              !kindRegistry.value.containsKey(chosenKind);
+          final selectedIcon =
+              selectedIcons[chosenKind] ??
+              kindIconPalette.entries
+                  .where((entry) => entry.value == iconForKind(chosenKind))
+                  .firstOrNull
+                  ?.key ??
+              'category';
+          final fields = entityFieldsForKind(chosenKind);
           return AlertDialog(
             title: const Text('New entity'),
+            scrollable: true,
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -4153,9 +4253,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   requestFocusOnTap: true,
                   enableFilter: true,
                   dropdownMenuEntries:
-                      entityKindChoices(
-                            index?.notes.map((n) => n.kind) ?? const <String>[],
-                          )
+                      entityKindChoices([
+                            ...kindRegistry.value.keys,
+                            ...?index?.notes.map((n) => n.kind),
+                          ])
                           .map(
                             (value) =>
                                 DropdownMenuEntry(value: value, label: value),
@@ -4163,6 +4264,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           .toList(),
                 ),
                 const SizedBox(height: kSpace12),
+                if (needsIcon) ...[
+                  const Text('Kind icon'),
+                  KindIconPicker(
+                    selected: selectedIcon,
+                    onSelected: (icon) =>
+                        setDialogState(() => selectedIcons[chosenKind] = icon),
+                  ),
+                  const SizedBox(height: kSpace12),
+                ],
                 _dialogField(aliases, label: 'Aliases, comma-separated'),
                 const SizedBox(height: kSpace12),
                 for (final field in fields)
@@ -4209,6 +4319,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (save != true || name.isEmpty || entityKind.isEmpty || v == null) {
       return null;
     }
+    if (!kindRegistry.value.containsKey(entityKind)) {
+      try {
+        await workspace.configureKind(
+          entityKind,
+          icon:
+              selectedIcons[entityKind] ??
+              kindIconPalette.entries
+                  .where((entry) => entry.value == iconForKind(entityKind))
+                  .firstOrNull
+                  ?.key ??
+              'category',
+          label: labelForKind(entityKind) == 'Entity'
+              ? entityKind
+              : labelForKind(entityKind),
+        );
+      } catch (error) {
+        if (mounted) showSnack(context, 'Could not save kind: $error');
+        return null;
+      }
+      if (!identical(vault, v)) return null;
+    }
     final file = await workspace.createPage(name);
     final source = await workspace.readNote(file);
     final created = scanNote(file, source);
@@ -4233,6 +4364,52 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     unawaited(workspace.refreshIndex(always: true));
     return scanNote(file, updated);
+  }
+
+  void _updatePartOf(String parentId, {bool remove = false}) {
+    final current = _currentNoteRef();
+    if (current == null) return;
+    final source = _currentSource();
+    final fresh = scanNote(current.path, source);
+    final value = fresh.properties['part_of'];
+    final parents = <String>{
+      if (value is String) value,
+      if (value is List) ...value.whereType<String>(),
+    };
+    var updated = source;
+    if (remove && fresh.project == parentId) {
+      updated = replaceNoteFields(updated, const {'project': 'none'});
+    }
+    if (remove) {
+      parents.remove(parentId);
+    } else {
+      parents.add(parentId);
+    }
+    if (remove && parents.isEmpty) {
+      updated = removeNoteProperty(updated, 'part_of');
+    } else {
+      updated = replaceNotePartOf(
+        updated,
+        NoteMetadataDraft.fromNote(fresh),
+        parents.toList(),
+      );
+    }
+    _loadSource(updated);
+    _queueAutosave();
+    setState(() {});
+  }
+
+  Future<void> _addParent() async {
+    final path = note;
+    final opened = vault;
+    final parent = await _chooseEntity();
+    if (!mounted ||
+        parent == null ||
+        note != path ||
+        !identical(vault, opened)) {
+      return;
+    }
+    _updatePartOf(parent.id);
   }
 
   Future<void> _runMagic(MagicAction action) async {
@@ -4312,32 +4489,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }
         return;
       case MagicAction.project:
-        final target = await _chooseNote(kind: 'project', create: true);
-        if (target == null) return;
-        if (_selectedText().isNotEmpty) {
-          _applyMagic(
-            MagicRequest(action: action, id: target.id, value: target.title),
-          );
-        } else {
-          final current = _currentNoteRef();
-          if (current == null) return;
-          _loadSource(
-            replaceNoteHeader(
-              _currentSource(),
-              NoteMetadataDraft(
-                id: current.id,
-                title: current.title,
-                kind: current.kind,
-                project: target.id,
-                date: current.date,
-                tags: current.tags,
-                aliases: current.aliases,
-                properties: current.properties,
-              ),
-            ),
-          );
-          _queueAutosave();
-        }
+        await _addParent();
         return;
       case MagicAction.tag:
         final value = await _askText('Tag', initialValue: _selectedText());
@@ -5760,10 +5912,61 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           if (isEntity)
             EntityHeader(
               note: currentNote,
+              onOpenBoard:
+                  v != null &&
+                      index != null &&
+                      hasBoardItems(currentNote.id, index!)
+                  ? () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => EntityBoard(
+                          entity: currentNote,
+                          vault: v,
+                          index: index!,
+                          setStatus: _setTaskStatus,
+                          mutateNote: workspace.mutateNote,
+                          refreshIndex: () async {
+                            await workspace.waitForMutationRefresh();
+                            return index;
+                          },
+                        ),
+                      ),
+                    )
+                  : null,
               imageResolver: _readAsset,
               onOpenUrl: _openUrl,
+              onChangeKindIcon: () async {
+                final entry = kindRegistry.value[currentNote.kind];
+                final icon = await showKindIconPicker(
+                  context,
+                  entry is Map && entry['icon'] is String
+                      ? entry['icon'] as String
+                      : null,
+                );
+                if (icon == null || !mounted || !identical(vault, v)) return;
+                try {
+                  await workspace.configureKind(
+                    currentNote.kind,
+                    icon: icon,
+                    label: labelForKind(currentNote.kind) == 'Entity'
+                        ? currentNote.kind
+                        : labelForKind(currentNote.kind),
+                  );
+                } catch (error) {
+                  if (context.mounted) {
+                    showSnack(context, 'Could not save kind: $error');
+                  }
+                }
+              },
             ),
           Expanded(child: content),
+          if (isEntity)
+            EntityRelationships(
+              note: scanNote(currentNote.path, _currentSource()),
+              index: index,
+              onAdd: _addParent,
+              onRemove: (id) => _updatePartOf(id, remove: true),
+              onOpen: _openPath,
+            ),
           if (references != null)
             if (keyboardUp || currentDaily != null)
               const SizedBox.shrink()

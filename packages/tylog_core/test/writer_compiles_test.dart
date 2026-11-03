@@ -44,10 +44,156 @@ void main() {
     expect(
       result.exitCode,
       0,
-      reason: 'writer output does not compile ($label):\n'
+      reason:
+          'writer output does not compile ($label):\n'
           '${result.stderr}\n--- source ---\n${file.readAsStringSync()}',
     );
   }
+
+  test('inline issue status metadata compiles', () {
+    const line =
+        '- #tylog.ref-note("project")[Project] '
+        '#tylog.ref-note("fixit")[fixit] description';
+    const issue = IssueRef(
+      notePath: 'x',
+      line: 1,
+      text: line,
+      projectId: 'project',
+      marker: 'fixit',
+    );
+    expectCompiles(
+      'issue-status-metadata',
+      setIssueStatus('$line\n', issue, 'doing'),
+    );
+  });
+
+  test('removing a legacy project parent leaves a compiling header', () {
+    const source =
+        '#show: tylog.note.with(\n'
+        '  id: "person",\n'
+        '  title: "Ada",\n'
+        '  kind: "person",\n'
+        '  project: "lab",\n'
+        '  properties: (part_of: ("lab",),),\n'
+        ')\n\nBody.';
+    final updated = removeNoteProperty(
+      replaceNoteFields(source, const {'project': 'none'}),
+      'part_of',
+    );
+    expect(updated, contains('project: none'));
+    expect(updated, isNot(contains('part_of:')));
+    expect(updated, endsWith('\n\nBody.'));
+    expectCompiles('remove-legacy-project-parent', updated);
+  });
+
+  test(
+    'parent additions and removals preserve metadata and body and compile',
+    () {
+      const body = '\n\n= Keep this heading\nText with #emph[markup].\n';
+      const draft = NoteMetadataDraft(
+        id: 'person',
+        title: 'Person',
+        kind: 'person',
+        project: 'legacy',
+        date: '2026-11-03',
+        tags: ['tag'],
+        aliases: ['Alias'],
+        properties: {
+          'custom': 'keep',
+          'part_of': ['lab'],
+        },
+      );
+      final original =
+          '#import "/_system/tylog.typ" as tylog\n'
+          '${serializeNoteHeader(draft)}$body';
+      var updated = original;
+      for (final parents in <List<String>>[
+        ['lab', 'university', 'lab'],
+        ['university'],
+        [],
+      ]) {
+        final current = scanNote('notes/person.typ', updated);
+        updated = replaceNotePartOf(
+          updated,
+          NoteMetadataDraft.fromNote(current),
+          parents,
+        );
+        expect(updated.substring(updated.indexOf('\n\n= Keep')), body);
+        final after = scanNote('notes/person.typ', updated);
+        final expected = {
+          ...draft.properties,
+          'part_of': parents.toSet().toList(),
+        };
+        expect(after.properties, expected);
+        expect(after.id, draft.id);
+        expect(after.title, draft.title);
+        expect(after.kind, draft.kind);
+        expect(after.project, draft.project);
+        expect(after.date, draft.date);
+        expect(after.tags, current.tags);
+        expect(after.aliases, draft.aliases);
+        expect(after.partOf, [...parents.toSet(), 'legacy']);
+        expectCompiles(
+          'parent-edit-${parents.length}',
+          updated.replaceFirst('#import "/_system/tylog.typ" as tylog\n', ''),
+        );
+      }
+    },
+  );
+
+  test('parent edits preserve unknown header values byte for byte', () {
+    const source =
+        '#import "/_system/tylog.typ" as tylog\n'
+        '#show: tylog.note.with(id: "p", title: "P", kind: "person", '
+        'tags: ("z", "a"), aliases: ("Second", "First"), '
+        'properties: (custom: (nested: (1, 2),), part_of: ("lab",)))\n'
+        '\nBody stays exactly as written.\n';
+    final updated = replaceNotePartOf(
+      source,
+      NoteMetadataDraft.fromNote(scanNote('notes/p.typ', source)),
+      ['uni'],
+    );
+    expect(
+      updated,
+      source.replaceFirst('part_of: ("lab",)', '"part_of": ("uni",)'),
+    );
+    expectCompiles(
+      'parent-unknown-values',
+      updated.replaceFirst('#import "/_system/tylog.typ" as tylog\n', ''),
+    );
+  });
+
+  test(
+    'serializeNoteHeader part_of arrays compile with the existing helper',
+    () {
+      for (final parents in <List<String>>[
+        [],
+        ['lab'],
+        ['lab', 'university'],
+      ]) {
+        final header = serializeNoteHeader(
+          NoteMetadataDraft(
+            id: 'person',
+            title: 'Person',
+            kind: 'person',
+            properties: {'part_of': parents},
+          ),
+        );
+        final array = parents.isEmpty
+            ? '()'
+            : '(${parents.map((parent) => '"$parent"').join(', ')},)';
+        expect(header, contains('"part_of": $array'));
+        expectCompiles('part-of-${parents.length}', header);
+        final scanned = scanNote('notes/person.typ', header);
+        expect(scanned.properties['part_of'], parents);
+        final rewritten = serializeNoteHeader(
+          NoteMetadataDraft.fromNote(scanned),
+        );
+        expect(rewritten, contains('"part_of": $array'));
+        expectCompiles('part-of-rewritten-${parents.length}', rewritten);
+      }
+    },
+  );
 
   // Both header forms, because they take different branches: a single-line
   // header has no trailing comma, so the field append has to supply one.
@@ -60,7 +206,10 @@ void main() {
 
   headers.forEach((label, source) {
     test('replaceNoteProperty output compiles ($label)', () {
-      expectCompiles('$label-prop', replaceNoteProperty(source, 'status', 'read'));
+      expectCompiles(
+        '$label-prop',
+        replaceNoteProperty(source, 'status', 'read'),
+      );
     });
   });
 
@@ -76,6 +225,12 @@ void main() {
       expectCompiles('$label-status', replaceTaskStatus(source, 't1', 'done'));
     });
 
+    test('board status transition output compiles ($label)', () {
+      final updated = applyTaskStatus(source, 't1', 'done', DateTime.utc(2026));
+      expect(updated, contains('status: "done"'));
+      expectCompiles('$label-board-status', updated);
+    });
+
     test('startTaskClock output compiles ($label)', () {
       expectCompiles(
         '$label-clock',
@@ -84,8 +239,7 @@ void main() {
     });
 
     test('start+stop clock output compiles ($label)', () {
-      final started =
-          startTaskClock(source, 't1', '2025-12-25T12:33:43');
+      final started = startTaskClock(source, 't1', '2025-12-25T12:33:43');
       expectCompiles(
         '$label-clock-stop',
         stopTaskClock(started, 't1', '2025-12-25T13:45:02'),

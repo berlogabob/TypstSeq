@@ -12,7 +12,7 @@ const Map<MagicAction, (IconData, String)> kMagicActionDisplay = {
   MagicAction.task: (Icons.task_alt, 'Task'),
   MagicAction.date: (AppIcons.calendarDate, 'Date'),
   MagicAction.time: (AppIcons.schedule, 'Time'),
-  MagicAction.project: (Icons.work_outline, 'Project'),
+  MagicAction.project: (Icons.work_outline, 'Part of…'),
   MagicAction.citation: (Icons.format_quote, 'Citation'),
   MagicAction.attachment: (Icons.attach_file, 'Attachment'),
   MagicAction.audio: (Icons.graphic_eq, 'Audio'),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'app_icons.dart';
+import '../kind_registry.dart';
 
 /// Note kinds that represent the app's own structural taxonomy (daily
 /// journal, pages, projects, …) rather than a user-defined entity. Defined in
@@ -53,9 +54,7 @@ ThemeData tyLogTheme(Brightness brightness) {
   const largeShape = RoundedRectangleBorder(
     borderRadius: BorderRadius.all(Radius.circular(kRadiusLarge)),
   );
-  const buttonStyle = ButtonStyle(
-    shape: WidgetStatePropertyAll(mediumShape),
-  );
+  const buttonStyle = ButtonStyle(shape: WidgetStatePropertyAll(mediumShape));
   return ThemeData(
     useMaterial3: true,
     colorScheme: scheme,
@@ -139,6 +138,43 @@ Color warningColor(ColorScheme scheme) => scheme.brightness == Brightness.dark
     ? const Color(0xFFFFC107)
     : const Color(0xFFB26A00);
 
+/// Stable names persisted in the vault's kind registry.
+const kindIconPalette = <String, IconData>{
+  'person': Icons.person_outline,
+  'place': Icons.location_on_outlined,
+  'business': Icons.business_outlined,
+  'work': Icons.work_outline,
+  'science': Icons.science_outlined,
+  'school': Icons.school_outlined,
+  'groups': Icons.groups_outlined,
+  'account_tree': Icons.account_tree_outlined,
+  'hub': Icons.hub_outlined,
+  'inventory': Icons.inventory_outlined,
+  'warehouse': Icons.warehouse_outlined,
+  'build': Icons.build_outlined,
+  'event': Icons.event_outlined,
+  'language': Icons.language_outlined,
+  'folder': Icons.folder_outlined,
+  'flag': Icons.flag_outlined,
+  'star': Icons.star_outline,
+  'bookmark': Icons.bookmark_outline,
+  'lightbulb': Icons.lightbulb_outline,
+  'memory': Icons.memory_outlined,
+  'palette': Icons.palette_outlined,
+  'music_note': Icons.music_note_outlined,
+  'sports_esports': Icons.sports_esports_outlined,
+  'menu_book': Icons.menu_book_outlined,
+  'apartment': Icons.apartment_outlined,
+  'computer': Icons.computer_outlined,
+  'camera': Icons.camera_outlined,
+  'local_library': Icons.local_library_outlined,
+  'biotech': Icons.biotech_outlined,
+  'category': Icons.category_outlined,
+};
+
+/// The active vault's registry. HomeScreen listens for changes to repaint icons.
+final kindRegistry = ValueNotifier<KindRegistry>(const {});
+
 /// The icon representing a note of the given [kind] — person/place/org entities
 /// and structural kinds. Used by inline reference chips and entity lists so
 /// person, place, project, etc. reads at a glance.
@@ -146,34 +182,47 @@ Color warningColor(ColorScheme scheme) => scheme.brightness == Brightness.dark
 /// This is the *only* place a note kind becomes an icon: routing every list
 /// through it is what stops "note" being `Icons.notes` on one screen and
 /// `Icons.description_outlined` on the next.
-IconData iconForKind(String? kind) => switch (kind) {
-  'person' => Icons.person_outline,
-  'place' => Icons.location_on_outlined, // map pin / locator
-  'org' || 'organization' || 'company' => Icons.business_outlined,
-  'project' => Icons.work_outline,
-  'idea' => Icons.lightbulb_outline,
-  'article' => Icons.article_outlined,
-  'screenshot' => AppIcons.screenshot,
-  'daily' => AppIcons.daily,
-  _ => Icons.description_outlined, // generic note reference
-};
+IconData iconForKind(String? kind, {KindRegistry? registry}) {
+  final entry = (registry ?? kindRegistry.value)[kind];
+  final icon = entry is Map ? kindIconPalette[entry['icon']] : null;
+  return icon ??
+      switch (kind) {
+        'fixit' => Icons.bug_report_outlined,
+        'task' => Icons.task_alt,
+        'file' => Icons.attach_file,
+        'person' => Icons.person_outline,
+        'place' => Icons.location_on_outlined, // map pin / locator
+        'org' || 'organization' || 'company' => Icons.business_outlined,
+        'project' => Icons.work_outline,
+        'idea' => Icons.lightbulb_outline,
+        'article' => Icons.article_outlined,
+        'screenshot' => AppIcons.screenshot,
+        'daily' => AppIcons.daily,
+        _ => Icons.description_outlined, // generic note reference
+      };
+}
 
 /// Human labels for search result kinds, including user-defined entities.
-String labelForKind(String kind) => switch (kind) {
-  'note' => 'Note',
-  'daily' => 'Journal',
-  'article' => 'Article',
-  'audio' => 'Audio',
-  'task' => 'Task',
-  'file' => 'File',
-  'project' => 'Project',
-  'research' => 'Research',
-  'idea' => 'Idea',
-  'screenshot' => 'Screenshot',
-  'person' => 'Person',
-  'org' || 'organization' || 'company' => 'Organization',
-  'place' => 'Place',
-  'website' => 'Website',
-  'event' => 'Event',
-  _ => 'Entity',
-};
+String labelForKind(String kind, {KindRegistry? registry}) {
+  final entry = (registry ?? kindRegistry.value)[kind];
+  final label = entry is Map ? entry['label'] : null;
+  if (label is String && label.trim().isNotEmpty) return label;
+  return switch (kind) {
+    'note' => 'Note',
+    'daily' => 'Journal',
+    'article' => 'Article',
+    'audio' => 'Audio',
+    'task' => 'Task',
+    'file' => 'File',
+    'project' => 'Project',
+    'research' => 'Research',
+    'idea' => 'Idea',
+    'screenshot' => 'Screenshot',
+    'person' => 'Person',
+    'org' || 'organization' || 'company' => 'Organization',
+    'place' => 'Place',
+    'website' => 'Website',
+    'event' => 'Event',
+    _ => 'Entity',
+  };
+}

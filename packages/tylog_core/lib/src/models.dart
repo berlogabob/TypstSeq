@@ -74,6 +74,7 @@ class NoteRef {
     required this.outgoingLinks,
     this.kind = 'note',
     this.project,
+    this.partOf = const [],
     this.date,
     this.tags = const [],
     this.aliases = const [],
@@ -98,6 +99,9 @@ class NoteRef {
   /// Plain text from the screenshot note's Description section.
   final String screenshotDescription;
   final String? project;
+
+  /// Parent entity ids, titles, or aliases.
+  final List<String> partOf;
   final String? date;
   final List<String> tags;
   final List<String> aliases;
@@ -143,6 +147,7 @@ class NoteRef {
     String? kind,
     String? screenshotDescription,
     String? project,
+    List<String>? partOf,
     String? date,
     List<String>? tags,
     List<String>? aliases,
@@ -165,6 +170,7 @@ class NoteRef {
     kind: kind ?? this.kind,
     screenshotDescription: screenshotDescription ?? this.screenshotDescription,
     project: project ?? this.project,
+    partOf: partOf ?? this.partOf,
     date: date ?? this.date,
     tags: tags ?? this.tags,
     aliases: aliases ?? this.aliases,
@@ -190,6 +196,7 @@ class NoteRef {
     'title': title,
     'kind': kind,
     'project': project,
+    'partOf': partOf,
     'date': date,
     'tags': tags,
     'aliases': aliases,
@@ -217,6 +224,7 @@ class NoteRef {
     kind: json['kind'] as String? ?? 'note',
     screenshotDescription: json['screenshotDescription'] as String? ?? '',
     project: json['project'] as String?,
+    partOf: stringList(json['partOf']),
     date: json['date'] as String?,
     tags: stringList(json['tags']),
     aliases: stringList(json['aliases']),
@@ -239,6 +247,29 @@ class NoteRef {
     metadataSource: json['metadataSource'] as String? ?? 'legacy',
     queryFacts: (json['queryFacts'] as Map?)?.cast<String, Object?>(),
   );
+}
+
+/// Groups children by resolved parent id; ids take priority over names.
+Map<String, List<NoteRef>> childrenByParent(Iterable<NoteRef> notes) {
+  final all = notes.toList();
+  final byId = {for (final note in all) note.id: note};
+  final byName = <String, NoteRef>{};
+  for (final note in all) {
+    for (final name in [note.title, ...note.aliases]) {
+      byName.putIfAbsent(name.toLowerCase(), () => note);
+    }
+  }
+  final children = <String, List<NoteRef>>{};
+  for (final note in all) {
+    final parents = <String>{};
+    for (final entry in note.partOf) {
+      final parent = byId[entry] ?? byName[entry.toLowerCase()];
+      if (parent != null && parents.add(parent.id)) {
+        (children[parent.id] ??= []).add(note);
+      }
+    }
+  }
+  return children;
 }
 
 class DateRef {
@@ -470,12 +501,11 @@ class TaskRef {
 /// validation and a 5-value `structuralNoteKinds` in the app's widget
 /// constants. One source now; the app re-exports [structuralNoteKinds].
 ///
-/// Structural kinds are the app's own taxonomy (journal, pages, projects, …);
+/// Structural kinds are the app's own taxonomy (journal, pages, …);
 /// everything else — including any custom kind — renders as an entity page.
 const structuralNoteKinds = {
   'daily',
   'note',
-  'project',
   'article',
   'research',
   'screenshot',
@@ -483,7 +513,14 @@ const structuralNoteKinds = {
 };
 
 /// First-class entity-page kinds (knowledge graph): known, not "unknown".
-const entityNoteKinds = {'person', 'organization', 'place', 'website', 'event'};
+const entityNoteKinds = {
+  'person',
+  'organization',
+  'place',
+  'website',
+  'event',
+  'project',
+};
 
 /// Every kind validation accepts without an extension warning.
 const standardNoteKinds = {...structuralNoteKinds, ...entityNoteKinds};
@@ -515,7 +552,8 @@ const standardNoteKinds = {...structuralNoteKinds, ...entityNoteKinds};
 /// 11: screenshot Description sections are cached for library card titles.
 /// 12: queried envelope validation problems are part of the cached index.
 /// 13: fallback task properties and canonical attachment paths are retained.
-const kVaultIndexVersion = 13;
+/// 14: parent entities are derived from properties.part_of and legacy project.
+const kVaultIndexVersion = 15;
 
 /// Version of the *Typst query output* a cached entry was built from — the
 /// expensive half.
@@ -541,6 +579,45 @@ const kVaultIndexVersion = 13;
 /// once a stale index stays visible during the rebuild.
 const kVaultQueryVersion = 1;
 
+class IssueRef {
+  const IssueRef({
+    required this.notePath,
+    required this.line,
+    required this.text,
+    required this.projectId,
+    required this.marker,
+    this.status = 'todo',
+    this.githubNumber,
+  });
+  final String notePath;
+  final int line;
+
+  /// Exact source line, used to reject stale edits.
+  final String text;
+  final String projectId;
+  final String marker;
+  final String status;
+  final int? githubNumber;
+  Map<String, Object?> toJson() => {
+    'notePath': notePath,
+    'line': line,
+    'text': text,
+    'projectId': projectId,
+    'marker': marker,
+    'status': status,
+    'githubNumber': githubNumber,
+  };
+  factory IssueRef.fromJson(Map<String, Object?> json) => IssueRef(
+    notePath: json['notePath'] as String,
+    line: json['line'] as int,
+    text: json['text'] as String,
+    projectId: json['projectId'] as String,
+    marker: json['marker'] as String,
+    status: json['status'] as String? ?? 'todo',
+    githubNumber: json['githubNumber'] as int?,
+  );
+}
+
 class VaultIndex {
   const VaultIndex({
     this.version = kVaultIndexVersion,
@@ -550,6 +627,8 @@ class VaultIndex {
     this.attachmentBacklinksByPath = const {},
     this.problems = const [],
     this.tasks = const [],
+    this.issues = const [],
+    this.issueLines = const {},
   });
 
   final int version;
@@ -563,6 +642,8 @@ class VaultIndex {
   final Map<String, List<String>> attachmentBacklinksByPath;
   final List<PkmsProblem> problems;
   final List<TaskRef> tasks;
+  final List<IssueRef> issues;
+  final Map<String, List<String>> issueLines;
 
   List<NoteRef> get notes =>
       notesByPath.values.toList()..sort((a, b) => a.path.compareTo(b.path));
@@ -621,6 +702,8 @@ class VaultIndex {
     'attachmentBacklinksByPath': _sortedLists(attachmentBacklinksByPath),
     'problems': problems.map((problem) => problem.toJson()).toList(),
     'tasks': tasks.map((task) => task.toJson()).toList(),
+    'issues': issues.map((issue) => issue.toJson()).toList(),
+    'issueLines': issueLines,
   };
 
   factory VaultIndex.fromJson(Map<String, Object?> json) {
@@ -641,6 +724,11 @@ class VaultIndex {
       problems: (json['problems'] as List? ?? const [])
           .cast<Map>()
           .map((item) => PkmsProblem.fromJson(item.cast<String, Object?>()))
+          .toList(),
+      issueLines: _stringLists(json['issueLines']),
+      issues: (json['issues'] as List? ?? const [])
+          .cast<Map>()
+          .map((item) => IssueRef.fromJson(item.cast<String, Object?>()))
           .toList(),
       tasks: (json['tasks'] as List? ?? const [])
           .cast<Map>()

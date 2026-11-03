@@ -3,6 +3,35 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/controlled_editor.dart';
 
 void main() {
+  test('issue metadata is absent from linked-reference excerpts', () {
+    const line =
+        '- #tylog.ref-note("p")[Project] bug #metadata(("tylog-issue-status": "done"))';
+    expect(mentionExcerpts(line, {'p'}), ['• Project bug']);
+  });
+
+  test('blank lines inside a doing task do not split its call', () {
+    const source =
+        '#tylog.task(id: "t1", text: "First", status: "todo")\n\n'
+        '#tylog.task(\n id: "t2",\n\n text: "Second", status: "doing"\n)';
+    final blocks = parseControlledTypst(source).blocks;
+    expect(blocks.map((b) => b.kind), [
+      ControlledBlockKind.task,
+      ControlledBlockKind.task,
+    ]);
+    expect(controlledBlockPreview(blocks.last), 'Second');
+  });
+  test('blank line between tasks preserves both calls', () {
+    const source =
+        '#show: tylog.note.with(id: "p", title: "P", kind: "project")\n\n'
+        '#tylog.task(id: "t1", text: "First", status: "todo")\n\n'
+        '#tylog.task(id: "t2", text: "Second", status: "doing")';
+    final blocks = parseControlledTypst(source).blocks;
+    expect(blocks.map((b) => b.kind), [
+      ControlledBlockKind.task,
+      ControlledBlockKind.task,
+    ]);
+  });
+
   test('controlled parser hides source behind clean block previews', () {
     const source = '''#import "/_system/tylog.typ" as tylog
 #show: tylog.note.with(id: "a", title: "A", kind: "note")
@@ -98,15 +127,18 @@ unrelated @someone else''';
     final document = parseControlledTypst(
       '- С 10\\-16 доставка МФУ\n- \\+79050163009 телефон',
     );
-    expect(controlledBlockPreview(document.blocks.single), [
-      '• С 10-16 доставка МФУ',
-      '• +79050163009 телефон',
-    ].join('\n'));
+    expect(
+      controlledBlockPreview(document.blocks.single),
+      ['• С 10-16 доставка МФУ', '• +79050163009 телефон'].join('\n'),
+    );
   });
 
   test('source-mode preview keeps a bare email but strips a citation @', () {
     final document = parseControlledTypst('mail a@b.com and cite @knuth');
-    expect(controlledBlockPreview(document.blocks.single), 'mail a@b.com and cite knuth');
+    expect(
+      controlledBlockPreview(document.blocks.single),
+      'mail a@b.com and cite knuth',
+    );
   });
 
   test('Magic actions emit escaped valid TyLog Typst', () {
@@ -132,10 +164,7 @@ unrelated @someone else''';
     );
     // Same shape as noteLink — the old '@'-prefixed body was a second on-disk
     // spelling of the same reference that previews had to strip again.
-    expect(
-      mention.text,
-      '#tylog.ref-note("fernando-marson")[Fernando Marson]',
-    );
+    expect(mention.text, '#tylog.ref-note("fernando-marson")[Fernando Marson]');
 
     final task = applyMagicEdit(
       'write "report"',
@@ -262,10 +291,7 @@ unrelated @someone else''';
 
   test('taskSnippet escapes quotes and backslashes', () {
     final result = taskSnippet(id: 't1', text: 'say "hi" \\ done');
-    expect(
-      result,
-      contains(r'text: "say \"hi\" \\ done"'),
-    );
+    expect(result, contains(r'text: "say \"hi\" \\ done"'));
     expect(result, contains('id: "t1"'));
   });
 }

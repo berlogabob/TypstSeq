@@ -9,6 +9,7 @@ import 'storage.dart';
 import 'values.dart';
 
 part 'scanner/task_mutation.dart';
+part 'scanner/issues.dart';
 part 'scanner/header_repair.dart';
 part 'scanner/link_resolution.dart';
 
@@ -512,6 +513,7 @@ Future<VaultIndex> scanVaultStorage(
   }
 
   final notes = <String, NoteRef>{};
+  final issueLines = <String, List<String>>{};
   final tasks = <TaskRef>[];
   final problems = <PkmsProblem>[];
   for (var fileIndex = 0; fileIndex < files.length; fileIndex++) {
@@ -615,9 +617,11 @@ Future<VaultIndex> scanVaultStorage(
       // The bytes still match the queried half, so only the derivation is
       // stale. Reading the file is the whole cost; falls through to a full
       // inspection if the entry turns out to have nothing to re-derive from.
+      final rederiveSource = utf8.decode(await storage.readBytes(relative));
+      issueLines[relative] = _issueCandidateLines(rederiveSource);
       final rederived = rederiveNote(
         cached!,
-        utf8.decode(await storage.readBytes(relative)),
+        rederiveSource,
         fingerprint,
         file.modified?.millisecondsSinceEpoch ?? 0,
         synonyms,
@@ -656,6 +660,9 @@ Future<VaultIndex> scanVaultStorage(
               p.subject == relative && p.code.startsWith('invalid-metadata-'),
         ),
       );
+      issueLines[relative] =
+          cachedIndex.issueLines[relative] ??
+          _issueCandidateLines(utf8.decode(await storage.readBytes(relative)));
       final trustFacts = cachedIndex.queryVersion == kVaultQueryVersion;
       notes[relative] = cached!.fingerprint == fingerprint && trustFacts
           ? cached
@@ -682,6 +689,7 @@ Future<VaultIndex> scanVaultStorage(
     onParsed?.call();
     final bytes = await storage.readBytes(relative);
     final source = utf8.decode(bytes);
+    issueLines[relative] = _issueCandidateLines(source);
     // Always from *these* bytes, never the earlier probe hash. Reaching here
     // means that probe did not match, so it describes a version of the file we
     // are not about to index — and two SAF round trips is plenty of room for
@@ -869,7 +877,14 @@ Future<VaultIndex> scanVaultStorage(
       (stageMillis['support-files'] ?? 0) -
       (stageMillis['support-publish'] ?? 0);
   stageTimer.reset();
-  final index = _buildVaultIndex(notes, problems: problems, tasks: tasks);
+  final issues = await _scanIssues(storage, issueLines, notes);
+  final index = _buildVaultIndex(
+    notes,
+    problems: problems,
+    tasks: tasks,
+    issues: issues,
+    issueLines: issueLines,
+  );
   stageMillis?['scan-finalize'] = stageTimer.elapsedMilliseconds;
   return index;
 }
@@ -1154,6 +1169,8 @@ VaultIndex _buildVaultIndex(
   Map<String, NoteRef> notes, {
   List<PkmsProblem> problems = const [],
   List<TaskRef> tasks = const [],
+  List<IssueRef> issues = const [],
+  Map<String, List<String>> issueLines = const {},
 }) {
   final resolver = LinkResolver(notes.values);
   final backlinks = <String, Set<String>>{};
@@ -1206,6 +1223,8 @@ VaultIndex _buildVaultIndex(
     attachmentBacklinksByPath: _setsToSortedLists(attachmentBacklinks),
     problems: allProblems,
     tasks: tasks,
+    issues: issues,
+    issueLines: issueLines,
   );
 }
 
@@ -1220,6 +1239,12 @@ String _screenshotDescription(String source) {
   final nextHeading = RegExp(r'^=+\s+', multiLine: true).firstMatch(body);
   return unescapeMarkup(body.substring(0, nextHeading?.start)).trim();
 }
+
+List<String> _partOf(Object? value, String? project) => {
+  if (value is String) value,
+  if (value is List) ...value.whereType<String>(),
+  if (project != null && project.isNotEmpty) project,
+}.toList();
 
 NoteRef _queriedNote(
   String path,
@@ -1241,6 +1266,10 @@ NoteRef _queriedNote(
         ? _screenshotDescription(source)
         : '',
     project: _text(note['project']),
+    partOf: _partOf(
+      (note['properties'] as Map?)?['part_of'],
+      _text(note['project']),
+    ),
     date: _text(note['date']) ?? _dailyDateFromPath(kind, path),
     tags: _normalizedTags({
       ...stringList(note['tags']),
@@ -1319,6 +1348,7 @@ NoteRef? rederiveNote(
       .map((item) => item.cast<String, Object?>())
       .toList();
   return cached.copyWith(
+    partOf: _partOf(cached.properties['part_of'], cached.project),
     screenshotDescription: cached.kind == 'screenshot'
         ? _screenshotDescription(source)
         : '',
@@ -1376,6 +1406,10 @@ NoteRef _fallbackNote(
         ? _screenshotDescription(source)
         : '',
     project: _field(header, 'project'),
+    partOf: _partOf(
+      _parseProperties(header)['part_of'],
+      _field(header, 'project'),
+    ),
     date: _field(header, 'date') ?? _dailyDateFromPath(kind, path),
     tags: _normalizedTags({
       ..._parseList(header, 'tags'),

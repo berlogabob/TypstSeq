@@ -1701,6 +1701,13 @@ class TyLogEditingController extends TextEditingController {
             block.visibleText.trimLeft().startsWith('//');
         for (final part in block.parts) {
           if (part.isAtom) {
+            if (issueStatusMetadata.hasMatch(part.source!)) {
+              children.add(
+                widgetSpan(offset: global, child: const SizedBox.shrink()),
+              );
+              global++;
+              continue;
+            }
             // Read mode never writes back to source, so an unknown wrapper
             // call (e.g. a hand-authored `#step[...]`) can safely be shown
             // as its real inner text instead of a truncated chip. Known

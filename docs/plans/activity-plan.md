@@ -331,3 +331,29 @@ Codex (luna/terra) for major UI tasks, haiku for small ones, Claude reviews at g
 - [ ] E4 user 11-03 new screenshot missing: not on the Nextcloud server (newest 11-02 23:26); Mac watcher fine -> phone (likely A24) Nextcloud auto upload not running; check on A24 via adb
 - [ ] Release 0.20.9 with E1/E2 when user says go
 - Deferred: image wrap/crop/anchors (10-07) - separate design
+
+## Wave 15 (2026-11-03): entities + boards P1 (plan: docs/plans/2026-11-03-entities-boards/README.md)
+Workers: codex gpt-6.1-terra (tasks), gpt-6-luna (small fixes), pi Ornith 35b on Studio (new small files/tests). Claude reviews + runs Flutter tests (codex sandbox blocks them).
+- [x] A project = entity kind, part_of in index (v14), childrenByParent
+- [x] B kind registry: icon + label per kind (_system/settings/kinds.json)
+- [x] D entity page: Part of / Contains, magic "Part of…"
+- [x] E entity list as tree
+- [x] F1 board model (board.dart 135 lines, 12 tests)
+- [x] F project kanban (board file v1, columns)
+- [x] H issue lines: @Project @fixit = kanban card (status = inline #metadata on the line)
+- [x] G1 namespace planner (pure fn, 7 tests pass)
+- [x] G Logseq namespace titles -> part_of (apply + maintenance UI)
+- [x] P1 review + full test suite + macOS /verify: review+suite done; Mac verify found 5 issues (verify-mac-p1.md) -> 4 fixed; round 2 found #6-#10 -> #6-#8 fixed; #9 = entity body nested fixed-height scroll (found on device), #10 flaky in full suite -> codex terra (sandbox could not run flutter). Full suite 1866 pass
+- [x] P1 phase end: P30 profile build on real vault (source-built typst .so, cold start index v14: 10059 notes in 23 s, no rebuild storm, no errors)
+
+Issues found:
+- [ ] USER DATA 11-03: duplicate OpenLabTwin pages: notes/OpenLabTwin.typ (kind note, id 20261103-104633) + projects/OpenLabTwin.typ (kind project, id 20261103-104705); daily links the note copy. Needs user OK to merge (+ maybe a merge-duplicates action)
+- [ ] PRE-EXISTING: entity page body is a fixed-height Expanded viewport with hidden scroll; content below the fold looks missing (found 11-03 on Mac). Needs design: single page scroll vs editor windowing perf
+- [ ] FLAKY under load: workspace_controller_test 'worker publishes newly scanned issues' timed out once in full suite; 3/3 pass alone
+- [x] PRE-EXISTING (fails on 49cf87b too): processing_screen_test 3x 'Retry preserves the <worker> payload' - Retry TextButton not found. Cause: fixed Oct 31 timestamps aged into collapsed 'Older' section; fixtures now use current time (luna)
+- [x] P1 review (docs/plans/2026-11-03-entities-boards/review-p1.md): 11 findings. Batch 1 board/issues/kinds #1,4,7,8,10,11; batch 2 namespace/relationships #2,3,5,6,9 -> codex terra x2: 10/11 fixed (#1 mutateNote, #4 sync queued, #7, #8, #10, #11, #2, #3, #5, #6); #9 fixed by luna (clears project:, drops part_of entry). Full suite 1855 pass, core 502 pass
+- [x] P1 full suite 1845 pass / 6 fail: 3 pre-existing above + issue drag no write (H), EntityHeader kind text 'person' gone (B), entity creation during blocked scan (B/D) -> fixed (header label app fix; creation test updated; issue test polled file instead of hanging completer). Now 1848 pass, 3 pre-existing fail
+- [x] B test opened a non-vault folder (fixed: create vault, then reopen)
+- [x] G1 pi (Ornith 35b) wrote planner but clobbered its test to a fragment + left verify.sh/run_verify.sh in root (removed); test handed to codex luna
+- [x] F1 pi again clobbered its test file (19-line fragment, does not load); board.dart kept, test to codex luna. Rule: pi writes impl only, codex writes tests
+- [x] codex sandbox cannot run dart/flutter test (telemetry + SDK cache writes): F1 luna fix was blind and still did not compile. FIXED with scratchpad cx.sh wrapper with --add-dir for ~/.dart-tool, ~/.pub-cache, flutter/bin/cache

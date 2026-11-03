@@ -34,6 +34,14 @@ class MaintenancePage extends StatelessWidget {
         onTap: () => unawaited(settings.onMigrateEntityTypes()),
       ),
       AppTile(
+        icon: Icons.account_tree_outlined,
+        title: 'Migrate namespace titles',
+        subtitle: 'Preview page hierarchy changes',
+        onTap: settings.onMigrateNamespaces == null
+            ? null
+            : () => unawaited(settings.onMigrateNamespaces!()),
+      ),
+      AppTile(
         icon: Icons.cleaning_services_outlined,
         title: 'Clean up imported notes',
         subtitle: 'Remove empty Logseq drawers and trailing blanks',

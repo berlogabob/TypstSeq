@@ -15,8 +15,12 @@ class EntityHeader extends StatelessWidget {
     required this.note,
     required this.onOpenUrl,
     this.imageResolver,
+    this.onChangeKindIcon,
+    this.onOpenBoard,
   });
 
+  final VoidCallback? onChangeKindIcon;
+  final VoidCallback? onOpenBoard;
   final NoteRef note;
   final void Function(String url) onOpenUrl;
   final Future<Uint8List?> Function(String path)? imageResolver;
@@ -30,7 +34,12 @@ class EntityHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final properties = note.properties.entries
-        .where((e) => e.value != null && '${e.value}'.trim().isNotEmpty)
+        .where(
+          (e) =>
+              e.key != 'part_of' &&
+              e.value != null &&
+              '${e.value}'.trim().isNotEmpty,
+        )
         .toList();
     return Card(
       margin: const EdgeInsets.fromLTRB(kSpace12, kSpace12, kSpace12, 6),
@@ -42,10 +51,14 @@ class EntityHeader extends StatelessWidget {
           children: [
             Row(
               children: [
-                _Avatar(
-                  path: _avatarPath,
-                  kind: note.kind,
-                  imageResolver: imageResolver,
+                IconButton(
+                  tooltip: 'Change kind icon',
+                  onPressed: onChangeKindIcon,
+                  icon: _Avatar(
+                    path: _avatarPath,
+                    kind: note.kind,
+                    imageResolver: imageResolver,
+                  ),
                 ),
                 const SizedBox(width: kSpace12),
                 Expanded(
@@ -58,7 +71,7 @@ class EntityHeader extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        note.kind,
+                        labelForKind(note.kind),
                         style: Theme.of(context).textTheme.labelMedium
                             ?.copyWith(color: scheme.onSurfaceVariant),
                       ),
@@ -67,6 +80,12 @@ class EntityHeader extends StatelessWidget {
                 ),
               ],
             ),
+            if (onOpenBoard != null)
+              TextButton.icon(
+                onPressed: onOpenBoard,
+                icon: const Icon(Icons.view_kanban_outlined),
+                label: const Text('Board'),
+              ),
             if (note.aliases.isNotEmpty) ...[
               const SizedBox(height: 10),
               _Chips(icon: Icons.badge_outlined, labels: note.aliases),

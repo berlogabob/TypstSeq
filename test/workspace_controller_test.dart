@@ -17,6 +17,8 @@ import 'package:tylog/vault_lock.dart';
 import 'package:tylog/vault_registry.dart';
 import 'package:tylog/vault_storage.dart';
 import 'package:tylog/workspace_controller.dart';
+import 'package:tylog/kind_registry.dart';
+import 'package:tylog/widgets/constants.dart';
 import 'package:tylog/vault.dart' show Vault, emptyDailyTemplate;
 
 Future<void> _waitUntil(
@@ -37,6 +39,117 @@ const _labUrl = 'https://example.org/lab.ics';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test(
+    'kind registry loads on open, reloads peer edits, and clears on close',
+    () async {
+      final previous = kindRegistry.value;
+      addTearDown(() => kindRegistry.value = previous);
+      final storage = _MemoryStorage();
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+      const entry = VaultEntry(id: 'local', name: 'Local', path: '/not-used');
+      // A folder holding only kinds.json is not a vault; create one first,
+      // then reopen it so the registry is read by openVault itself.
+      await controller.openVault(entry, storage: storage);
+      await storage.writeText(
+        kindsSyncPath,
+        '{"lab":{"icon":"science","label":"Lab"}}',
+      );
+      controller.close('Closed');
+      await controller.openVault(entry, storage: storage);
+      expect(controller.vault, isNotNull);
+      expect(labelForKind('lab'), 'Lab');
+      await controller.configureKind(
+        'lab',
+        icon: 'biotech',
+        label: 'Laboratory',
+      );
+      expect((await readKindRegistry(storage))['lab']['icon'], 'biotech');
+      expect(controller.vault!.pendingSyncWrites, contains(kindsSyncPath));
+      await storage.writeText(
+        kindsSyncPath,
+        '{"lab":{"icon":"school","label":"Peer lab"}}',
+      );
+      await controller.reloadKindRegistry();
+      expect(labelForKind('lab'), 'Peer lab');
+      controller.close('Closed');
+      expect(kindRegistry.value, isEmpty);
+    },
+  );
+
+  test('scanned issues survive index publication and later refreshes', () async {
+    final dir = await Directory.systemTemp.createTemp('issue-publication');
+    addTearDown(() => dir.delete(recursive: true));
+    final storage = LocalVaultStorage(dir);
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      VaultEntry(id: 'local', name: 'Local', path: dir.path),
+      storage: storage,
+    );
+    await controller.refreshIndex(always: true);
+    await storage.writeText(
+      '_system/settings/ai.json',
+      '{"tasks":{"enrich":{"markers":["fixit"]}}}',
+    );
+    await storage.writeText(
+      'notes/project.typ',
+      '#show: tylog.note.with(id: "project", title: "Project", kind: "project")',
+    );
+    await storage.writeText(
+      'notes/log.typ',
+      '- fixit #tylog.ref-note("project")[Project] bug',
+    );
+    await controller.refreshIndex(always: true);
+    expect(controller.index!.issues.map((i) => i.marker), ['fixit']);
+    expect(controller.index!.issueLines['notes/log.typ'], isNotEmpty);
+    await controller.refreshIndex(always: true);
+    expect(controller.index!.issues.map((i) => i.marker), ['fixit']);
+  });
+
+  test('worker publishes newly scanned issues to the controller', () async {
+    final dir = await Directory.systemTemp.createTemp('worker-issues');
+    addTearDown(() => dir.delete(recursive: true));
+    final storage = LocalVaultStorage(dir);
+    await Vault(dir).ensureCreated();
+    await storage.writeText(
+      '_system/settings/ai.json',
+      '{"tasks":{"enrich":{"markers":["fixit"]}}}',
+    );
+    await storage.writeText(
+      'notes/project.typ',
+      '#show: tylog.note.with(id: "project", title: "Project", kind: "project")',
+    );
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      VaultEntry(id: 'local', name: 'Local', path: dir.path),
+    );
+    expect(controller.vault, isNotNull, reason: controller.status);
+    await _waitUntil(
+      () => controller.index != null && !controller.indexing,
+      timeout: const Duration(seconds: 30),
+    );
+    await storage.writeText(
+      'notes/log.typ',
+      '- fixit #tylog.ref-note("project")[Project] bug',
+    );
+    await controller.refreshIndex(always: true);
+    expect(controller.index!.issues.map((issue) => issue.marker), ['fixit']);
+    expect(controller.index!.issueLines['notes/log.typ'], isNotEmpty);
+  });
+
   test('autosave sync keeps the engine running offscreen', () async {
     final storage = _MemoryStorage();
     final calls = <String>[];
@@ -2119,7 +2232,7 @@ void main() {
     );
     final daily = await controller.ensureTodayNote(DateTime(2026, 7, 3));
 
-    expect(page, 'projects/Project.typ');
+    expect(page, 'notes/Project.typ');
     expect(daily, 'daily/2026/07/2026-07-03.typ');
     final nodes = await database.select(database.nodes).get();
     expect(nodes, hasLength(1));

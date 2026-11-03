@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'agenda_timeline.dart';
 import 'app_icons.dart';
+import 'entity_tree.dart';
 import 'screenshot_strip.dart';
 
 import 'package:flutter/material.dart';
@@ -575,6 +576,8 @@ class LibraryView extends StatelessWidget {
                     onOpenPath: onOpenPath,
                     onCreateNote: onCreateNote,
                     onCreateEntity: onCreateEntity,
+                    shelfPrefs: shelfPrefs,
+                    onShelfPrefsChanged: onShelfPrefsChanged,
                   ),
                   _ArticlesShelf(
                     articleJobs: articleJobs,
@@ -653,8 +656,12 @@ class _UnifiedNotesView extends StatefulWidget {
     required this.onOpenPath,
     required this.onCreateNote,
     required this.onCreateEntity,
+    required this.shelfPrefs,
+    required this.onShelfPrefsChanged,
   });
 
+  final Map<String, String> shelfPrefs;
+  final ValueChanged<Map<String, String>>? onShelfPrefsChanged;
   final VaultIndex? index;
   final List<NoteRef>? pagedNotes;
   final bool indexing;
@@ -668,6 +675,7 @@ class _UnifiedNotesView extends StatefulWidget {
 
 class _UnifiedNotesViewState extends State<_UnifiedNotesView> {
   String? _kind;
+  late bool _tree = widget.shelfPrefs['notes.view'] == 'tree';
   final _query = TextEditingController();
 
   @override
@@ -711,6 +719,15 @@ class _UnifiedNotesViewState extends State<_UnifiedNotesView> {
               ),
           ],
         ),
+        EntityTreeToggle(
+          tree: _tree,
+          onChanged: (value) {
+            setState(() => _tree = value);
+            widget.onShelfPrefsChanged?.call({
+              'notes.view': value ? 'tree' : 'list',
+            });
+          },
+        ),
         Expanded(
           child: notes.isEmpty
               ? AppEmptyState(
@@ -733,6 +750,19 @@ class _UnifiedNotesViewState extends State<_UnifiedNotesView> {
                     child: const Text('New entity'),
                   ),
                 )
+              : _tree
+              ? ListView(
+                  children: [
+                    EntityTree(
+                      nodes: buildEntityTree(
+                        all,
+                        notes.map((n) => n.path).toSet(),
+                      ),
+                      expand: query.isNotEmpty || selected != null,
+                      onOpen: widget.onOpenPath,
+                    ),
+                  ],
+                )
               : ListView.builder(
                   itemCount: notes.length,
                   itemBuilder: (context, i) {
@@ -742,7 +772,7 @@ class _UnifiedNotesViewState extends State<_UnifiedNotesView> {
                       // Shared kind→icon map so a person reads as a person here too.
                       leading: Icon(iconForKind(note.kind)),
                       title: Text(note.title),
-                      subtitle: isEntity || note.kind == 'project'
+                      subtitle: isEntity
                           ? Text(
                               [
                                 note.kind,

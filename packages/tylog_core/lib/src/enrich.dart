@@ -30,8 +30,7 @@ String enrichTagEntity(String tag) => 'tag:$tag';
 const _pageTypes = {'person', 'place', 'organization', 'project', 'event'};
 
 /// Kinds a mention may resolve to.
-bool isEnrichTarget(NoteRef note) =>
-    entityNoteKinds.contains(note.kind) || note.kind == 'project';
+bool isEnrichTarget(NoteRef note) => entityNoteKinds.contains(note.kind);
 
 /// `_system/enrich/mentions/<note path without .typ>.json`.
 String enrichMentionsPath(String notePath) =>

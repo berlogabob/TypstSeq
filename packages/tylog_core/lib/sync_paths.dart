@@ -13,6 +13,7 @@ bool isSyncableVaultPath(String path) =>
               name.startsWith('._'),
         ) &&
     const [
+      'boards/',
       'daily/',
       'notes/',
       'projects/',

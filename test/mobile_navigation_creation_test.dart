@@ -1157,10 +1157,13 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(_entityField('Name'), 'Ada');
       await tester.enterText(_entityKeyedField('entity-kind'), 'person');
+      await tester.pump();
+      await tester.ensureVisible(_entityField('Aliases, comma-separated'));
       await tester.enterText(
         _entityField('Aliases, comma-separated'),
         'Countess',
       );
+      await tester.ensureVisible(_entityKeyedField('entity-field-email'));
       await tester.enterText(
         _entityKeyedField('entity-field-email'),
         'ada@example.test',

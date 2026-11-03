@@ -32,6 +32,7 @@ class SettingsSheet extends StatefulWidget {
     required this.onManageVaults,
     required this.onEnableReminders,
     required this.onMigrateEntityTypes,
+    this.onMigrateNamespaces,
     required this.onStripImportNoise,
     required this.onImportVault,
     required this.onInstallModule,
@@ -91,6 +92,7 @@ class SettingsSheet extends StatefulWidget {
   final VoidCallback onManageVaults;
   final Future<void> Function() onEnableReminders;
   final Future<void> Function() onMigrateEntityTypes;
+  final Future<void> Function()? onMigrateNamespaces;
   final Future<void> Function() onStripImportNoise;
   final Future<void> Function() onImportVault;
   final Future<void> Function() onInstallModule;

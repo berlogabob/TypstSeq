@@ -7,6 +7,8 @@ import 'package:flutter/foundation.dart';
 import 'package:tylog_core/graph.dart';
 
 import 'calendar_feeds.dart';
+import 'kind_registry.dart';
+import 'widgets/constants.dart' show kindRegistry, kindIconPalette;
 import 'database/note_persistence.dart';
 import 'database/revision_publisher.dart';
 import 'database/tylog_database.dart';
@@ -363,6 +365,7 @@ class WorkspaceController extends ChangeNotifier {
     rebuildProgress = null;
     feedEvents = [];
     calendarSettings = {};
+    kindRegistry.value = const {};
     vault = null;
     entry = null;
     note = null;
@@ -509,6 +512,9 @@ class WorkspaceController extends ChangeNotifier {
       feedEvents = [];
       calendarSettings = {};
       vault = opened;
+      kindRegistry.value = const {};
+      await reloadKindRegistry();
+      if (!_owns(opened, generation)) return;
       entry = next;
       note = today;
       // The worker owns the production index cache. Decoding the complete
@@ -727,6 +733,45 @@ class WorkspaceController extends ChangeNotifier {
     await refreshCalendarFeeds(force: true);
   }
 
+  Future<void> reloadKindRegistry() async {
+    final opened = vault;
+    final generation = _vaultGeneration;
+    if (opened == null) return;
+    try {
+      final registry = await readKindRegistry(opened.storage);
+      if (_owns(opened, generation)) kindRegistry.value = registry;
+    } catch (error) {
+      if (!_owns(opened, generation)) return;
+      status = 'Could not read kind registry: $error';
+      notifyListeners();
+    }
+  }
+
+  Future<void> configureKind(
+    String kind, {
+    required String icon,
+    required String label,
+  }) async {
+    if (!kindIconPalette.containsKey(icon)) {
+      throw ArgumentError.value(icon, 'icon');
+    }
+    final opened = vault;
+    final generation = _vaultGeneration;
+    if (opened == null) return;
+    final path = await settingsPathFor(opened.storage, kindsSyncPath);
+    final registry = await writeKindRegistryEntry(
+      opened.storage,
+      kind,
+      icon: icon,
+      label: label,
+    );
+    if (path == kindsSyncPath) {
+      opened.restoreWriteMarkers(path, stale: false, pendingSync: true);
+      if (_owns(opened, generation)) queueCloudSync();
+    }
+    if (_owns(opened, generation)) kindRegistry.value = registry;
+  }
+
   static const calendarsSyncPath = '_system/settings/calendars.json';
 
   Future<void> _writeSharedCalendars(Vault opened, List<Object?> feeds) async =>
@@ -941,7 +986,6 @@ class WorkspaceController extends ChangeNotifier {
     final safe = title.trim().replaceAll(RegExp(r'[\\/]'), '-');
     if (safe.isEmpty) throw ArgumentError('Page title is empty');
     final directory = switch (kind) {
-      'project' => 'projects',
       'article' => 'articles',
       _ => 'notes',
     };
@@ -2252,6 +2296,7 @@ class WorkspaceController extends ChangeNotifier {
     notifyListeners();
     var localContentChanged = false;
     var calendarsChanged = false;
+    var kindsChanged = false;
     // Inside the try from here on. `_startSyncForeground` swallows its own
     // throws, but a platform channel that never *completes* would strand
     // `syncing` at true with no sync running — and every Sync-dashboard action
@@ -2298,6 +2343,7 @@ class WorkspaceController extends ChangeNotifier {
           localContentChanged = true;
           opened.markLocallyWritten(path);
           if (path == calendarsSyncPath) calendarsChanged = true;
+          if (path == kindsSyncPath) kindsChanged = true;
         },
       );
       final result = await sync.sync(
@@ -2311,6 +2357,8 @@ class WorkspaceController extends ChangeNotifier {
       // Another device changed the calendar list: show it now, not at the
       // next launch (the A24 kept an old unfiltered list until a restart).
       if (calendarsChanged) unawaited(refreshCalendarFeeds(force: true));
+      if (kindsChanged) await reloadKindRegistry();
+      if (!_owns(opened, generation)) return false;
       final revisionConflicts = await _ingestRevisions(
         opened,
         generation,
@@ -2920,6 +2968,12 @@ class WorkspaceController extends ChangeNotifier {
     current.tasks
       ..clear()
       ..addAll(next.tasks);
+    current.issues
+      ..clear()
+      ..addAll(next.issues);
+    current.issueLines
+      ..clear()
+      ..addAll(next.issueLines);
     return current;
   }
 

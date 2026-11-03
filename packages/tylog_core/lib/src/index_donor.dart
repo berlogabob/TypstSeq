@@ -183,6 +183,11 @@ class IndexDonorStore {
             if (publishable.contains(note.path)) note.toJson(),
         ],
         // A task rides with its note or not at all.
+        'issueLines': {
+          for (final path in publishable)
+            if (index.issueLines.containsKey(path))
+              path: index.issueLines[path],
+        },
         'tasks': [
           for (final task in index.tasks)
             if (publishable.contains(task.notePath)) task.toJson(),
@@ -292,6 +297,7 @@ class IndexDonorStore {
     // note's bytes, so mixing one donor's note with another's tasks would put
     // the scanner's cached branch out of step with the file on disk.
     final tasksByPath = <String, List<TaskRef>>{};
+    final issueLines = <String, List<String>>{};
     var merged = 0;
     var skipped = 0;
     for (final file in files) {
@@ -346,6 +352,10 @@ class IndexDonorStore {
           final note = NoteRef.fromJson(item.cast<String, Object?>());
           donorNotes[note.path] = note;
         }
+        for (final entry in (json['issueLines'] as Map? ?? const {}).entries) {
+          issueLines[entry.key as String] = (entry.value as List)
+              .cast<String>();
+        }
         notes.addAll(donorNotes);
         tasksByPath.addAll(donorTasks);
         staleDerivation = !sameIndex;
@@ -375,6 +385,7 @@ class IndexDonorStore {
       notesByPath: notes,
       backlinksByTarget: const {},
       tasks: tasks,
+      issueLines: issueLines,
     );
   }
 

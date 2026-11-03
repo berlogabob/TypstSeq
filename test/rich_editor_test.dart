@@ -34,6 +34,47 @@ const _source = '''#import "/_system/tylog.typ" as tylog
 ''';
 
 void main() {
+  test('doing task with blank lines remains editable and round-trips', () {
+    const source =
+        '#tylog.task(id: "t1", text: "First", status: "todo")\n\n'
+        '#tylog.task(\n id: "t2",\n\n text: "Second", status: "doing"\n)';
+    final document = TyLogDocument.parse(source);
+    expect(document.visibleText, contains('Second'));
+    expect(document.toSource(), source);
+    document.replace(
+      document.visibleText.indexOf('First'),
+      document.visibleText.indexOf('First') + 5,
+      'Edited',
+    );
+    expect(document.toSource(), source.replaceFirst('First', 'Edited'));
+  });
+  testWidgets('issue status metadata is hidden and edits preserve its bytes', (
+    tester,
+  ) async {
+    const source = '- bug #metadata(("tylog-issue-status": "done"))';
+    var saved = '';
+    final controller = TyLogEditingController(
+      source: source,
+      onSourceChanged: (s) => saved = s,
+      onError: (_) {},
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TyLogRichEditor(controller: controller, onInsert: () async {}),
+        ),
+      ),
+    );
+    expect(find.text('tylog-issue-status'), findsNothing);
+    final at = controller.text.indexOf('bug') + 3;
+    controller.value = TextEditingValue(
+      text: controller.text.replaceRange(at, at, '!'),
+      selection: TextSelection.collapsed(offset: at + 1),
+    );
+    expect(saved, '- bug! #metadata(("tylog-issue-status": "done"))');
+  });
   test('rich paste across a task boundary preserves the task', () async {
     const task = '#tylog.task(id: "t", text: "Keep task", properties: (owner: "Ada",))';
     final errors = <Object>[];

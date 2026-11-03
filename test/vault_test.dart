@@ -276,7 +276,7 @@ void main() {
 
     expect(daily, 'daily/2026/07/2026-07-01.typ');
     expect(note, 'notes/Моя заметка.typ');
-    expect(project, 'projects/PhD Thesis.typ');
+    expect(project, 'notes/PhD Thesis.typ');
     expect(article, 'articles/Smith 2026.typ');
     expect(await vault.readText(daily), contains('kind: "daily"'));
     expect(await vault.readText(project), contains('kind: "project"'));

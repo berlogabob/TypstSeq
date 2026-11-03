@@ -141,6 +141,7 @@ void main() {
     testWidgets('Retry preserves the $kind worker payload and queues it', (
       tester,
     ) async {
+      final finishedAt = DateTime.now().toUtc().toIso8601String();
       final storage = _Storage()
         ..job(kind, 'a', {
           'status': 'failed',
@@ -154,8 +155,8 @@ void main() {
           'engine': 'v2',
           'custom': {'keep': true},
           'error': 'Worker failed',
-          'processing_at': '2026-10-31T10:00:00Z',
-          'finished_at': '2026-10-31T11:00:00Z',
+          'processing_at': finishedAt,
+          'finished_at': finishedAt,
         });
       final jobs = ProcessingJobs();
       addTearDown(jobs.dispose);

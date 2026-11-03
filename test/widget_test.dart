@@ -7,6 +7,8 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:tylog/widgets/app_icons.dart';
+import 'package:tylog/widgets/constants.dart';
+import 'package:tylog/kind_registry.dart';
 import 'package:tylog/widgets/audio_note_screen.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications_platform_interface/flutter_local_notifications_platform_interface.dart';
@@ -573,6 +575,41 @@ void main() {
     await tester.tap(find.text('New entity'));
     await tester.pumpAndSettle();
     expect(find.widgetWithText(AlertDialog, 'New entity'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('New entity writes the chosen kind icon to kinds.json', (
+    tester,
+  ) async {
+    final previous = kindRegistry.value;
+    addTearDown(() => kindRegistry.value = previous);
+    kindRegistry.value = {};
+    final (storage, home) = await _mountTaskTimers(tester);
+    final created = home.createEntityForTesting();
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Name'),
+      'Research lab',
+    );
+    await tester.enterText(
+      find.descendant(
+        of: find.byKey(const ValueKey('entity-kind')),
+        matching: find.byType(TextField),
+      ),
+      'lab',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextField, 'Name'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey('kind-icon-science')));
+    await tester.tap(find.byKey(const ValueKey('kind-icon-science')));
+    await tester.tap(find.widgetWithText(FilledButton, 'Create'));
+    await tester.pumpAndSettle();
+    await created;
+    expect(jsonDecode(await storage.readText(kindsSyncPath)), {
+      'lab': {'icon': 'science', 'label': 'lab'},
+    });
+    expect(iconForKind('lab'), Icons.science_outlined);
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -3151,6 +3188,62 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets(
+    'entity page adds and removes parent ids without changing the body',
+    (tester) async {
+      final storage = _FailingStorage();
+      await tester.runAsync(() => Vault.withStorage(storage).ensureCreated());
+      const body = '\n\n= Keep this\nBody with #emph[markup].\n';
+      const source =
+          '#import "/_system/tylog.typ" as tylog\n'
+          '#show: tylog.note.with(id: "ada", title: "Ada", kind: "person", '
+          'properties: (custom: (1, 2), part_of: ("lab",)))$body';
+      await storage.writeText('notes/a.typ', source);
+      await storage.writeText(
+        'notes/lab.typ',
+        '#show: tylog.note.with(id: "lab", title: "Lab", kind: "organization")',
+      );
+      await storage.writeText(
+        'notes/uni.typ',
+        '#show: tylog.note.with(id: "uni", title: "University", kind: "place")',
+      );
+      final (_, home) = await _mountTaskTimers(tester, existing: storage);
+      home.mode = 'normal';
+      home.primaryDestination = 0;
+      home.workspace.notifyListeners();
+      await tester.pumpAndSettle();
+      expect(
+        (home.workspace.index as VaultIndex).notes.map((note) => note.title),
+        contains('University'),
+      );
+      await tester.tap(find.byTooltip('Add parent'));
+      await tester.pumpAndSettle();
+      expect(find.text('New entity'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('University'),
+        100,
+        scrollable: find.byType(Scrollable).last,
+      );
+      await tester.tap(find.text('University').last);
+      await tester.pumpAndSettle();
+      final added = home.sourceController.text as String;
+      expect(
+        added,
+        source.replaceFirst('part_of: ("lab",)', '"part_of": ("lab", "uni",)'),
+      );
+      final chip = find.widgetWithText(InputChip, 'Lab');
+      await tester.tap(
+        find.descendant(of: chip, matching: find.byIcon(Icons.close)),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        home.sourceController.text,
+        source.replaceFirst('part_of: ("lab",)', '"part_of": ("uni",)'),
+      );
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
   testWidgets('Magic menu exposes the complete command set', (tester) async {
     await tester.pumpWidget(const TyLogApp());
     await tester.pumpAndSettle();
@@ -3188,7 +3281,7 @@ void main() {
       'Monospace',
       'Structure',
       'Task',
-      'Project',
+      'Part of…',
       'Heading',
       'Table',
       'Report',
