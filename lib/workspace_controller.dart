@@ -127,6 +127,46 @@ class WorkspaceController extends ChangeNotifier {
   );
   Future<GitHubClient> githubClient() async =>
       (githubClientFactory ?? GitHubClient.new)(await githubToken());
+  Timer? _githubPushTimer;
+  Future<void>? _githubPushFlight;
+
+  Future<void> pushPending() {
+    if (_disposed || vault == null || _vaultOpens.isNotEmpty) {
+      return Future.value();
+    }
+    return _githubPushFlight ??= _pushPending().whenComplete(() {
+      _githubPushFlight = null;
+    });
+  }
+
+  Future<void> _pushPending() async {
+    final opened = vault!;
+    final generation = _vaultGeneration;
+    final client = await githubClient();
+    final outbox = await githubOutbox;
+    final cache = await mountCache;
+    for (final mount in List<Mount>.of(mounts.where((m) => m.push))) {
+      if (!_owns(opened, generation) || _vaultOpens.isNotEmpty) return;
+      await outbox.pushAll(
+        client,
+        mount,
+        File('${cache.path}/${mount.id}/.tylog-mount.json'),
+      );
+    }
+    if (_owns(opened, generation)) notifyListeners();
+  }
+
+  void pushPendingInBackground() {
+    unawaited(
+      pushPending().catchError((Object error) {
+        if (!_disposed && vault != null) {
+          status = 'Could not push extensions: $error';
+          notifyListeners();
+        }
+      }),
+    );
+  }
+
   Future<void> refreshMount(Mount mount, {bool automatic = false}) async {
     final opened = vault;
     final generation = _vaultGeneration;
@@ -889,6 +929,20 @@ class WorkspaceController extends ChangeNotifier {
     await _writeMounts(mounts.where((mount) => mount.id != id).toList());
   }
 
+  Future<void> setMountPush(Mount mount, bool push) => _writeMounts([
+    for (final item in mounts)
+      if (item.id == mount.id)
+        Mount(
+          id: item.id,
+          name: item.name,
+          source: item.source,
+          push: push,
+          extra: item.extra,
+        )
+      else
+        item,
+  ]);
+
   Future<void> _writeMounts(List<Mount> updated) async {
     final opened = vault;
     if (opened == null) throw StateError('No vault is open');
@@ -1500,6 +1554,12 @@ class WorkspaceController extends ChangeNotifier {
         message: 'TyLog: edit $relative',
         device: deviceId ?? 'unknown',
       );
+      _githubPushTimer?.cancel();
+      _githubPushTimer = Timer(
+        const Duration(seconds: 30),
+        pushPendingInBackground,
+      );
+      notifyListeners();
       opened.markLocallyWritten(path);
       return;
     }
@@ -3246,6 +3306,7 @@ class WorkspaceController extends ChangeNotifier {
       sweepVaultLeftovers(opened.storage);
 
   void _cancelTimers() {
+    _githubPushTimer?.cancel();
     _autosave?.cancel();
     _cloudAutosave?.cancel();
     stopCloudPolling();

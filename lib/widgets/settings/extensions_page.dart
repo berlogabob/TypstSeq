@@ -25,6 +25,18 @@ class ExtensionsPage extends StatefulWidget {
 class _ExtensionsPageState extends State<ExtensionsPage> {
   DateTime? _lastRefresh;
   bool _busy = false;
+  final Map<String, Future<bool>> _permissions = {};
+
+  Future<bool> _canPush(String repo) =>
+      _permissions.putIfAbsent(repo, () async {
+        try {
+          return (await (await widget.workspace!.githubClient())
+                  .repoPermissions(repo))['push'] ==
+              true;
+        } catch (_) {
+          return false;
+        }
+      });
 
   Future<void> _run(Future<void> Function() action) async {
     if (_busy) return;
@@ -215,7 +227,40 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
           if (workspace != null)
             for (final mount in workspace.mounts.where(
               (m) => m.source.kind == 'github',
-            ))
+            )) ...[
+              FutureBuilder<bool>(
+                future: _canPush(mount.source.repo!),
+                builder: (context, snapshot) => SwitchListTile(
+                  title: Text('${mount.name}: Allow editing (push to GitHub)'),
+                  value: mount.push,
+                  onChanged: _busy || snapshot.data != true
+                      ? null
+                      : (value) =>
+                            _run(() => workspace.setMountPush(mount, value)),
+                ),
+              ),
+              FutureBuilder(
+                future: workspace.githubOutbox.then(
+                  (box) => box.entriesFor(mount.id),
+                ),
+                builder: (context, snapshot) {
+                  final entries = snapshot.data ?? [];
+                  final conflicts = entries
+                      .where((e) => e.state == 'conflict')
+                      .length;
+                  return ListTile(
+                    title: Text(
+                      '${mount.name}: ${entries.length - conflicts} pending · $conflicts conflicts',
+                    ),
+                    trailing: TextButton(
+                      onPressed: _busy || !mount.push
+                          ? null
+                          : () => _run(workspace.pushPending),
+                      child: const Text('Push now'),
+                    ),
+                  );
+                },
+              ),
               FutureBuilder<Map<String, dynamic>?>(
                 future: workspace.mountFetcher.then((f) => f.metadata(mount)),
                 builder: (context, snapshot) {
@@ -226,6 +271,7 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
                   );
                 },
               ),
+            ],
           if (Platform.isLinux || Platform.isMacOS || Platform.isWindows)
             AppTile(
               icon: Icons.create_new_folder_outlined,

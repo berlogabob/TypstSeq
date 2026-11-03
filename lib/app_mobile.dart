@@ -2930,6 +2930,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
     if (state == AppLifecycleState.resumed) {
+      workspace.pushPendingInBackground();
       if (_semantic != null) unawaited(_semantic!.refreshNotes());
       // The UI owns the vault again; a still-pending catch-up run would only
       // contend for the lock.
