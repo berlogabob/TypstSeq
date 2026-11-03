@@ -459,6 +459,84 @@ void main() {
     }
     expect(saved?.edges, isEmpty);
   });
+  testWidgets('tap selects a card and Open edits it', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Whiteboard(
+          board: const Board(
+            id: 'select',
+            title: 'Select',
+            layout: 'free',
+            cards: [
+              BoardCard(id: 'a', type: 'text', text: 'Hello', x: 30, y: 30),
+            ],
+          ),
+          storage: storage,
+          index: null,
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('board-card-a')));
+    await tester.pump();
+    expect(find.byType(AlertDialog), findsNothing);
+    await tester.tap(find.byTooltip('Open selected card'));
+    await tester.pump();
+    expect(find.byType(AlertDialog), findsOneWidget);
+  });
+
+  testWidgets('frame drag does not pick up cards it sweeps over', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Whiteboard(
+          board: const Board(
+            id: 'sweep',
+            title: 'Sweep',
+            layout: 'free',
+            frames: [
+              BoardFrame(id: 'f', title: 'Frame', x: 10, y: 10, w: 100, h: 100),
+            ],
+            cards: [
+              BoardCard(
+                id: 'outside',
+                type: 'text',
+                text: 'Outside',
+                x: 130,
+                y: 30,
+                w: 80,
+                h: 50,
+              ),
+            ],
+          ),
+          storage: storage,
+          index: null,
+        ),
+      ),
+    );
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const ValueKey('frame-f'))),
+    );
+    await gesture.moveBy(const Offset(80, 0));
+    await tester.pump();
+    await gesture.moveBy(const Offset(40, 0));
+    await tester.pump();
+    await gesture.moveBy(const Offset(40, 0));
+    await tester.pump();
+    await gesture.moveBy(const Offset(40, 0));
+    await tester.pump();
+    await gesture.moveBy(const Offset(40, 0));
+    await gesture.up();
+    await tester.pump(const Duration(milliseconds: 600));
+    Board? saved;
+    for (var i = 0; i < 50; i++) {
+      saved = await tester.runAsync<Board?>(() => readBoard(storage, 'sweep'));
+      if (saved != null) break;
+      await settleIo(tester);
+    }
+    expect(saved!.cards.single.x, 130);
+  });
+
   testWidgets('copies a picked image into the board assets', (tester) async {
     final input = File('${dir.path}/picture.png');
     await tester.runAsync(() => input.writeAsBytes([1, 2, 3, 4]));

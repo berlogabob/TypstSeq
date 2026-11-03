@@ -394,4 +394,5 @@ Issues found:
 - [ ] FLAKY again: 'worker publishes newly scanned issues' failed in a codex full run after the publish-listener fix (passes in Claude runs)
 - [x] P3-C add content: note/entity/task picker, paste image (copied to assets/boards/<id>/), URL card, text card, connect cards with arrows
 - [x] P3-D tree view: auto layout over part_of from an entity (database/heritage tree), "Pin to whiteboard"
-- [ ] P3 review + full suite + macOS verify + P30
+- [ ] P3 review (docs/plans/2026-11-03-whiteboard/review-p3.md): 10 findings. R1 data/correctness #1,2,6,7,8; R2 perf/paste/a11y #3,4,5,9(text+Paste button, no image paste: no new deps),10 -> codex terra sequential
+- [ ] P3 macOS verify + P30

@@ -172,6 +172,7 @@ class _WhiteboardState extends State<Whiteboard> {
   late bool treeMode = widget.initialTree;
   final viewerKey = GlobalKey();
   Offset dragPosition = Offset.zero;
+  Set<String> frameCardIds = {};
   Size size = Size.zero;
   @override
   void initState() {
@@ -725,6 +726,13 @@ class _WhiteboardState extends State<Whiteboard> {
             onPressed: () => setState(() => connecting = !connecting),
             icon: const Icon(Icons.share),
           ),
+        if (!treeMode && selected != null)
+          IconButton(
+            tooltip: 'Open selected card',
+            onPressed: () =>
+                openCard(board.cards.firstWhere((c) => c.id == selected)),
+            icon: const Icon(Icons.open_in_new),
+          ),
         if (!treeMode)
           IconButton(
             tooltip: 'Delete selected card',
@@ -797,10 +805,22 @@ class _WhiteboardState extends State<Whiteboard> {
                           alignment: Alignment.topLeft,
                           child: GestureDetector(
                             key: ValueKey('frame-${frame.id}'),
-                            onPanStart: (_) => dragPosition = Offset(
-                              frame.x.toDouble(),
-                              frame.y.toDouble(),
-                            ),
+                            onPanStart: (_) {
+                              dragPosition = Offset(
+                                frame.x.toDouble(),
+                                frame.y.toDouble(),
+                              );
+                              frameCardIds = board.cards
+                                  .where(
+                                    (c) =>
+                                        c.x + c.w / 2 >= frame.x &&
+                                        c.x + c.w / 2 <= frame.x + frame.w &&
+                                        c.y + c.h / 2 >= frame.y &&
+                                        c.y + c.h / 2 <= frame.y + frame.h,
+                                  )
+                                  .map((c) => c.id)
+                                  .toSet();
+                            },
                             onPanUpdate: treeMode
                                 ? null
                                 : (d) {
@@ -812,6 +832,7 @@ class _WhiteboardState extends State<Whiteboard> {
                                         frame.id,
                                         dragPosition.dx,
                                         dragPosition.dy,
+                                        cardIds: frameCardIds,
                                       ),
                                     );
                                     scheduleSave();
@@ -862,7 +883,6 @@ class _WhiteboardState extends State<Whiteboard> {
                                   selected = card.id;
                                   selectedEdge = null;
                                 });
-                                if (!connecting) openCard(card);
                               },
                         onPanStart: treeMode
                             ? null

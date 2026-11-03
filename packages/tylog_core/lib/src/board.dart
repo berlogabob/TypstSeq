@@ -359,7 +359,7 @@ class Board {
         (c) => c.x < x + w && c.x + c.w > x && c.y < y + h && c.y + c.h > y,
       )
       .toList();
-  Board moveFrame(String id, num x, num y) {
+  Board moveFrame(String id, num x, num y, {Set<String>? cardIds}) {
     final matches = frames.where((f) => f.id == id);
     if (matches.isEmpty) return this;
     final frame = matches.first;
@@ -371,10 +371,11 @@ class Board {
       ],
       cards: [
         for (final c in cards)
-          if (c.x + c.w / 2 >= frame.x &&
-              c.x + c.w / 2 <= frame.x + frame.w &&
-              c.y + c.h / 2 >= frame.y &&
-              c.y + c.h / 2 <= frame.y + frame.h)
+          if (cardIds?.contains(c.id) ??
+              (c.x + c.w / 2 >= frame.x &&
+                  c.x + c.w / 2 <= frame.x + frame.w &&
+                  c.y + c.h / 2 >= frame.y &&
+                  c.y + c.h / 2 <= frame.y + frame.h))
             c.copyWith(x: c.x + dx, y: c.y + dy)
           else
             c,
