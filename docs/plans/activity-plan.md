@@ -379,7 +379,9 @@ Issues found:
 - [x] P2-G issue lines <-> GitHub issues (github: property, Send to GitHub, number written back hidden, closed<->done sync, #n chip)
 - [x] P2-G2 no duplicate issues if local write fails after create (recovery record / match by marker in body) + Send action in Today issue menu (search query used literal '+': fixed by Claude; recovery map .tylog/github-issues.json syncs across devices). Suite 1900 pass
 - [x] P2 review (docs/plans/2026-11-03-mounts-github/review-p2.md): 9 findings all fixed (#1 per-vault+repo@ref cache/outbox, no migration). Suite 1910 pass (5 P1). Batch A mounts/outbox #1,2,3,4,6,8; batch B #5 issue identity, #7 GitHub sign-in UI, #9 verify pack before update -> codex terra x2: BLOCKED 17:32, codex usage limit until 19:14 (no partial edits); resume then
-- [ ] P2 macOS verify + P30
+- [x] P2 macOS verify (scratch vault): real GitHub issue round-trip (berlogabob/tylog-test-issues #1 created with marker, number written back, closed on GitHub -> Sync -> done), PT course repo mounted (86 notes under ext/ptcourse, per-vault cache), Install from GitHub v1.3.0 (72 lessons, source recorded)
+- [ ] P2 polish: Extensions settings subtitle repeats 'Extensions' (show mount count); issue card text drops project/marker titles
+- [ ] P2 P30 profile build
 - [ ] USER (11-03 chose reuse GitDoIt app): its client id (Iv1..., a GitHub App) returns 'Not Found' at /login/device/code -> enable Device Flow in the GitHub App settings or create an OAuth app; send client id
 - [x] PT pack repo: lesson rework committed 293ced8, version 1.3.0 (voices/ left untracked: licence unknown)
 - [x] PT pack 1.3.0 build (user 11-03: pause Ornith ~1h; 16:02-16:33, Ornith 64k + agents restored): bootout enrich+worker, unload Ornith, Chatterbox TTS --force -> check_audio -> pack -> pack-validate (scratchpad pt_pack_build.sh, running)
