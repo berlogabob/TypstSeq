@@ -83,6 +83,7 @@ void main() {
       contains('External reference'),
     );
     controller.replaceNote('ext/ref/reference.typ', '= External reference');
+    expect(controller.noteIsExtension, isTrue);
     controller.edit('changed');
     expect(controller.dirty, isFalse);
     expect(await controller.save(), isTrue);
@@ -110,6 +111,53 @@ void main() {
       controller.index!.notesByPath,
       isNot(contains('ext/ref/reference.typ')),
     );
+  });
+  test('push mount saves to cache and queues the cached blob sha', () async {
+    final root = await Directory.systemTemp.createTemp('mount-push');
+    addTearDown(() => root.delete(recursive: true));
+    final cache = Directory('${root.path}/mounts');
+    final mountDir = Directory('${cache.path}/repo');
+    await mountDir.create(recursive: true);
+    await File('${mountDir.path}/note.typ').writeAsString('original');
+    await File('${mountDir.path}/.tylog-mount.json').writeAsString(
+      jsonEncode({
+        'blobs': {'note.typ': 'cached-sha'},
+      }),
+    );
+    final vaultDir = Directory('${root.path}/vault');
+    final storage = LocalVaultStorage(vaultDir);
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+      mountCacheDirectory: cache,
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      VaultEntry(id: 'local', name: 'Local', path: vaultDir.path),
+      storage: storage,
+    );
+    await storage.writeText(
+      '_system/settings/mounts.json',
+      jsonEncode([
+        {
+          'id': 'repo',
+          'name': 'Repo',
+          'source': {'kind': 'github', 'repo': 'a/b'},
+          'push': true,
+        },
+      ]),
+    );
+    await controller.reloadMounts(rescan: false);
+    controller.replaceNote('ext/repo/note.typ', 'original');
+    expect(controller.noteIsExtension, isFalse);
+    controller.edit('edited');
+    expect(await controller.save(syncAfter: false), isTrue);
+    expect(await File('${mountDir.path}/note.typ').readAsString(), 'edited');
+    final entries = await (await controller.githubOutbox).entriesFor('repo');
+    expect(entries, hasLength(1));
+    expect(entries.single.path, 'note.typ');
+    expect(entries.single.baseSha, 'cached-sha');
   });
   test(
     'kind registry loads on open, reloads peer edits, and clears on close',

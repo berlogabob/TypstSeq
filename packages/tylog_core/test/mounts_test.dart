@@ -87,6 +87,18 @@ void main() {
     );
     expect(await main.exists('ext'), isFalse);
     expect(await source.readText('notes/x.typ'), contains('target'));
+    storage.replaceMounts({'course': source}, writableMounts: {'course'});
+    await storage.writeText('ext/course/notes/x.typ', 'updated');
+    expect(await source.readText('notes/x.typ'), 'updated');
+    storage.replaceMounts({'course': source});
+    await expectLater(
+      storage.writeText('ext/course/notes/x.typ', 'bad'),
+      throwsUnsupportedError,
+    );
+    await source.writeText(
+      'notes/x.typ',
+      '#show: tylog.note.with(id: "target", title: "Target")\n',
+    );
     final index = await scanVaultStorage(storage);
     expect(index.notesByPath.keys, contains('ext/course/notes/x.typ'));
     expect(

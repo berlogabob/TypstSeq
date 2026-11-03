@@ -10,8 +10,7 @@ import 'package:tylog_core/tylog_core.dart'
         encodeMounts,
         parseMounts,
         mountsSettingsPath,
-        CompositeVaultStorage,
-        ReadOnlyVaultStorage;
+        CompositeVaultStorage;
 
 import 'package:tylog_core/graph.dart';
 
@@ -162,9 +161,18 @@ class WorkspaceController extends ChangeNotifier {
   VaultEntry? entry;
   VaultIndex? index;
   String? note;
-  bool get noteIsExtension => note?.startsWith('ext/') ?? false;
+  Mount? _pushMountFor(String path) {
+    final parts = path.split('/');
+    if (parts.length < 3 || parts.first != 'ext') return null;
+    return mounts
+        .where((mount) => mount.id == parts[1] && mount.push)
+        .firstOrNull;
+  }
+
+  bool get noteIsExtension =>
+      (note?.startsWith('ext/') ?? false) && _pushMountFor(note!) == null;
   String? get extensionName {
-    if (!noteIsExtension) return null;
+    if (!(note?.startsWith('ext/') ?? false)) return null;
     final id = note!.split('/')[1];
     return mounts.where((mount) => mount.id == id).firstOrNull?.name ?? id;
   }
@@ -776,7 +784,9 @@ class WorkspaceController extends ChangeNotifier {
       return false;
     }
     if (path == null) return false;
-    if (path.startsWith('ext/')) return true;
+    if (path.startsWith('ext/') && (_pushMountFor(path) == null || !dirty)) {
+      return true;
+    }
     final revision = editRevision;
     final template = emptyDailyTemplate(path);
     final value =
@@ -925,10 +935,16 @@ class WorkspaceController extends ChangeNotifier {
       if (!_owns(opened, generation)) return;
       mounts = loaded;
       _mountPaths = paths;
-      storage.replaceMounts({
-        for (final e in paths.entries)
-          e.key: ReadOnlyVaultStorage(LocalVaultStorage(Directory(e.value))),
-      });
+      storage.replaceMounts(
+        {
+          for (final e in paths.entries)
+            e.key: LocalVaultStorage(Directory(e.value)),
+        },
+        writableMounts: {
+          for (final mount in loaded)
+            if (mount.push) mount.id,
+        },
+      );
       _mountWarning = unavailable.isEmpty
           ? null
           : 'Unavailable extensions: ${unavailable.join(', ')}';
@@ -1440,7 +1456,8 @@ class WorkspaceController extends ChangeNotifier {
   final _noteWrites = <String, Future<void>>{};
 
   Future<void> _persistNote(Vault opened, String path, String? value) {
-    if (path.startsWith('ext/')) {
+    if (path.startsWith('ext/') &&
+        (_pushMountFor(path) == null || value == null)) {
       throw UnsupportedError('Read-only extension storage');
     }
     final previous = _noteWrites[path];
@@ -1464,6 +1481,28 @@ class WorkspaceController extends ChangeNotifier {
 
   Future<void> _writeNote(Vault opened, String path, String? value) async {
     if (!identical(vault, opened)) throw StateError('Vault changed');
+    final mount = _pushMountFor(path);
+    if (mount != null && value != null) {
+      final relative = path.split('/').skip(2).join('/');
+      final metaFile = File(
+        '${(await mountCache).path}/${mount.id}/.tylog-mount.json',
+      );
+      final meta = await metaFile.exists()
+          ? jsonDecode(await metaFile.readAsString()) as Map<String, dynamic>
+          : <String, dynamic>{};
+      final blobs = meta['blobs'];
+      final baseSha = blobs is Map ? blobs[relative] as String? : null;
+      await opened.storage.writeText(path, value);
+      await (await githubOutbox).enqueue(
+        mountId: mount.id,
+        path: relative,
+        baseSha: baseSha,
+        message: 'TyLog: edit $relative',
+        device: deviceId ?? 'unknown',
+      );
+      opened.markLocallyWritten(path);
+      return;
+    }
     final activeEntry = entry;
     final scoped = databaseForVault != null && activeEntry != null;
     final db = scoped ? await databaseForVault!(activeEntry) : await database;

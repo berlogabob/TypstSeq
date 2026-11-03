@@ -372,7 +372,7 @@ Issues found:
 - [x] P2-E pack updates from GitHub releases (source in install record, not manifest; daily check, persisted notice). Widget tests for Modules page missing -> covered by P2 Mac verify (install v1.3.0 from GitHub)
 - [x] P2-F0 per-file git blob shas in mount cache meta (= git hash-object)
 - [x] P2-F1 outbox + pusher core (lib/github/github_outbox.dart): entries, push in order, sha update, 409 -> conflict record
-- [ ] P2-F2a editing push-enabled ext notes: lock only when push false; composite allows writes for push mounts; save -> cache + outbox enqueue (controller)
+- [x] P2-F2a editing push-enabled ext notes: lock only when push false; composite allows writes for push mounts; save -> cache + outbox enqueue (controller)
 - [ ] P2-F2b Extensions page: Allow editing toggle (permissions.push), Push now, pending/conflict counts; pusher on 30 s debounce + resume
 - [x] P2-F3a pull skips pending/conflict paths
 - [ ] P2-F3b Incoming review item 'GitHub conflict' with Keep mine / Take theirs
