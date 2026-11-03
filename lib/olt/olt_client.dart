@@ -49,6 +49,11 @@ class OltResponse {
   final String body;
 }
 
+class OltSignInNeeded implements Exception {
+  @override
+  String toString() => 'OpenLabTwin sign-in needed';
+}
+
 class OltClient {
   OltClient({OltRequest? request, OltSessionStore? store})
     : _request = request ?? _httpRequest,
@@ -126,6 +131,9 @@ class OltClient {
 
   /// Rows come back as a JSON array, auth replies as an object.
   Future<dynamic> _decode(OltResponse response) async {
+    if (response.statusCode == 401 || response.statusCode == 403) {
+      throw OltSignInNeeded();
+    }
     final decoded = response.body.isEmpty ? null : jsonDecode(response.body);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       final error = decoded is Map ? decoded : const {};

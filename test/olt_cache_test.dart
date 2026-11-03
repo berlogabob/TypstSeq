@@ -1,7 +1,42 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:tylog/olt/olt_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/olt/olt_cache.dart';
 
 void main() {
+  test('403 keeps the entire previous cache', () async {
+    final dir = await Directory.systemTemp.createTemp('olt_cache_test');
+    addTearDown(() => dir.delete(recursive: true));
+    await File('${dir.path}/places.json').writeAsString(
+      jsonEncode([
+        {'id': 1},
+      ]),
+    );
+    await File('${dir.path}/assets.json').writeAsString(
+      jsonEncode([
+        {'tag': 'old'},
+      ]),
+    );
+    final client = OltClient(
+      store: _Store(),
+      request: (_, uri, _, _) async => uri.path.endsWith('/assets')
+          ? const OltResponse(403, '{}')
+          : const OltResponse(200, '[]'),
+    );
+    await expectLater(
+      syncOltCache(client, dir),
+      throwsA(isA<OltSignInNeeded>()),
+    );
+    final cache = await loadOltCache(dir);
+    expect(cache['places'], [
+      {'id': 1},
+    ]);
+    expect(cache['assets'], [
+      {'tag': 'old'},
+    ]);
+  });
+
   test('OLT calendar includes approved bookings on their local start day', () {
     final start = DateTime.parse('2026-10-21T23:30:00Z').toLocal();
     final day =
@@ -151,4 +186,14 @@ String _localDay(String utc) {
   final local = DateTime.parse(utc).toLocal();
   return '${local.year}-${local.month.toString().padLeft(2, '0')}-'
       '${local.day.toString().padLeft(2, '0')}';
+}
+
+class _Store implements OltSessionStore {
+  @override
+  Future<String?> read() async =>
+      '{"email":"a@example.com","access":"a","refresh":"r","expiresAt":"2030-01-01T00:00:00.000"}';
+  @override
+  Future<void> write(String value) async {}
+  @override
+  Future<void> delete() async {}
 }

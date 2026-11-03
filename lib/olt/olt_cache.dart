@@ -61,16 +61,32 @@ Future<void> syncOltCache(OltClient client, Directory dir) async {
     'ideas':
         'select=id,body,status,created_at,ai_title,ai_summary&status=eq.new',
     'places': 'select=id,name,kind,code,parent_id,tier',
+    'items': 'select=id,name,kind,unit',
+    'assets': 'select=id,tag,serial,condition,seen_at,item_id',
+    'asset_place': 'select=asset_id,place_id',
+    'stock': 'select=item_id,place_id,qty',
   };
+  final fetched = <String, dynamic>{};
   for (final entry in tables.entries) {
-    final rows = await client.get(entry.key, entry.value);
+    fetched[entry.key] = await client.get(entry.key, entry.value);
+  }
+  for (final entry in fetched.entries) {
+    final rows = entry.value;
     await File('${dir.path}/${entry.key}.json').writeAsString(jsonEncode(rows));
   }
 }
 
 Future<Map<String, List>> loadOltCache(Directory dir) async {
   final result = <String, List>{};
-  for (final table in ['activities', 'ideas', 'places']) {
+  for (final table in [
+    'activities',
+    'ideas',
+    'places',
+    'items',
+    'assets',
+    'asset_place',
+    'stock',
+  ]) {
     final file = File('${dir.path}/$table.json');
     if (!await file.exists()) continue;
     final rows = jsonDecode(await file.readAsString());

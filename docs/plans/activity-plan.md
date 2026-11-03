@@ -400,6 +400,6 @@ Issues found:
 
 ## Wave 18 (2026-11-03): P4 connectors (plan: docs/plans/2026-11-03-connectors/README.md)
 - [x] P4-A Connector interface + OLT places tree as read-only place entities (parent_id -> part_of, code as alias)
-- [ ] P4-B OLT items/assets/stock as read-only entities under their place (asset_place view), shown on place pages
+- [x] P4-B OLT items/assets/stock as read-only entities under their place (asset_place view), shown on place pages (fake-client tested; live OLT check pending: needs OLT sign-in on device)
 - [ ] P4-C GitHub Projects v2 / repo issues as board cards (read + status move) using GitDoIt GraphQL queries
 - [ ] P4 review + suite + device checks

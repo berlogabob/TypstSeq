@@ -486,6 +486,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               _setOltEntities(updated);
             });
           }
+        } on OltSignInNeeded {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('OpenLabTwin sign-in needed')),
+            );
+          }
         } catch (_) {}
       } catch (_) {
       } finally {
@@ -4211,7 +4217,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ],
         createLabel: 'New entity',
         subtitleFor: (note) =>
-            note.path.startsWith('olt:place:') ? 'OpenLabTwin' : note.kind,
+            note.path.startsWith('olt:') ? 'OpenLabTwin' : note.kind,
       ),
     );
     if (chosen is NoteRef) return chosen;

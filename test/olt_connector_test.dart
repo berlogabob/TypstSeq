@@ -10,6 +10,24 @@ void main() {
   test('cached places and notes nest under their external parents', () async {
     final connector = OltConnector(
       () async => {
+        'items': [
+          {'id': 5, 'name': 'Microscope', 'unit': 'pcs'},
+        ],
+        'assets': [
+          {
+            'id': 7,
+            'tag': 'A7',
+            'item_id': 5,
+            'condition': 'good',
+            'seen_at': '2026-11-03',
+          },
+        ],
+        'asset_place': [
+          {'asset_id': 7, 'place_id': 2},
+        ],
+        'stock': [
+          {'item_id': 5, 'place_id': 2, 'qty': 3},
+        ],
         'places': [
           {'id': 1, 'name': 'Building', 'code': 'B'},
           {'id': 2, 'name': 'Room', 'code': 'R15', 'parent_id': 1},
@@ -33,8 +51,56 @@ void main() {
     expect(room.note.id, 'olt:place:R15');
     expect(
       room.children.map((n) => n.note.id),
-      containsAll(['olt:place:3', 'note']),
+      containsAll(['olt:place:3', 'olt:asset:A7', 'note']),
     );
+  });
+
+  testWidgets('place displays cached assets and stock', (tester) async {
+    late OltConnector connector;
+    await tester.runAsync(() async {
+      connector = OltConnector(
+        () async => {
+          'places': [
+            {'id': 1, 'name': 'Room', 'code': 'R'},
+          ],
+          'items': [
+            {'id': 2, 'name': 'Lens', 'unit': 'pcs'},
+          ],
+          'assets': [
+            {
+              'id': 3,
+              'tag': 'A3',
+              'item_id': 2,
+              'condition': 'good',
+              'seen_at': '2026-11-03',
+            },
+          ],
+          'asset_place': [
+            {'asset_id': 3, 'place_id': 1},
+          ],
+          'stock': [
+            {'item_id': 2, 'place_id': 1, 'qty': 4},
+          ],
+        },
+      );
+      await connector.refresh();
+    });
+    final entities = connector.entities();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ExternalEntityPage(
+          entity: entities.first,
+          notes: entities.map((e) => e.toNoteRef()).toList(),
+          onOpen: (_) {},
+        ),
+      ),
+    );
+    expect(find.text('Assets here'), findsOneWidget);
+    expect(find.text('A3'), findsOneWidget);
+    expect(find.text('Lens · good · 2026-11-03'), findsOneWidget);
+    expect(find.text('Stock'), findsOneWidget);
+    expect(find.text('Lens'), findsOneWidget);
+    expect(find.text('4 pcs'), findsOneWidget);
   });
   testWidgets('external page displays children and references without writes', (
     tester,
