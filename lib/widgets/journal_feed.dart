@@ -304,6 +304,7 @@ class _JournalFeedState extends State<JournalFeed> {
                             onOpenPath: widget.onOpenPath,
                             onSetStatus: widget.onSetStatus,
                             onSetField: widget.onSetField,
+                            compact: true,
                           );
                         },
                         imageResolver: _readAsset,

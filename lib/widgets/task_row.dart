@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models.dart';
-import 'task_checkbox.dart';
 import 'task_chip_strip.dart';
 import 'task_fields.dart';
 
@@ -13,12 +12,15 @@ class TaskRow extends StatefulWidget {
     this.onSetStatus,
     this.onSetField,
     this.subtitle,
+    this.compact = false,
   });
   final TaskRef task;
   final ValueChanged<String> onOpenPath;
   final Future<void> Function(TaskRef, String)? onSetStatus;
   final Future<void> Function(TaskRef, String, String)? onSetField;
   final String? subtitle;
+  // Inside a page (journal read view): tight row, chips only for set fields.
+  final bool compact;
 
   @override
   State<TaskRow> createState() => _TaskRowState();
@@ -89,53 +91,76 @@ class _TaskRowState extends State<TaskRow> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) => ListTile(
-    leading: Tooltip(
-      message: 'Task status',
-      triggerMode: TooltipTriggerMode.manual,
-      child: GestureDetector(
-        onLongPressStart: onSetStatus == null
+  Widget _status(BuildContext context) => Tooltip(
+    message: 'Task status',
+    triggerMode: TooltipTriggerMode.manual,
+    child: GestureDetector(
+      onLongPressStart: onSetStatus == null
+          ? null
+          : (details) => _statusMenu(context, details.globalPosition),
+      child: IconButton(
+        visualDensity: widget.compact ? VisualDensity.compact : null,
+        onPressed: onSetStatus == null
             ? null
-            : (details) => _statusMenu(context, details.globalPosition),
-        child: IconButton(
-          onPressed: onSetStatus == null
-              ? null
-              : () => unawaited(
-                  onSetStatus!(task, task.status == 'done' ? 'todo' : 'done'),
-                ),
-          icon: Text(switch (task.status) {
-            'doing' => taskDoingGlyph,
-            'done' => taskCheckedGlyph,
-            'cancelled' => taskCancelledGlyph,
-            _ => taskUncheckedGlyph,
-          }, style: Theme.of(context).textTheme.titleLarge),
-        ),
+            : () => unawaited(
+                onSetStatus!(task, task.status == 'done' ? 'todo' : 'done'),
+              ),
+        // Icons, not ☑ glyphs: Android draws those as colour emoji.
+        icon: Icon(switch (task.status) {
+          'doing' => Icons.timelapse,
+          'done' => Icons.check_box,
+          'cancelled' => Icons.disabled_by_default_outlined,
+          _ => Icons.check_box_outline_blank,
+        }),
       ),
     ),
-    title: Text(
-      task.text,
-      style: task.status == 'cancelled' || task.status == 'done'
-          ? const TextStyle(decoration: TextDecoration.lineThrough)
-          : null,
-    ),
-    subtitle: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (widget.subtitle != null && widget.subtitle!.isNotEmpty)
-          Text(widget.subtitle!),
-        Builder(
-          builder: (context) => TaskChipStrip(
-            task: task,
-            showEmpty: onSetField != null,
-            onCommand: (field) {
-              final box = context.findRenderObject()! as RenderBox;
-              _field(context, field, box.localToGlobal(Offset.zero) & box.size);
-            },
-          ),
-        ),
-      ],
-    ),
-    onTap: () => widget.onOpenPath(task.notePath),
   );
+
+  Text _title() => Text(
+    task.text,
+    style: task.status == 'cancelled' || task.status == 'done'
+        ? const TextStyle(decoration: TextDecoration.lineThrough)
+        : null,
+  );
+
+  Widget _strip() => Builder(
+    builder: (context) => TaskChipStrip(
+      task: task,
+      showEmpty: onSetField != null && !widget.compact,
+      onCommand: (field) {
+        final box = context.findRenderObject()! as RenderBox;
+        _field(context, field, box.localToGlobal(Offset.zero) & box.size);
+      },
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) => widget.compact
+      ? InkWell(
+          onTap: () => widget.onOpenPath(task.notePath),
+          child: Row(
+            children: [
+              _status(context),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [_title(), _strip()],
+                ),
+              ),
+            ],
+          ),
+        )
+      : ListTile(
+          leading: _status(context),
+          title: _title(),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (widget.subtitle != null && widget.subtitle!.isNotEmpty)
+                Text(widget.subtitle!),
+              _strip(),
+            ],
+          ),
+          onTap: () => widget.onOpenPath(task.notePath),
+        );
 }

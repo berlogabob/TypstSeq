@@ -153,10 +153,10 @@ void main() {
       final changes = <String>[];
       String? opened;
       for (final (status, glyph) in const [
-        ('todo', '☐'),
-        ('doing', '◐'),
-        ('done', '☑'),
-        ('cancelled', '☒'),
+        ('todo', Icons.check_box_outline_blank),
+        ('doing', Icons.timelapse),
+        ('done', Icons.check_box),
+        ('cancelled', Icons.disabled_by_default_outlined),
       ]) {
         await tester.pumpWidget(
           MaterialApp(
@@ -187,7 +187,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        expect(find.text(glyph), findsOneWidget);
+        expect(find.byIcon(glyph), findsOneWidget);
         await tester.tap(find.byTooltip('Task status'));
         expect(changes.last, status == 'done' ? 'todo' : 'done');
         await tester.longPress(find.byTooltip('Task status'));
@@ -526,6 +526,12 @@ void main() {
       await tester.tap(find.text('doing'));
       await tester.pumpAndSettle();
       expect(changed, 'doing');
+      if (surface == 'Journal') {
+        // Compact journal row: no empty field chips.
+        expect(find.byKey(const Key('task-chip-t-priority')), findsNothing);
+        expect(tester.takeException(), isNull);
+        return;
+      }
       await tester.ensureVisible(find.byKey(const Key('task-chip-t-priority')));
       await tester.tap(find.byKey(const Key('task-chip-t-priority')));
       await tester.pumpAndSettle();
