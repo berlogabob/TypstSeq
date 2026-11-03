@@ -344,11 +344,12 @@ Workers: codex gpt-6.1-terra (tasks), gpt-6-luna (small fixes), pi Ornith 35b on
 - [x] G1 namespace planner (pure fn, 7 tests pass)
 - [x] G Logseq namespace titles -> part_of (apply + maintenance UI)
 - [x] P1 review + full test suite + macOS /verify: review+suite done; Mac verify found 5 issues (verify-mac-p1.md) -> 4 fixed; round 2 found #6-#10 -> #6-#8 fixed; #9 = entity body nested fixed-height scroll (found on device), #10 flaky in full suite -> codex terra (sandbox could not run flutter). Full suite 1866 pass
+- [x] P1 committed 5f2696d
 - [x] P1 phase end: P30 profile build on real vault (source-built typst .so, cold start index v14: 10059 notes in 23 s, no rebuild storm, no errors)
 
 Issues found:
-- [ ] USER DATA 11-03: duplicate OpenLabTwin pages: notes/OpenLabTwin.typ (kind note, id 20261103-104633) + projects/OpenLabTwin.typ (kind project, id 20261103-104705); daily links the note copy. Needs user OK to merge (+ maybe a merge-duplicates action)
-- [ ] PRE-EXISTING: entity page body is a fixed-height Expanded viewport with hidden scroll; content below the fold looks missing (found 11-03 on Mac). Needs design: single page scroll vs editor windowing perf
+- [x] USER DATA 11-03: duplicate OpenLabTwin pages: notes/OpenLabTwin.typ (kind note, id 20261103-104633) + projects/OpenLabTwin.typ (kind project, id 20261103-104705); daily links the note copy. merged with user OK: daily refs -> project id, empty notes copy deleted (backup in session scratchpad)
+- [ ] P1.1 (user 11-03: no app-wide scrollbars) entity page body is a fixed-height Expanded viewport with hidden scroll; content below the fold looks missing (found 11-03 on Mac). Fix: remove the nested scroll on entity pages (one page scroll), keep editor windowing for long notes
 - [ ] FLAKY under load: workspace_controller_test 'worker publishes newly scanned issues' timed out once in full suite; 3/3 pass alone
 - [x] PRE-EXISTING (fails on 49cf87b too): processing_screen_test 3x 'Retry preserves the <worker> payload' - Retry TextButton not found. Cause: fixed Oct 31 timestamps aged into collapsed 'Older' section; fixtures now use current time (luna)
 - [x] P1 review (docs/plans/2026-11-03-entities-boards/review-p1.md): 11 findings. Batch 1 board/issues/kinds #1,4,7,8,10,11; batch 2 namespace/relationships #2,3,5,6,9 -> codex terra x2: 10/11 fixed (#1 mutateNote, #4 sync queued, #7, #8, #10, #11, #2, #3, #5, #6); #9 fixed by luna (clears project:, drops part_of entry). Full suite 1855 pass, core 502 pass
