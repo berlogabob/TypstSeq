@@ -211,6 +211,60 @@ class _WhiteboardState extends State<Whiteboard> {
   Offset dragPosition = Offset.zero;
   Set<String> frameCardIds = {};
   Size size = Size.zero;
+  final imageFutures = <String, Future<Uint8List?>>{};
+  final noteFutures = <String, Future<String>>{};
+  final imageVersions = <String, Future<Uint8List?>>{};
+  final noteVersions = <String, Future<String>>{};
+
+  @override
+  void didUpdateWidget(covariant Whiteboard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.index != widget.index ||
+        oldWidget.storage != widget.storage ||
+        oldWidget.imageResolver != widget.imageResolver) {
+      imageFutures.clear();
+      noteFutures.clear();
+    }
+  }
+
+  Future<Uint8List?> imageContent(String ref) =>
+      imageFutures.putIfAbsent(ref, () async {
+        try {
+          final hash = await widget.storage
+              .hash(ref)
+              .catchError((_) => 'resolver');
+          return await imageVersions.putIfAbsent(
+            '$ref:$hash',
+            () async =>
+                await (widget.imageResolver?.call(ref) ??
+                    widget.storage.readBytes(ref)),
+          );
+        } catch (_) {
+          return null;
+        }
+      });
+
+  Future<String> noteContent(NoteRef note) => noteFutures.putIfAbsent(
+    '${note.id}:${note.path}:${note.contentHash ?? note.fingerprint}',
+    () async {
+      final hash = note.contentHash ?? await widget.storage.hash(note.path);
+      return noteVersions.putIfAbsent(
+        '${note.id}:${note.path}:$hash',
+        () => widget.storage.readText(note.path),
+      );
+    },
+  );
+
+  void moveSelected(Offset delta) {
+    final card = board.cards.where((c) => c.id == selected).firstOrNull;
+    if (card == null) return;
+    setState(
+      () =>
+          board = board.moveCard(card.id, card.x + delta.dx, card.y + delta.dy),
+    );
+    scheduleSave();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -603,12 +657,9 @@ class _WhiteboardState extends State<Whiteboard> {
     scheduleSave();
   }
 
-  Widget edgeHitTarget(BoardEdge edge, BoardCard from, BoardCard to) {
-    final start = Offset(
-      from.x.toDouble() + from.w / 2,
-      from.y.toDouble() + from.h / 2,
-    );
-    final end = Offset(to.x.toDouble() + to.w / 2, to.y.toDouble() + to.h / 2);
+  Widget edgeHitTarget(BoardEdge edge, Rect from, Rect to) {
+    final start = from.center;
+    final end = to.center;
     final delta = end - start;
     final extent = delta.distance + 24;
     return Positioned(
@@ -619,14 +670,18 @@ class _WhiteboardState extends State<Whiteboard> {
       child: Center(
         child: Transform.rotate(
           angle: math.atan2(delta.dy, delta.dx),
-          child: GestureDetector(
-            key: ValueKey('edge-${edge.id}'),
-            behavior: HitTestBehavior.translucent,
-            onTap: () => setState(() {
-              selectedEdge = edge.id;
-              selected = null;
-            }),
-            child: SizedBox(width: delta.distance, height: 24),
+          child: Semantics(
+            label: 'Edge from ${edge.from} to ${edge.to}',
+            button: true,
+            child: GestureDetector(
+              key: ValueKey('edge-${edge.id}'),
+              behavior: HitTestBehavior.translucent,
+              onTap: () => setState(() {
+                selectedEdge = edge.id;
+                selected = null;
+              }),
+              child: SizedBox(width: delta.distance, height: 24),
+            ),
           ),
         ),
       ),
@@ -734,16 +789,21 @@ class _WhiteboardState extends State<Whiteboard> {
     }
     if (card.type == 'asset' && ref != null) {
       return FutureBuilder<Uint8List?>(
-        future:
-            widget.imageResolver?.call(ref) ??
-            widget.storage
-                .readBytes(ref)
-                .then<Uint8List?>((v) => v)
-                .catchError((_) => null),
+        future: imageContent(ref),
         builder: (_, snapshot) => snapshot.hasData
             ? Image.memory(
                 snapshot.data!,
                 fit: BoxFit.cover,
+                cacheWidth: math.max(
+                  1,
+                  ((card.w - 20) * MediaQuery.devicePixelRatioOf(context))
+                      .round(),
+                ),
+                cacheHeight: math.max(
+                  1,
+                  ((card.h - 20) * MediaQuery.devicePixelRatioOf(context))
+                      .round(),
+                ),
                 errorBuilder: (_, _, _) => const Text('missing'),
               )
             : snapshot.connectionState == ConnectionState.done
@@ -771,7 +831,7 @@ class _WhiteboardState extends State<Whiteboard> {
               ],
             ),
             FutureBuilder<String>(
-              future: widget.storage.readText(note.path),
+              future: noteContent(note),
               builder: (_, s) => Text(
                 s.data ?? '',
                 maxLines: 3,
@@ -820,6 +880,12 @@ class _WhiteboardState extends State<Whiteboard> {
           TextButton(
             onPressed: pinTree,
             child: const Text('Pin to whiteboard'),
+          ),
+        if (!treeMode)
+          IconButton(
+            tooltip: 'Paste',
+            onPressed: paste,
+            icon: const Icon(Icons.content_paste),
           ),
         if (!treeMode)
           PopupMenuButton<String>(
@@ -882,6 +948,24 @@ class _WhiteboardState extends State<Whiteboard> {
           delete();
           return KeyEventResult.handled;
         }
+        if (event is KeyDownEvent && selected != null) {
+          final delta = switch (event.logicalKey) {
+            LogicalKeyboardKey.arrowLeft => const Offset(-8, 0),
+            LogicalKeyboardKey.arrowRight => const Offset(8, 0),
+            LogicalKeyboardKey.arrowUp => const Offset(0, -8),
+            LogicalKeyboardKey.arrowDown => const Offset(0, 8),
+            _ => null,
+          };
+          if (delta != null) {
+            moveSelected(delta);
+            return KeyEventResult.handled;
+          }
+          if (event.logicalKey == LogicalKeyboardKey.enter ||
+              event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+            openCard(board.cards.firstWhere((c) => c.id == selected));
+            return KeyEventResult.handled;
+          }
+        }
         return KeyEventResult.ignored;
       },
       child: LayoutBuilder(
@@ -896,6 +980,21 @@ class _WhiteboardState extends State<Whiteboard> {
             b.dx - a.dx,
             b.dy - a.dy,
           );
+          final rects = {
+            for (final c in displayBoard.cards)
+              c.id: Rect.fromLTWH(
+                c.x.toDouble(),
+                c.y.toDouble(),
+                c.w.toDouble(),
+                c.h.toDouble(),
+              ),
+          };
+          final visibleIds = visible.map((c) => c.id).toSet();
+          final visibleEdges = displayBoard.edges
+              .where(
+                (e) => visibleIds.contains(e.from) || visibleIds.contains(e.to),
+              )
+              .toList();
           return InteractiveViewer(
             key: viewerKey,
             transformationController: transform,
@@ -973,7 +1072,8 @@ class _WhiteboardState extends State<Whiteboard> {
                     child: IgnorePointer(
                       child: CustomPaint(
                         painter: _EdgePainter(
-                          displayBoard,
+                          visibleEdges,
+                          rects,
                           selectedEdge,
                           Theme.of(context).colorScheme,
                         ),
@@ -981,15 +1081,9 @@ class _WhiteboardState extends State<Whiteboard> {
                     ),
                   ),
                   if (!treeMode)
-                    for (final edge in displayBoard.edges)
-                      if (displayBoard.cards
-                              .where((c) => c.id == edge.from)
-                              .firstOrNull
-                          case final from?)
-                        if (displayBoard.cards
-                                .where((c) => c.id == edge.to)
-                                .firstOrNull
-                            case final to?)
+                    for (final edge in visibleEdges)
+                      if (rects[edge.from] case final from?)
+                        if (rects[edge.to] case final to?)
                           edgeHitTarget(edge, from, to),
                   for (final card in visible)
                     Positioned(
@@ -997,96 +1091,114 @@ class _WhiteboardState extends State<Whiteboard> {
                       top: card.y.toDouble() + origin,
                       width: card.w.toDouble(),
                       height: card.h.toDouble(),
-                      child: GestureDetector(
-                        key: ValueKey('board-card-${card.id}'),
-                        behavior: HitTestBehavior.opaque,
-                        onTap: treeMode
-                            ? null
-                            : () {
-                                setState(() {
-                                  selected = card.id;
-                                  selectedEdge = null;
-                                });
-                              },
-                        onPanStart: treeMode
-                            ? null
-                            : (_) {
-                                dragPosition = Offset(
-                                  card.x.toDouble(),
-                                  card.y.toDouble(),
-                                );
-                                setState(() => selected = card.id);
-                              },
-                        onPanUpdate: treeMode
-                            ? null
-                            : (d) {
-                                final scale = transform.value
-                                    .getMaxScaleOnAxis();
-                                dragPosition += d.delta / scale;
-                                setState(
-                                  () => board = board.moveCard(
-                                    card.id,
-                                    dragPosition.dx,
-                                    dragPosition.dy,
+                      child: Semantics(
+                        label:
+                            '${card.type} card ${card.text ?? card.ref ?? card.id}',
+                        selected: selected == card.id,
+                        child: GestureDetector(
+                          key: ValueKey('board-card-${card.id}'),
+                          behavior: HitTestBehavior.opaque,
+                          onTap: treeMode
+                              ? null
+                              : () {
+                                  setState(() {
+                                    selected = card.id;
+                                    selectedEdge = null;
+                                  });
+                                },
+                          onPanStart: treeMode
+                              ? null
+                              : (_) {
+                                  dragPosition = Offset(
+                                    card.x.toDouble(),
+                                    card.y.toDouble(),
+                                  );
+                                  setState(() => selected = card.id);
+                                },
+                          onPanUpdate: treeMode
+                              ? null
+                              : (d) {
+                                  final scale = transform.value
+                                      .getMaxScaleOnAxis();
+                                  dragPosition += d.delta / scale;
+                                  setState(
+                                    () => board = board.moveCard(
+                                      card.id,
+                                      dragPosition.dx,
+                                      dragPosition.dy,
+                                    ),
+                                  );
+                                  scheduleSave();
+                                },
+                          child: Card(
+                            color: selected == card.id
+                                ? Theme.of(
+                                    context,
+                                  ).colorScheme.secondaryContainer
+                                : null,
+                            child: Stack(
+                              children: [
+                                Positioned.fill(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(10),
+                                    child: ClipRect(child: content(card)),
                                   ),
-                                );
-                                scheduleSave();
-                              },
-                        child: Card(
-                          color: selected == card.id
-                              ? Theme.of(context).colorScheme.secondaryContainer
-                              : null,
-                          child: Stack(
-                            children: [
-                              Positioned.fill(
-                                child: Padding(
-                                  padding: const EdgeInsets.all(10),
-                                  child: ClipRect(child: content(card)),
                                 ),
-                              ),
-                              if (!treeMode && connecting)
-                                Positioned(
-                                  right: 0,
-                                  top: 4,
-                                  child: GestureDetector(
-                                    key: ValueKey('connect-${card.id}'),
-                                    onPanEnd: (d) =>
-                                        finishEdge(card, d.globalPosition),
-                                    child: const Icon(
-                                      Icons.radio_button_checked,
-                                      size: 28,
+                                if (!treeMode && connecting)
+                                  Positioned(
+                                    right: 0,
+                                    top: 4,
+                                    child: Semantics(
+                                      label: 'Connect card ${card.id}',
+                                      child: GestureDetector(
+                                        key: ValueKey('connect-${card.id}'),
+                                        onPanEnd: (d) =>
+                                            finishEdge(card, d.globalPosition),
+                                        child: const Icon(
+                                          Icons.radio_button_checked,
+                                          size: 28,
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                ),
-                              if (!treeMode)
-                                Positioned(
-                                  right: 0,
-                                  bottom: 0,
-                                  child: GestureDetector(
-                                    key: ValueKey('resize-${card.id}'),
-                                    onPanUpdate: treeMode
-                                        ? null
-                                        : (d) {
-                                            final scale = transform.value
-                                                .getMaxScaleOnAxis();
-                                            setState(
-                                              () => board = board.resizeCard(
-                                                card.id,
-                                                (card.w + d.delta.dx / scale)
-                                                    .clamp(80, 2000),
-                                                (card.h + d.delta.dy / scale)
-                                                    .clamp(50, 2000),
-                                              ),
-                                            );
-                                            scheduleSave();
-                                          },
-                                    child: const Icon(
-                                      Icons.drag_handle,
-                                      size: 20,
+                                if (!treeMode)
+                                  Positioned(
+                                    right: 0,
+                                    bottom: 0,
+                                    child: Semantics(
+                                      label: 'Resize card ${card.id}',
+                                      child: GestureDetector(
+                                        key: ValueKey('resize-${card.id}'),
+                                        onPanUpdate: treeMode
+                                            ? null
+                                            : (d) {
+                                                final scale = transform.value
+                                                    .getMaxScaleOnAxis();
+                                                setState(
+                                                  () =>
+                                                      board = board.resizeCard(
+                                                        card.id,
+                                                        (card.w +
+                                                                d.delta.dx /
+                                                                    scale)
+                                                            .clamp(80, 2000),
+                                                        (card.h +
+                                                                d.delta.dy /
+                                                                    scale)
+                                                            .clamp(50, 2000),
+                                                      ),
+                                                );
+                                                scheduleSave();
+                                              },
+                                        child: const Icon(
+                                          Icons.drag_handle,
+                                          size: 20,
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -1102,30 +1214,31 @@ class _WhiteboardState extends State<Whiteboard> {
 }
 
 class _EdgePainter extends CustomPainter {
-  _EdgePainter(this.board, this.selected, this.colors);
-  final Board board;
+  _EdgePainter(this.edges, this.rects, this.selected, this.colors);
+  final List<BoardEdge> edges;
+  final Map<String, Rect> rects;
   final String? selected;
   final ColorScheme colors;
   @override
   void paint(Canvas canvas, Size size) {
-    for (final edge in board.edges) {
-      final a = board.cards.where((c) => c.id == edge.from).firstOrNull;
-      final b = board.cards.where((c) => c.id == edge.to).firstOrNull;
+    for (final edge in edges) {
+      final a = rects[edge.from];
+      final b = rects[edge.to];
       if (a == null || b == null) continue;
       final start = Offset(
-        a.x.toDouble() + a.w / 2 + _WhiteboardState.origin,
-        a.y.toDouble() + a.h / 2 + _WhiteboardState.origin,
+        a.center.dx + _WhiteboardState.origin,
+        a.center.dy + _WhiteboardState.origin,
       );
       final end = Offset(
-        b.x.toDouble() + b.w / 2 + _WhiteboardState.origin,
-        b.y.toDouble() + b.h / 2 + _WhiteboardState.origin,
+        b.center.dx + _WhiteboardState.origin,
+        b.center.dy + _WhiteboardState.origin,
       );
       final delta = end - start;
       if (delta.distance == 0) continue;
       final unit = delta / delta.distance;
       final t = math.min(
-        (b.w / 2) / (unit.dx.abs() + 0.00001),
-        (b.h / 2) / (unit.dy.abs() + 0.00001),
+        (b.width / 2) / (unit.dx.abs() + 0.00001),
+        (b.height / 2) / (unit.dy.abs() + 0.00001),
       );
       final tip = end - unit * t;
       final paint = Paint()

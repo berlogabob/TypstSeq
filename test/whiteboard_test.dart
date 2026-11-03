@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -8,6 +9,16 @@ import 'package:tylog/widgets/whiteboard.dart';
 import 'package:tylog/widgets/entity_board.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog_core/tylog_core.dart';
+
+class CountingStorage extends LocalVaultStorage {
+  CountingStorage(super.root);
+  int reads = 0;
+  @override
+  Future<Uint8List> readBytes(String path) {
+    reads++;
+    return super.readBytes(path);
+  }
+}
 
 void main() {
   late Directory dir;
@@ -794,9 +805,7 @@ void main() {
         null,
       ),
     );
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
-    await tester.sendKeyEvent(LogicalKeyboardKey.keyV);
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.tap(find.byTooltip('Paste'));
     await tester.pump();
     clipboard = 'https://example.org';
     await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
@@ -815,5 +824,104 @@ void main() {
     expect(saved?.frames.single.title, 'Ideas');
     expect(saved?.cards.map((c) => c.type), ['text', 'url']);
     expect(saved?.cards.first.text, 'Pasted text');
+  });
+  testWidgets('drag reuses reads and decodes a sized thumbnail', (
+    tester,
+  ) async {
+    final counted = CountingStorage(dir);
+    await tester.runAsync(() async {
+      await counted.writeBytes(
+        'image.png',
+        base64Decode(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/aXkAAAAASUVORK5CYII=',
+        ),
+      );
+      await counted.writeText('note.typ', 'Note excerpt');
+    });
+    const note = NoteRef(
+      id: 'n',
+      path: 'note.typ',
+      title: 'Note',
+      outgoingLinks: [],
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Whiteboard(
+          board: const Board(
+            id: 'cache',
+            title: 'Cache',
+            layout: 'free',
+            cards: [
+              BoardCard(
+                id: 'image',
+                type: 'asset',
+                ref: 'image.png',
+                x: 20,
+                y: 20,
+              ),
+              BoardCard(id: 'note', type: 'note', ref: 'n', x: 300, y: 20),
+            ],
+          ),
+          storage: counted,
+          index: const VaultIndex(
+            notesByPath: {'note.typ': note},
+            backlinksByTarget: {},
+          ),
+        ),
+      ),
+    );
+    for (
+      var i = 0;
+      i < 30 && find.text('Note excerpt').evaluate().isEmpty;
+      i++
+    ) {
+      await settleIo(tester);
+    }
+    expect(find.text('Note excerpt'), findsOneWidget);
+    final image = tester.widget<Image>(find.byType(Image).first);
+    expect(image.image, isA<ResizeImage>());
+    expect((image.image as ResizeImage).width, greaterThan(0));
+    final reads = counted.reads;
+    await tester.drag(
+      find.byKey(const ValueKey('board-card-note')),
+      const Offset(30, 30),
+    );
+    await tester.pump();
+    expect(counted.reads, reads);
+  });
+
+  testWidgets('keyboard moves and deletes selected card', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Whiteboard(
+          board: const Board(
+            id: 'keys',
+            title: 'Keys',
+            layout: 'free',
+            cards: [
+              BoardCard(
+                id: 'key-card',
+                type: 'text',
+                text: 'Keyboard',
+                x: 32,
+                y: 32,
+              ),
+            ],
+          ),
+          storage: storage,
+          index: null,
+        ),
+      ),
+    );
+    final card = find.byKey(const ValueKey('board-card-key-card'));
+    await tester.tap(card);
+    await tester.pump();
+    final before = tester.getTopLeft(card);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(tester.getTopLeft(card).dx, before.dx + 8);
+    await tester.sendKeyEvent(LogicalKeyboardKey.delete);
+    await tester.pump();
+    expect(card, findsNothing);
   });
 }
