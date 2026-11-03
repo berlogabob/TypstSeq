@@ -252,3 +252,159 @@ String validateVaultPath(String path, {bool allowEmpty = false}) {
   }
   return path;
 }
+
+class ReadOnlyVaultStorage extends VaultStorage {
+  ReadOnlyVaultStorage(this.inner);
+  final VaultStorage inner;
+
+  @override
+  Object get syncIdentity => inner.syncIdentity;
+  @override
+  Future<bool> exists(String path) => inner.exists(path);
+  @override
+  Future<bool> existsNow(String path) => inner.existsNow(path);
+  @override
+  Future<List<VaultStorageEntry>> list({
+    String path = '',
+    bool recursive = false,
+  }) => inner.list(path: path, recursive: recursive);
+  @override
+  Future<List<VaultStorageEntry>> listNow({String path = ''}) =>
+      inner.listNow(path: path);
+  @override
+  Future<VaultStorageEntry?> stat(String path) => inner.stat(path);
+  @override
+  Future<Uint8List> readBytes(String path) => inner.readBytes(path);
+  @override
+  Future<Uint8List> readBytesNow(String path) => inner.readBytesNow(path);
+  @override
+  Stream<List<int>>? openRead(String path, [int? start, int? end]) =>
+      inner.openRead(path, start, end);
+  @override
+  Future<String> hash(String path) => inner.hash(path);
+  @override
+  Future<void> createDirectory(String path) async =>
+      throw UnsupportedError('Read-only storage');
+  @override
+  Future<void> writeBytes(String path, List<int> bytes) async =>
+      throw UnsupportedError('Read-only storage');
+  @override
+  Future<void> delete(String path) async =>
+      throw UnsupportedError('Read-only storage');
+  @override
+  Future<void> deleteEmptyDirectory(String path) async =>
+      throw UnsupportedError('Read-only storage');
+}
+
+class CompositeVaultStorage extends VaultStorage {
+  CompositeVaultStorage(this.main, Map<String, VaultStorage> mounts)
+    : mounts = Map.unmodifiable(mounts) {
+    for (final id in mounts.keys) {
+      if (!RegExp(r'^[a-z0-9][a-z0-9-]{0,40}$').hasMatch(id)) {
+        throw ArgumentError.value(id, 'mounts', 'Invalid mount id');
+      }
+    }
+  }
+  final VaultStorage main;
+  final Map<String, VaultStorage> mounts;
+  @override
+  Object get syncIdentity => main.syncIdentity;
+
+  (VaultStorage, String)? _mount(String path) {
+    final parts = path.split('/');
+    if (parts.length < 2 || parts[0] != 'ext') return null;
+    final storage = mounts[parts[1]];
+    return storage == null ? null : (storage, parts.skip(2).join('/'));
+  }
+
+  VaultStorageEntry _prefix(String id, VaultStorageEntry entry) =>
+      VaultStorageEntry(
+        path: 'ext/$id/${entry.path}',
+        isDirectory: entry.isDirectory,
+        size: entry.size,
+        modified: entry.modified,
+      );
+  bool _virtual(String path) =>
+      mounts.isNotEmpty &&
+      (path == 'ext' || (path.startsWith('ext/') && _mount(path)?.$2 == ''));
+
+  @override
+  Future<bool> exists(String path) => _virtual(path)
+      ? Future.value(true)
+      : (_mount(path)?.$1 ?? main).exists(_mount(path)?.$2 ?? path);
+  @override
+  Future<bool> existsNow(String path) => _virtual(path)
+      ? Future.value(true)
+      : (_mount(path)?.$1 ?? main).existsNow(_mount(path)?.$2 ?? path);
+  @override
+  Future<VaultStorageEntry?> stat(String path) async {
+    if (_virtual(path)) return VaultStorageEntry(path: path, isDirectory: true);
+    final mount = _mount(path);
+    final entry = await (mount?.$1 ?? main).stat(mount?.$2 ?? path);
+    return entry == null || mount == null
+        ? entry
+        : _prefix(path.split('/')[1], entry);
+  }
+
+  @override
+  Future<List<VaultStorageEntry>> list({
+    String path = '',
+    bool recursive = false,
+  }) async {
+    final mount = _mount(path);
+    if (mount != null) {
+      return [
+        for (final entry in await mount.$1.list(
+          path: mount.$2,
+          recursive: recursive,
+        ))
+          _prefix(path.split('/')[1], entry),
+      ];
+    }
+    final entries = await main.list(path: path, recursive: recursive);
+    if (mounts.isEmpty || (path != '' && path != 'ext')) return entries;
+    final result = entries
+        .where((entry) => !(entry.path == 'ext' || _mount(entry.path) != null))
+        .toList();
+    if (path == '') {
+      result.add(const VaultStorageEntry(path: 'ext', isDirectory: true));
+    }
+    if (path == 'ext' || recursive) {
+      for (final id in mounts.keys) {
+        result.add(VaultStorageEntry(path: 'ext/$id', isDirectory: true));
+        if (recursive) {
+          result.addAll([
+            for (final entry in await mounts[id]!.list(recursive: true))
+              _prefix(id, entry),
+          ]);
+        }
+      }
+    }
+    return result;
+  }
+
+  @override
+  Future<Uint8List> readBytes(String path) =>
+      (_mount(path)?.$1 ?? main).readBytes(_mount(path)?.$2 ?? path);
+  @override
+  Future<Uint8List> readBytesNow(String path) =>
+      (_mount(path)?.$1 ?? main).readBytesNow(_mount(path)?.$2 ?? path);
+  @override
+  Stream<List<int>>? openRead(String path, [int? start, int? end]) =>
+      (_mount(path)?.$1 ?? main).openRead(_mount(path)?.$2 ?? path, start, end);
+  @override
+  Future<String> hash(String path) =>
+      (_mount(path)?.$1 ?? main).hash(_mount(path)?.$2 ?? path);
+  @override
+  Future<void> createDirectory(String path) =>
+      (_mount(path)?.$1 ?? main).createDirectory(_mount(path)?.$2 ?? path);
+  @override
+  Future<void> writeBytes(String path, List<int> bytes) =>
+      (_mount(path)?.$1 ?? main).writeBytes(_mount(path)?.$2 ?? path, bytes);
+  @override
+  Future<void> delete(String path) =>
+      (_mount(path)?.$1 ?? main).delete(_mount(path)?.$2 ?? path);
+  @override
+  Future<void> deleteEmptyDirectory(String path) =>
+      (_mount(path)?.$1 ?? main).deleteEmptyDirectory(_mount(path)?.$2 ?? path);
+}

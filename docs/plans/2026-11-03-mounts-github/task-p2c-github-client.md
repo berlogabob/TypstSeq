@@ -1,0 +1,9 @@
+# P2-C: GitHub client + device-flow sign-in (new files only)
+
+Read README.md in this folder. Port, don't depend: copy the needed logic from ~/Documents/GitHub/flutter-github-issues-todo (GitDoIt): lib/services/oauth_service.dart (device flow), lib/services/github_dio_client.dart. TyLog has no Dio: use dart:io HttpClient or the http package only if already in pubspec (check; no new dependency unless unavoidable).
+
+Create only NEW files under lib/github/ and test/github/:
+- `lib/github/github_auth.dart`: device flow (`POST https://github.com/login/device/code` scope `repo`, poll `https://github.com/login/oauth/access_token` honoring `interval` and `slow_down`, `authorization_pending`, `expired_token`, `access_denied`), client id from `const String.fromEnvironment('GITHUB_CLIENT_ID')`; token stored via flutter_secure_storage key `github_token` (already a dependency? check pubspec; TyLog stores Nextcloud passwords in the OS keystore, reuse that helper).
+- `lib/github/github_client.dart`: `GitHubClient(token?)` with: `commitSha(repo, ref)`, `downloadZipball(repo, ref) -> bytes` (follow redirect, cap 200 MB), `latestRelease(repo) -> {tag, assets[{name, url}]}`, `downloadAsset(url)`, `getContent(repo, path, ref) -> {sha, bytes}`, `putContent(repo, path, bytes, message, sha?, branch)` returning new sha or throwing `GitHubConflict` on 409/422 sha mismatch, `createIssue(repo, title, body, labels)`, `issue(repo, number)`, `closeIssue(repo, number)`. Errors: `GitHubAuthError` on 401, `GitHubRateLimit` with reset time on 403 + `x-ratelimit-remaining: 0`.
+- Tests with a fake HttpClient / local HttpServer on an ephemeral port: device flow happy path + slow_down + expired; putContent conflict; rate limit; zipball redirect + size cap.
+No UI in this task, no edits to existing files except pubspec if truly needed. Run the new tests + flutter analyze. Do not commit. 3-line report.

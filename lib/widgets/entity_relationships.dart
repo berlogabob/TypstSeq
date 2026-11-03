@@ -62,82 +62,70 @@ class _EntityRelationshipsState extends State<EntityRelationships> {
       (groups[child.kind] ??= []).add(child);
     }
     final kinds = groups.keys.toList()..sort();
-    return AnimatedSize(
-      duration: const Duration(milliseconds: 150),
-      alignment: Alignment.topCenter,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * 0.25,
+    return Wrap(
+      spacing: kSpace8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        const Text('Part of'),
+        for (final parentId in note.partOf)
+          Builder(
+            builder: (context) {
+              final parent = _byId[parentId] ?? _byName[parentId.toLowerCase()];
+              return InputChip(
+                avatar: Icon(iconForKind(parent?.kind ?? 'note'), size: 18),
+                label: Text(parent?.title ?? parentId),
+                deleteIcon: const Icon(Icons.close, size: 18),
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                onPressed: parent == null
+                    ? null
+                    : () => widget.onOpen(parent.path),
+                onDeleted: () => widget.onRemove(parentId),
+              );
+            },
+          ),
+        IconButton(
+          tooltip: 'Add parent',
+          visualDensity: VisualDensity.compact,
+          onPressed: widget.onAdd,
+          icon: const Icon(Icons.add),
         ),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: kSpace16),
-          child: SizedBox(
-            width: double.infinity,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  spacing: kSpace8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    const Text('Part of'),
-                    for (final parentId in note.partOf) ...[
-                      Builder(
-                        builder: (context) {
-                          final parent =
-                              _byId[parentId] ??
-                              _byName[parentId.toLowerCase()];
-                          return InputChip(
-                            avatar: Icon(
-                              iconForKind(parent?.kind ?? 'note'),
-                              size: 18,
-                            ),
-                            label: Text(parent?.title ?? parentId),
-                            deleteIcon: const Icon(Icons.close, size: 18),
-                            onPressed: parent == null
-                                ? null
-                                : () => widget.onOpen(parent.path),
-                            onDeleted: () => widget.onRemove(parentId),
-                          );
-                        },
-                      ),
-                    ],
-                    IconButton(
-                      tooltip: 'Add parent',
-                      onPressed: widget.onAdd,
-                      icon: const Icon(Icons.add),
-                    ),
-                  ],
-                ),
-                Text(
-                  'Contains (${children.length})',
-                  style: Theme.of(context).textTheme.titleSmall,
-                ),
-                for (final kind in kinds) ...[
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: kSpace8),
-                    child: Row(
-                      children: [
-                        Icon(iconForKind(kind), size: 18),
-                        const SizedBox(width: kSpace8),
-                        Text(
-                          '${labelForKind(kind) == 'Entity' ? kind : labelForKind(kind)} (${groups[kind]!.length})',
-                        ),
-                      ],
-                    ),
-                  ),
-                  for (final child in groups[kind]!)
+        ActionChip(
+          label: Text('Contains ${children.length}'),
+          visualDensity: VisualDensity.compact,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          onPressed: () => showModalBottomSheet<void>(
+            context: context,
+            builder: (sheetContext) => SafeArea(
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final kind in kinds) ...[
                     ListTile(
                       dense: true,
-                      title: Text(child.title),
-                      onTap: () => widget.onOpen(child.path),
+                      leading: Icon(iconForKind(kind), size: 18),
+                      title: Text(
+                        '${labelForKind(kind) == 'Entity' ? kind : labelForKind(kind)} (${groups[kind]!.length})',
+                      ),
                     ),
+                    for (final child in groups[kind]!)
+                      ListTile(
+                        dense: true,
+                        title: Text(child.title),
+                        onTap: () {
+                          Navigator.pop(sheetContext);
+                          widget.onOpen(child.path);
+                        },
+                      ),
+                  ],
+                  if (children.isEmpty)
+                    const ListTile(title: Text('No children')),
                 ],
-              ],
+              ),
             ),
           ),
         ),
-      ),
+      ],
     );
   }
 }

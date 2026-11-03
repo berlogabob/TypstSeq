@@ -5912,6 +5912,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           if (isEntity)
             EntityHeader(
               note: currentNote,
+              relationships: EntityRelationships(
+                note: scanNote(currentNote.path, _currentSource()),
+                index: index,
+                onAdd: _addParent,
+                onRemove: (id) => _updatePartOf(id, remove: true),
+                onOpen: _openPath,
+              ),
               onOpenBoard:
                   v != null &&
                       index != null &&
@@ -5959,14 +5966,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               },
             ),
           Expanded(child: content),
-          if (isEntity)
-            EntityRelationships(
-              note: scanNote(currentNote.path, _currentSource()),
-              index: index,
-              onAdd: _addParent,
-              onRemove: (id) => _updatePartOf(id, remove: true),
-              onOpen: _openPath,
-            ),
           if (references != null)
             if (keyboardUp || currentDaily != null)
               const SizedBox.shrink()

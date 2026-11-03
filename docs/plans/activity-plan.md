@@ -349,7 +349,7 @@ Workers: codex gpt-6.1-terra (tasks), gpt-6-luna (small fixes), pi Ornith 35b on
 
 Issues found:
 - [x] USER DATA 11-03: duplicate OpenLabTwin pages: notes/OpenLabTwin.typ (kind note, id 20261103-104633) + projects/OpenLabTwin.typ (kind project, id 20261103-104705); daily links the note copy. merged with user OK: daily refs -> project id, empty notes copy deleted (backup in session scratchpad)
-- [ ] P1.1 (user 11-03: no app-wide scrollbars) entity page body is a fixed-height Expanded viewport with hidden scroll; content below the fold looks missing (found 11-03 on Mac). Fix: remove the nested scroll on entity pages (one page scroll), keep editor windowing for long notes
+- [x] P1.1 (user 11-03: no app-wide scrollbars) entity page body is a fixed-height Expanded viewport with hidden scroll; content below the fold looks missing (found 11-03 on Mac). Real cause: editor IS the page scroll (Expanded); header card + EntityRelationships + references panel are fixed chrome above/below it, leaving ~90 px on short windows. Codex declined a shared scroll (editor windowing). Fix: compact chrome - Part of/Contains move into the header card as one wrapping row
 - [ ] FLAKY under load: workspace_controller_test 'worker publishes newly scanned issues' timed out once in full suite; 3/3 pass alone
 - [x] PRE-EXISTING (fails on 49cf87b too): processing_screen_test 3x 'Retry preserves the <worker> payload' - Retry TextButton not found. Cause: fixed Oct 31 timestamps aged into collapsed 'Older' section; fixtures now use current time (luna)
 - [x] P1 review (docs/plans/2026-11-03-entities-boards/review-p1.md): 11 findings. Batch 1 board/issues/kinds #1,4,7,8,10,11; batch 2 namespace/relationships #2,3,5,6,9 -> codex terra x2: 10/11 fixed (#1 mutateNote, #4 sync queued, #7, #8, #10, #11, #2, #3, #5, #6); #9 fixed by luna (clears project:, drops part_of entry). Full suite 1855 pass, core 502 pass
@@ -358,3 +358,15 @@ Issues found:
 - [x] G1 pi (Ornith 35b) wrote planner but clobbered its test to a fragment + left verify.sh/run_verify.sh in root (removed); test handed to codex luna
 - [x] F1 pi again clobbered its test file (19-line fragment, does not load); board.dart kept, test to codex luna. Rule: pi writes impl only, codex writes tests
 - [x] codex sandbox cannot run dart/flutter test (telemetry + SDK cache writes): F1 luna fix was blind and still did not compile. FIXED with scratchpad cx.sh wrapper with --add-dir for ~/.dart-tool, ~/.pub-cache, flutter/bin/cache
+
+## Wave 16 (2026-11-03): P2 mounts + GitHub (plan: docs/plans/2026-11-03-mounts-github/README.md)
+- [x] P1.1 entity page: Part of/Contains in header card, compact header; editor >= 50% of 632 px (90 -> 330 px)
+- [x] P2-A composite storage + mount registry (core): 506 core tests pass
+- [ ] P2-B Settings > Extensions, index via composite, ext/ read-only, sync excludes ext/
+- [x] P2-C GitHub client + device-flow auth (lib/github, 4 tests; UI comes with P2-B/D)
+- [ ] P2-D GitHub pull mount
+- [ ] P2-E pack update channel (PT course)
+- [ ] P2-F GitHub push (contents API, keep-both conflicts)
+- [ ] P2-G issue lines <-> GitHub issues
+- [ ] P2 review + full suite + macOS verify + P30
+- [ ] USER: confirm OAuth app (reuse GitDoIt client id or new TyLog app); publish PT pack GitHub release

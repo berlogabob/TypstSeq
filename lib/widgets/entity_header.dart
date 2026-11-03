@@ -17,8 +17,10 @@ class EntityHeader extends StatelessWidget {
     this.imageResolver,
     this.onChangeKindIcon,
     this.onOpenBoard,
+    this.relationships,
   });
 
+  final Widget? relationships;
   final VoidCallback? onChangeKindIcon;
   final VoidCallback? onOpenBoard;
   final NoteRef note;
@@ -42,10 +44,10 @@ class EntityHeader extends StatelessWidget {
         )
         .toList();
     return Card(
-      margin: const EdgeInsets.fromLTRB(kSpace12, kSpace12, kSpace12, 6),
+      margin: const EdgeInsets.fromLTRB(kSpace12, 6, kSpace12, 4),
       color: scheme.surfaceContainerLow,
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -60,7 +62,7 @@ class EntityHeader extends StatelessWidget {
                     imageResolver: imageResolver,
                   ),
                 ),
-                const SizedBox(width: kSpace12),
+                const SizedBox(width: kSpace8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -69,7 +71,6 @@ class EntityHeader extends StatelessWidget {
                         note.title,
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
-                      const SizedBox(height: 2),
                       Text(
                         labelForKind(note.kind),
                         style: Theme.of(context).textTheme.labelMedium
@@ -78,22 +79,28 @@ class EntityHeader extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (onOpenBoard != null)
+                  TextButton.icon(
+                    key: const Key('entity-board-button'),
+                    style: TextButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                    onPressed: onOpenBoard,
+                    icon: const Icon(Icons.view_kanban_outlined),
+                    label: const Text('Board'),
+                  ),
               ],
             ),
-            if (onOpenBoard != null)
-              TextButton.icon(
-                onPressed: onOpenBoard,
-                icon: const Icon(Icons.view_kanban_outlined),
-                label: const Text('Board'),
-              ),
             if (note.aliases.isNotEmpty) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: 4),
               _Chips(icon: Icons.badge_outlined, labels: note.aliases),
             ],
             if (note.tags.isNotEmpty) ...[
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
               _Chips(icon: Icons.tag, labels: note.tags),
             ],
+            ?relationships,
             for (final entry in properties)
               _PropertyRow(
                 name: entry.key,
@@ -117,9 +124,9 @@ class _Avatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fallback = CircleAvatar(
-      radius: 26,
+      radius: 20,
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-      child: Icon(iconForKind(kind), size: 26),
+      child: Icon(iconForKind(kind), size: 20),
     );
     if (path == null || imageResolver == null) return fallback;
     return FutureBuilder<Uint8List?>(
@@ -127,10 +134,9 @@ class _Avatar extends StatelessWidget {
       builder: (context, snapshot) {
         final data = snapshot.data;
         if (data == null || data.isEmpty) return fallback;
-        // A 26pt avatar has no use for a full-resolution decode.
-        final side = (52 * MediaQuery.devicePixelRatioOf(context)).round();
+        final side = (40 * MediaQuery.devicePixelRatioOf(context)).round();
         return CircleAvatar(
-          radius: 26,
+          radius: 20,
           backgroundImage: ResizeImage(
             MemoryImage(data),
             width: side,

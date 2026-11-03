@@ -3244,6 +3244,30 @@ void main() {
     },
   );
 
+  testWidgets('entity editor occupies at least half a short window', (
+    tester,
+  ) async {
+    final storage = _FailingStorage();
+    await storage.writeText(
+      'notes/a.typ',
+      '#show: tylog.note.with(id: "ada", title: "Ada", kind: "person")\n\nBody',
+    );
+    final (_, home) = await _mountTaskTimers(tester, existing: storage);
+    await tester.binding.setSurfaceSize(const Size(800, 632));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    home.mode = 'normal';
+    home.primaryDestination = 0;
+    home.workspace.notifyListeners();
+    await tester.pumpAndSettle();
+    final editor = find.byKey(const Key('rich-journal-editor'));
+    expect(tester.getSize(editor).height, greaterThanOrEqualTo(316));
+    final editorRect = tester.getRect(editor);
+    await tester.tap(find.text('Contains 0'));
+    await tester.pumpAndSettle();
+    expect(tester.getRect(editor), editorRect);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('Magic menu exposes the complete command set', (tester) async {
     await tester.pumpWidget(const TyLogApp());
     await tester.pumpAndSettle();

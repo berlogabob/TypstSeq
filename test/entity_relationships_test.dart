@@ -65,8 +65,6 @@ void main() {
         ),
       ),
     );
-    expect(find.byType(AnimatedSize), findsOneWidget);
-    expect(tester.getTopLeft(find.text('Part of')).dx, 16);
     expect(find.byType(InputChip), findsNWidgets(2));
     expect(find.byIcon(iconForKind(lab.kind)), findsOneWidget);
     await tester.tap(find.text('University'));
@@ -100,7 +98,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Contains (${parent == lab ? 2 : 1})'), findsOneWidget);
+      await tester.tap(find.text('Contains ${parent == lab ? 2 : 1}'));
+      await tester.pumpAndSettle();
       expect(find.text('Person (1)'), findsOneWidget);
       expect(find.byIcon(iconForKind('person')), findsOneWidget);
       expect(find.text('Paper'), parent == lab ? findsOneWidget : findsNothing);

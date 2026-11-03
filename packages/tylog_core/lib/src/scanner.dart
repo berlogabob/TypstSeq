@@ -895,6 +895,7 @@ const _noteRoots = [
   'projects/',
   'articles/',
   'screenshots/',
+  'ext/',
 ];
 
 /// The hidden temp/backup copies of the Android SAF atomic write

@@ -1,17 +1,17 @@
 # Graph Report - TypstSeq  (2026-11-03)
 
 ## Corpus Check
-- 863 files · ~789,609 words
+- 872 files · ~792,941 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 155 file(s) not represented in the graph (top: (none) 45, .typ 20, .xml 15)
 
 ## Summary
-- 14115 nodes · 21037 edges · 711 communities (445 shown, 266 thin omitted)
-- Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 332 edges (avg confidence: 0.85)
+- 14210 nodes · 21167 edges · 705 communities (445 shown, 260 thin omitted)
+- Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 333 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `49cf87bd`
+- Built from commit: `e9a2cbeb`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -28,7 +28,7 @@
 - tylog_database.dart
 - Entity Database Records
 - package:tylog/database/tylog_database.dart
-- entity_board.dart
+- p05_ort_bench/src/main.rs
 - document_model.dart
 - typst.rs
 - SseDecode
@@ -72,7 +72,7 @@
 - patch
 - package:flutter/material.dart
 - desktop_updater.dart
-- package:tylog_core/models.dart
+- maintenance_listing_test.dart
 - pdf_reader_screen.dart
 - SafBridgeWriteTest
 - tylog_import_core/src/lib.rs
@@ -108,8 +108,8 @@
 - semantic_model.dart
 - vault_storage.dart
 - src/storage.dart
-- constants.dart
-- p05_ort_bench/src/main.rs
+- src/mounts.dart
+- scan_repro.dart
 - Digest Validation Tests
 - 2026-10-08-codebase.md
 - link_resolution.dart
@@ -152,13 +152,13 @@
 - rich_editor_native_test.dart
 - webdav_client.dart
 - pdf_reader_store.dart
-- package:tylog/nextcloud_sync.dart
+- article_jobs.dart
 - .into_dart
 - Markdown Import Flow
 - nextcloud_sync_native_test.dart
 - Audio notes v2: one document per recording, faithful transcript, contextual translation
 - audio_sheets.dart
-- p22_private_graph_native_test.dart
+- enrich_flow_test.dart
 - settings_catalog.dart
 - P24 — migration rehearsal and integrated failures
 - P25 — production migration and release acceptance
@@ -171,7 +171,7 @@
 - Date Word Formatting
 - chunked_upload.dart
 - pdf_extraction.dart
-- run_review
+- article_links_flow_test.dart
 - tylog_core/test/search_index_test.dart
 - vector_index.dart
 - CHANGELOG.md
@@ -192,7 +192,7 @@
 - audio_note_recorder.dart
 - Graph Schema and Revisions
 - FlutterWindow
-- scanner_cache_test.dart
+- rebuild_twice_test.dart
 - quicklook_ffi.rs
 - SVG Graph Rendering
 - transcript_jobs.dart
@@ -204,7 +204,7 @@
 - extract_tasks
 - chunking.dart
 - audio_note_doc.dart
-- p21_semantic_search_native_test.dart
+- dart:math
 - reproduction_test.dart
 - Rich Editor Device Testing
 - File Preview Provider
@@ -224,7 +224,7 @@
 - m4a_muxer_test.dart
 - sync_state.dart
 - GraphView
-- processing_screen_test.dart
+- audio_widgets_test.dart
 - chunked_upload_test.dart
 - Model Benchmark Scripts
 - VoiceAssist.kt
@@ -244,10 +244,10 @@
 - Benchmark Fixtures
 - Semantic Search
 - P22 progress — bounded graph traversal
-- p05_embedding_profile_test.dart
+- scanner_legacy_tags_test.dart
 - Sync Conflict Findings
 - IntoIntoDart
-- studio_stub
+- llm_chat
 - Scanner split result
 - Native Embedding
 - TyLog V5 Status
@@ -260,7 +260,7 @@
 - Embedding Parity
 - Control Inventory
 - Tine and the Logseq File-Format Fork Question
-- enrich_flow_test.dart
+- p22_private_graph_native_test.dart
 - ValueChanged
 - Local Model Bench
 - Sync Findings
@@ -278,11 +278,11 @@
 - MacOS Plugin Registry
 - push_client.dart
 - ai_settings.dart
-- preprocess
+- fold_store.dart
 - workspace_note_rename.dart
 - Local Hash Tests
 - Backup Verification Tests
-- ai_settings_test.dart
+- audio_peaks.dart
 - Sync Self-Heal
 - Fix Records
 - Contract Results
@@ -322,8 +322,8 @@
 - windows_launcher/src/main.rs
 - cpu_profile.dart
 - Task Checkbox Glyphs
-- note_picker_sheet.dart
-- enrich_report.py
+- settings_path.dart
+- github_auth.dart
 - .MessageHandler
 - ai_connections_settings_test.dart
 - note_chunk_sync.dart
@@ -331,15 +331,15 @@
 - screenshot_view.dart
 - sync_state_cache_test.dart
 - SafBridgeWriteTest.kt
-- image_crop_test.dart
-- contrast_test.dart
+- editor_frame_metrics.dart
+- scanner_cache_test.dart
 - EDN :graph Export
 - API Platform Implementation
 - note_persistence.dart
 - 0.3.0+92
 - sync_paths.dart
 - Activity plan (auto mode, started 2026-10-14)
-- VaultStorage
+- search_index_memory.dart
 - revision_publisher.dart
 - Graph Data Model
 - Sync Encryption Options
@@ -347,8 +347,8 @@
 - Flashcards And SRS
 - Bug Fix Findings
 - hashlib
-- agenda_timeline_test.dart
-- package:tylog_core/storage.dart
+- package:tylog_core/models.dart
+- dart:typed_data
 - Sync Safety Mechanisms
 - PDF Export And Theming
 - editor_panel.dart
@@ -519,19 +519,19 @@
 - Durable Annotations
 - Revision Publication
 - saved_searches.dart
-- dart:convert
+- legacy_import_plan.dart
 - Fallback Generator
 - Graph Workspace
 - iOS Launch Assets
 - Journal Workspace
 - eval_links_test.dart
-- WorkspaceController
+- dialogs.dart
 - transpile
 - Notes Vault
 - Outputs Vault
 - Lint Configuration
 - Core Package
-- portable_roundtrip_test.dart
+- pack_validate_cli_test.dart
 - Typst Flutter Fork
 - PDF Extraction
 - ORT Benchmark
@@ -557,7 +557,7 @@
 - Snapshot Recovery
 - Path Safety
 - Tine (martinkoutecky/tine)
-- maintenance_listing_test.dart
+- Map
 - Tasks Workspace
 - Vector Retrieval Test
 - Today Workspace
@@ -576,27 +576,27 @@
 - System Vault
 - audio_note_actions.dart
 - lib/report.dart
-- dart:math
+- scanner.dart
 - FakeMac
 - attention.dart
 - Audio + learning modules: delegated work plan (2026-10-14)
-- TyLog rules compliance audit — 2026-10-08
-- 2026-10-08-status.md
-- embedding_jobs.dart
-- connection_probe_test.dart
+- preprocess
+- VaultStorage
+- olt_page.dart
+- legacy_import_plan_test.dart
 - device_only_switch.dart
 - namespace_migration.dart
 - TyLog Module Pack (`.tylogpack`) v1
-- benchmark_dart_retrieval.dart
+- T01 Result
 - T04_transcription_doc/prompt.md
 - legacy_import_runner_test.dart
 - main.dart
 - audio_plan/run.sh
 - olt_client_test.dart
-- a24-window.md
+- task_fields_test.dart
 - UI inventory (screen by screen, facts only)
 - P19 progress — durable annotations
-- task_row_test.dart
+- P23 — complete research workflow
 - Локальные LLM и телефон как вычислительная нода для TyLog
 - crate::api::markdown_import::MarkdownImportDiagnostic
 - Back navigation audit — 2026-10-16
@@ -604,83 +604,78 @@
 - AI and models in Settings: what exists, what a user wants, proposal
 - roundtrip_audit_test.dart
 - crate::api::typst::RenderResult
-- dedupe_test.dart
+- image_identity_test.dart
 - Result
 - crate::api::vault_import::VaultNoteProperty
 - Design system, More drawer and Settings (decisions, 2026-10-14)
 - P09a/result.md
 - return
 - 10. Поэтапная реализация
-- nextcloud_sync.dart
-- 2026-10-08-ux-design-system.md
+- legacy_import_runner.dart
+- attention_test.dart
 - review-p1.md
 - TyLogApp
-- _MemoryStorage
+- empty_note_cleanup_test.dart
 - compiler.dart
 - 3. Что означает «телефон как нода»
 - Sync and indexing: startup walk safety
 - windows/flutter/generated_plugin_registrant.cc
 - 9. Эксперимент: что измерять на P30 и A24
-- olt_page.dart
-- llm_chat
+- WorkspaceController
+- StudioSTT
 - crate::api::typst::TypstCompileError
-- dart:typed_data
-- Timer?
+- flutter_typst_inspector.dart
+- embedding_jobs.dart
 - Point
-- embedding.dart
-- vault_storage.dart
+- Stage-budget measurement correction (2026-09-23)
+- MaterialPageRoute
 - 5. Какие модели проверять
 - 7. Децентрализация: точные тезисы
+- Set
 - P11a/result.md
 - exceptions.dart
 - models.dart
 - 0001 - Attention and decisions
 - CompiledDocumentImpl
 - vault_lifecycle.dart
-- P25 Sync Calm-down
+- package:tylog_core/sync_paths.dart
 - Conceptual data model
 - provider_presets.dart
 - TyLog big update: modular HMI (entities, boards, extension vaults, connectors, form OCR)
-- Plain-Text File Storage / Data Ownership (OG)
+- parseLabCalendar
 - tylog-windows-launcher
-- convert_db_export
+- task-p2a-core-mounts.md
 - BackgroundSyncReceiver.kt
-- P25 — sync calm-down (2026-10-04)
-- Map
+- Plain-Text File Storage / Data Ownership (OG)
+- ValueChanged
 - Audio v2 ASR bake-off on Studio (Task 3)
-- Logseq DB Graph (datascript-backed)
-- kvs SQLite Table
-- mac_fallback_allowed
+- task-p2c-github-client.md
+- convert_db_export
+- MacSTT
 - T00 device crash diagnosis
 - State
 - TyLog v5 user handbook
 - Task A: project becomes an entity kind + part_of relation in the index
 - crate::api::typst::PageInfo
-- _GatedPollInspector
+- Logseq DB Graph (datascript-backed)
 - task-g1-namespace-planner.md
-- HttpOverrides
-- _IndexReadGatedStorage
+- kvs SQLite Table
+- P09d5 — private A24 import rehearsal
 - HttpClientRequest
-- T27/result.md
-- Exception
-- Size
+- HttpHeaders
+- github_client.dart
 - olt_cache_test.dart
 - task-b-kind-registry.md
 - _RecorderSheet
 - task-d-entity-page-part-of.md
 - task-e-knowledge-tree.md
-- P12e/p30-proxy.md
 - task-f-kanban.md
 - task-g-namespace-migration.md
-- mac-sweep.md
 - AudioNoteScreen
 - Task H: marker lines as issues (@TyLog @fixit ... -> kanban card -> GitHub issue)
 - task-f1-board-model.md
 - AudioNoteSections
 - verify-mac-p1.md
-- U0/p30-proxy.md
-- HttpHeaders
-- p21_android.sh
 - ReadingMode
 - _ReadingTextScaler
 
@@ -701,12 +696,12 @@
   docs/superpowers/plans/2026-10-31-audio-notes-v2.md → tool/audio_v2.py
 - `Install, upgrade, uninstall, reschedule` --references--> `due()`  [INFERRED]
   docs/modules/AUTHORING.md → tool/enrich_worker.py
-- `Global Constraints` --references--> `escape_markup()`  [INFERRED]
-  docs/superpowers/plans/2026-10-31-audio-notes-v2.md → tool/transcribe_worker.py
 - `T00 device crash diagnosis` --references--> `SafBridge`  [INFERRED]
   docs/audits/2026-09-06/evidence/T00/diagnosis.md → android/app/src/main/kotlin/org/tylog/tylog/SafBridge.kt
 - `Open` --references--> `SyncForegroundService`  [INFERRED]
   docs/plans/2026-10-12-graph-findings-handoff.md → android/app/src/main/kotlin/org/tylog/tylog/SyncForegroundService.kt
+- `Phase 1 — локальная генерация внутри TyLog` --references--> `unload()`  [INFERRED]
+  docs/research-on-device-llm-phone-node.md → tool/asr_bakeoff.py
 
 ## Import Cycles
 - 1-file cycle: `tool/windows_launcher/src/main.rs -> tool/windows_launcher/src/main.rs`
@@ -751,7 +746,7 @@
 - **Storage & Data-Ownership Spectrum Across Four PKMS** — docs_research_logseq_og_features_storage_format, docs_research_logseq_db_features_storage_lock_in, docs_research_tine_fork_file_compat, docs_research_logseq_db_format_logseq_db_graph [INFERRED 0.85]
 - **Sync & Conflict-Handling Architecture Comparison** — docs_research_logseq_og_features_sync, docs_research_logseq_db_features_rtc_sync, docs_research_tine_fork_sync_conflict_ui, docs_research_logseq_db_format_client_ops_db_sqlite [INFERRED 0.85]
 
-## Communities (711 total, 266 thin omitted)
+## Communities (705 total, 260 thin omitted)
 
 ### Community 0 - "src/scanner.dart"
 Cohesion: 0.01
@@ -799,11 +794,11 @@ Nodes (122): attributesJson, completedCount, content, context, createdAtMs, embe
 
 ### Community 11 - "package:tylog/database/tylog_database.dart"
 Cohesion: 0.02
-Nodes (99): _batchSize, bytes, chunks, convert, database, _deterministicEmbed, main, _model (+91 more)
+Nodes (97): _batchSize, bytes, chunks, convert, database, _deterministicEmbed, main, _model (+89 more)
 
-### Community 12 - "entity_board.dart"
-Cohesion: 0.11
-Nodes (18): board, build, busy, createState, didUpdateWidget, _drop, _dropIssue, entity (+10 more)
+### Community 12 - "p05_ort_bench/src/main.rs"
+Cohesion: 0.12
+Nodes (12): generated_lengths_and_summary(), generated_text(), inputs(), main(), pool(), run(), session(), token_length() (+4 more)
 
 ### Community 13 - "document_model.dart"
 Cohesion: 0.02
@@ -842,28 +837,28 @@ Cohesion: 0.02
 Nodes (77): articleJobs, _ArticlesShelf, _ArticlesShelfState, _bucket, build, _cache, calendar, _category (+69 more)
 
 ### Community 22 - "json"
-Cohesion: 0.07
-Nodes (40): bare_links(), body_lines(), build_messages(), collect_links(), content_sha(), due(), _fold(), known_entities() (+32 more)
+Cohesion: 0.06
+Nodes (41): bare_links(), body_lines(), build_messages(), collect_links(), content_sha(), due(), _fold(), known_entities() (+33 more)
 
 ### Community 23 - "p23_research_workflow_native_test.dart"
-Cohesion: 0.03
-Nodes (73): create, dir, p21Handshake, _annotate, at, configured, controller, _copyDirectory (+65 more)
+Cohesion: 0.02
+Nodes (92): main, create, dir, p21Handshake, _citationTile, configured, _copyDirectory, create (+84 more)
 
 ### Community 24 - "vault_worker.dart"
 Cohesion: 0.02
-Nodes (83): _answerSearch, _boot, _busy, cancel, cancelled, CancelWorkCommand, commands, communities (+75 more)
+Nodes (84): _answerSearch, _boot, _busy, cancel, cancelled, CancelWorkCommand, commands, communities (+76 more)
 
 ### Community 25 - "voronoi_view.dart"
 Cohesion: 0.03
 Nodes (65): abs, _activate, _animateTo, _apply, area, _areaOf, bbox, _bboxOf (+57 more)
 
 ### Community 26 - "workspace_controller_test.dart"
-Cohesion: 0.03
-Nodes (71): arm, armed, armGate, armWrite, calls, _classesUrl, close, compressionState (+63 more)
+Cohesion: 0.02
+Nodes (79): arm, armed, armGate, armWrite, calls, _classesUrl, close, compressionState (+71 more)
 
 ### Community 27 - "workspace_revision_cache_test.dart"
-Cohesion: 0.03
-Nodes (62): IndexBuildCancelled, main, _audio, main, refreshIndex, _source, composedNote, main (+54 more)
+Cohesion: 0.04
+Nodes (35): main, base, extended, main, main, _RefusingDonorStorage, writeText, main (+27 more)
 
 ### Community 28 - "editing_controller.dart"
 Cohesion: 0.02
@@ -875,7 +870,7 @@ Nodes (66): aliases, base, baseUrl, builder, buildMarkdownArticleDraft, bytes, c
 
 ### Community 30 - "knowledge_screen.dart"
 Cohesion: 0.03
-Nodes (64): _activePreset, build, byTarget, _canFix, capitalised, _citations, _confirmDeletePreset, count (+56 more)
+Nodes (66): _activePreset, build, byTarget, _canFix, capitalised, _citations, _confirmDeletePreset, count (+58 more)
 
 ### Community 31 - "vault_registry.dart"
 Cohesion: 0.03
@@ -931,7 +926,7 @@ Nodes (48): alreadyAppended, appended, assets, assetsCopied, assetsMissing, asse
 
 ### Community 44 - "audio_v2.py"
 Cohesion: 0.03
-Nodes (99): Task 11: Doubtful lines from engine disagreement, Task 12: Arbitration of doubtful lines, agreement(), arbitrate_chunks(), arbitration_candidate(), arbitration_messages(), arbitration_result(), backup_legacy() (+91 more)
+Nodes (97): Task 11: Doubtful lines from engine disagreement, Task 12: Arbitration of doubtful lines, agreement(), arbitrate_chunks(), arbitration_candidate(), arbitration_messages(), arbitration_result(), clear_section() (+89 more)
 
 ### Community 45 - "journal_feed.dart"
 Cohesion: 0.07
@@ -943,7 +938,7 @@ Nodes (41): cancel, _cancelled, _chunkHits, citations, _currentIndex, db, dispos
 
 ### Community 47 - "asr_bakeoff.py"
 Cohesion: 0.06
-Nodes (25): ADB (Android Debug Bridge), Android Keystore Material, claude-haiku-4-5-20251001 Model, Codex Luna Model, P01 — production phone backup and inventory, P01a — Android recovery tool review, Nothing A024 Production Phone, backup_app_settings() (+17 more)
+Nodes (27): ADB (Android Debug Bridge), Android Keystore Material, claude-haiku-4-5-20251001 Model, Codex Luna Model, P01 — production phone backup and inventory, P01a — Android recovery tool review, Nothing A024 Production Phone, audio_seconds() (+19 more)
 
 ### Community 48 - "src/vault.dart"
 Cohesion: 0.04
@@ -958,7 +953,7 @@ Cohesion: 0.04
 Nodes (43): SyncConflictResolution, SyncResult, backupPath, build, cloud, cloudConfigured, color, configured (+35 more)
 
 ### Community 51 - "SafBridge"
-Cohesion: 0.18
+Cohesion: 0.17
 Nodes (3): CachedListing, OpenRequest, SafBridge
 
 ### Community 52 - "task_fields.dart"
@@ -971,15 +966,15 @@ Nodes (6): TestAppSettings, TestDestinationValidation, TestEdgeCases, TestMainIn
 
 ### Community 54 - "package:flutter/material.dart"
 Cohesion: 0.02
-Nodes (85): binding, _header, main, _p12Gate, _source, main, _p12Gate, _source (+77 more)
+Nodes (96): binding, _header, main, _p12Gate, _source, main, _p12Gate, _source (+88 more)
 
 ### Community 55 - "desktop_updater.dart"
 Cohesion: 0.03
 Nodes (57): a, actual, appPath, asset, at, b, build, current (+49 more)
 
-### Community 56 - "package:tylog_core/models.dart"
-Cohesion: 0.07
-Nodes (19): main, _task, today, main, _mentionExcluded, _mentionIndex, _mentionQueries, _mentionRecency (+11 more)
+### Community 56 - "maintenance_listing_test.dart"
+Cohesion: 0.10
+Nodes (23): MaintenanceIndexed, MaintenanceProgress, MaintenanceSearchBuilt, MaintenanceSwept, MaintenanceValidated, VaultMaintenanceEvent, IndexBuildCancelled, PkmsSearchIndex (+15 more)
 
 ### Community 57 - "pdf_reader_screen.dart"
 Cohesion: 0.05
@@ -994,8 +989,8 @@ Cohesion: 0.05
 Nodes (42): AutocompleteTrigger, AutocompleteTriggerKind, create, detectTrigger, _detectWikiLink, foldAccents, hashCode, hasMatch (+34 more)
 
 ### Community 61 - "P12e result — latency acceptance"
-Cohesion: 0.04
-Nodes (44): A24 database smoke (debug integration runner), A24 FrameTiming trace (2026-09-21), A24 gfxinfo cross-check (2026-09-21), A24 production cold-start timing, A24 profile frame attribution probe, A24 profile save-path acceptance, A24 rerun after lazy snapshots (2026-09-21), A24 rerun on main (2026-09-27) (+36 more)
+Cohesion: 0.05
+Nodes (39): A24 database smoke (debug integration runner), A24 FrameTiming trace (2026-09-21), A24 gfxinfo cross-check (2026-09-21), A24 production cold-start timing, A24 profile frame attribution probe, A24 profile save-path acceptance, A24 rerun after lazy snapshots (2026-09-21), A24 rerun on main (2026-09-27) (+31 more)
 
 ### Community 62 - "reading_mode.dart"
 Cohesion: 0.05
@@ -1011,7 +1006,7 @@ Nodes (38): 0.10.1+121, 0.10.2+122, 0.11.1+124, 0.11.4+127, 0.11.9+132, 0.12.1+1
 
 ### Community 65 - "2026-09-06/plan.md"
 Cohesion: 0.04
-Nodes (22): T05 result, T06 result, T07 result, T08 verification, T09 result, T10 verification, T11 result, T12 result (+14 more)
+Nodes (23): T06 result, T07 result, T08 verification, T09 result, T10 verification, T11 result, T12 result, T13 result (+15 more)
 
 ### Community 66 - "text_note_widgets.dart"
 Cohesion: 0.07
@@ -1043,15 +1038,15 @@ Nodes (20): build, createState, day, didUpdateWidget, entries, ideaHistoryOnDay,
 
 ### Community 73 - "dart:io"
 Cohesion: 0.02
-Nodes (77): article, day, main, main, _cli, main, index, main (+69 more)
+Nodes (91): article, day, main, main, _cli, main, index, main (+83 more)
 
 ### Community 74 - "P05 Mac Quality Readiness"
-Cohesion: 0.09
-Nodes (26): A024 Android execution gate, Android background service (vault writer), CLI (vault writer), P05 Mac Quality Readiness, P05.2 Numerical Reference Runner Result, P05.4a1 Isolated Rust ONNX Runtime Spike, Candidate artifact, Inference contract (+18 more)
+Cohesion: 0.07
+Nodes (31): A024 Android execution gate, Android background service (vault writer), CLI (vault writer), P05.3 Mac Exact-Cosine Search Result, P05 Mac Quality Readiness, P05.2 Numerical Reference Runner Result, P05.4a1 Isolated Rust ONNX Runtime Spike, Candidate artifact (+23 more)
 
 ### Community 75 - "calendar_feeds.dart"
 Cohesion: 0.06
-Nodes (30): client, date, day, degree, FeedEvent, fetchCalendarBody, fields, from (+22 more)
+Nodes (29): client, date, day, degree, FeedEvent, fetchCalendarBody, fields, from (+21 more)
 
 ### Community 76 - "src/vault_import.rs"
 Cohesion: 0.07
@@ -1062,12 +1057,12 @@ Cohesion: 0.07
 Nodes (14): fl_register_plugins(), main(), first_frame_cb(), my_application_activate(), my_application_class_init(), my_application_dispose(), my_application_init(), my_application_local_command_line() (+6 more)
 
 ### Community 78 - "asr_bakeoff.py"
-Cohesion: 0.08
-Nodes (24): api_key(), cut_clips(), deadline(), decide(), ensure_downloaded(), is_garbage(), load(), main() (+16 more)
+Cohesion: 0.09
+Nodes (20): api_key(), cut_clips(), deadline(), decide(), ensure_downloaded(), is_garbage(), load(), main() (+12 more)
 
 ### Community 79 - "setup.dart"
-Cohesion: 0.05
-Nodes (38): Safe Android profile checks, checkpointEvery, main, paths, main, main, androidArtifacts, _Artifact (+30 more)
+Cohesion: 0.06
+Nodes (32): androidArtifacts, _Artifact, _artifactsForPlatform, body, bodyBytes, client, destination, _downloadArtifact (+24 more)
 
 ### Community 80 - "Bounded subagent task cards"
 Cohesion: 0.06
@@ -1094,12 +1089,12 @@ Cohesion: 0.05
 Nodes (36): byId, candidates, ChunkCitation, chunkId, content, endOffset, fused, fuseSearchHits (+28 more)
 
 ### Community 86 - "TypstInspector"
-Cohesion: 0.05
-Nodes (49): _FakeInspector, FlutterTypstInspector, BaseFilesInspector, RecoverableInspector, TypstInspector, calls, _delegate, _EmptyInspector (+41 more)
+Cohesion: 0.09
+Nodes (29): _FakeInspector, FlutterTypstInspector, BaseFilesInspector, RecoverableInspector, TypstInspector, calls, _delegate, _EmptyInspector (+21 more)
 
 ### Community 87 - "tylog-plus/plan.md"
 Cohesion: 0.07
-Nodes (15): P02 — restore production vault and normal release, P05 Mac quality readiness — 2026-09-26, Counts and verification, Follow-up, P09d5 — private A24 import rehearsal, Run, Annotation omission repaired (2026-09-20), P10 — portable export and conflict-aware re-import (+7 more)
+Nodes (15): P02 — restore production vault and normal release, P05 Mac quality readiness — 2026-09-26, Annotation omission repaired (2026-09-20), P10 — portable export and conflict-aware re-import, P13 progress — incremental FTS5 foundation, P14 result — persistent resumable jobs, P15 progress — durable revision publication, P16 progress — transactional revision receive (+7 more)
 
 ### Community 88 - "audio_note_edit_test.dart"
 Cohesion: 0.09
@@ -1114,16 +1109,16 @@ Cohesion: 0.05
 Nodes (38): acquireSync, AndroidTreeSelection, args, cached, cancelBackgroundSoon, channel, createDirectory, delete (+30 more)
 
 ### Community 91 - "src/storage.dart"
-Cohesion: 0.06
-Nodes (32): commitIndexWrite, createDirectory, delete, deleteEmptyDirectory, exists, existsNow, hash, indexDirtyPath (+24 more)
-
-### Community 92 - "constants.dart"
 Cohesion: 0.05
-Nodes (38): AppEmptyState, build, hint, icon, loading, primaryAction, secondaryAction, title (+30 more)
+Nodes (37): commitIndexWrite, createDirectory, delete, deleteEmptyDirectory, exists, existsNow, hash, indexDirtyPath (+29 more)
 
-### Community 93 - "p05_ort_bench/src/main.rs"
-Cohesion: 0.12
-Nodes (12): generated_lengths_and_summary(), generated_text(), inputs(), main(), pool(), run(), session(), token_length() (+4 more)
+### Community 92 - "src/mounts.dart"
+Cohesion: 0.11
+Nodes (15): encodeMounts, extra, fromJson, kind, Mount, _mountId, mountPrefix, MountSource (+7 more)
+
+### Community 93 - "scan_repro.dart"
+Cohesion: 0.11
+Nodes (17): createDirectory, current, delete, exists, hash, index, inner, last (+9 more)
 
 ### Community 95 - "2026-10-08-codebase.md"
 Cohesion: 0.07
@@ -1142,8 +1137,8 @@ Cohesion: 0.05
 Nodes (37): access, _anonKey, async, body, client, _decode, delete, email (+29 more)
 
 ### Community 99 - "src/validation.dart"
-Cohesion: 0.07
-Nodes (24): CliTypstInspector, executable, inspect, root, count, date, day, _duplicates (+16 more)
+Cohesion: 0.10
+Nodes (20): count, date, day, _duplicates, isSafeVaultPath, listing, match, month (+12 more)
 
 ### Community 100 - "processing_jobs.dart"
 Cohesion: 0.08
@@ -1171,31 +1166,31 @@ Nodes (24): devices, DonorReuse, donorSafeProperties, freshDonorAge, indexDonorS
 
 ### Community 106 - "typst_document_viewer.dart"
 Cohesion: 0.08
-Nodes (21): build, _compileDocument, _compiler, createState, date, didChangeDependencies, _didInit, didUpdateWidget (+13 more)
+Nodes (22): build, _compileDocument, _compiler, createState, date, didChangeDependencies, _didInit, didUpdateWidget (+14 more)
 
 ### Community 107 - "pre-a24-readiness.md"
-Cohesion: 0.15
-Nodes (15): Nothing A024 Production Device, Android Profile APK, Huawei P30 Android Proxy, macOS Universal Release Artifact, org.tylog.tylog Package, P03 Test Suite, P05 Relevance Review, P09 Resumable Import / Real-Vault Harness (+7 more)
+Cohesion: 0.08
+Nodes (20): Nothing A024 Production Device, Android Profile APK, P12 frame gates on the Huawei P30 (proxy, 2026-09-29), U0 macOS integration sweep (2026-09-29), U0 integration sweep on the Huawei P30 (proxy, 2026-09-29), Huawei P30 Android Proxy, macOS Universal Release Artifact, org.tylog.tylog Package (+12 more)
 
 ### Community 108 - "SyncForegroundService"
 Cohesion: 0.08
 Nodes (7): RecordTile, SyncForegroundService, Delegation lessons (this session), Done (merged to main, verified), Graph findings handoff (2026-10-12), Open, P12k design (2026-09-27)
 
 ### Community 109 - "int get"
-Cohesion: 0.15
-Nodes (10): code, convertMarkdown, diagnostics, hashCode, line, MarkdownImportDiagnostic, MarkdownTypstResult, message (+2 more)
+Cohesion: 0.09
+Nodes (18): dimension, embed, EmbeddingResult, finite, hashCode, norm, operator, vector (+10 more)
 
 ### Community 110 - "LocalVaultStorage"
-Cohesion: 0.03
-Nodes (75): IndexDonorStore, LocalVaultStorage, age, delete, _donorJson, donors, _index, main (+67 more)
+Cohesion: 0.02
+Nodes (111): CountingLocalStorage, IndexDonorStore, LocalVaultStorage, age, delete, _donorJson, donors, _index (+103 more)
 
 ### Community 111 - "typst_view.dart"
 Cohesion: 0.08
 Nodes (24): build, _buildWrapper, createState, didChangeDependencies, _didInit, didUpdateWidget, dispose, document (+16 more)
 
 ### Community 114 - "p03_conflict_report.py"
-Cohesion: 0.07
-Nodes (30): 10-minute quickstart, Audio, Authoring a TyLog Module Pack, Building, Common mistakes, Install, upgrade, uninstall, reschedule, manifest.json, Publishing (+22 more)
+Cohesion: 0.06
+Nodes (34): 10-minute quickstart, Audio, Authoring a TyLog Module Pack, Building, Common mistakes, Install, upgrade, uninstall, reschedule, manifest.json, Publishing (+26 more)
 
 ### Community 115 - "Issue Severity Tracker"
 Cohesion: 0.08
@@ -1215,7 +1210,7 @@ Nodes (37): build, createState, _job, jobs, _oldAge, _olderOpen, onOpen, onQueue
 
 ### Community 119 - "mobile_navigation_creation_test.dart"
 Cohesion: 0.02
-Nodes (89): appVersion, main, main, mention, base, cancelAll, deadline, delete (+81 more)
+Nodes (81): main, _note, base, cancelAll, deadline, delete, ensureCreated, _FakeNotificationsPlatform (+73 more)
 
 ### Community 120 - "vault_service.dart"
 Cohesion: 0.09
@@ -1238,20 +1233,20 @@ Cohesion: 0.09
 Nodes (21): Ambiguous Edges - Review These, Communities (11 total, 2 thin omitted), Community 0 - "Donor Sharing and Schema Gating", Community 1 - "Execution Contexts and CLI", Community 2 - "Conflict Incident Scope", Community 3 - "Sync Cost Measurement", Community 4 - "Conflict Auto-Resolution Rules", Community 5 - "Resolve Path and ETag Guard" (+13 more)
 
 ### Community 125 - "escape_markup"
-Cohesion: 0.10
-Nodes (19): Task 6: Sidecar and edit-protected rendering, _render(), test_apply_transcript_append(), test_apply_transcript_replace_at_eof(), test_apply_transcript_replace_keeps_comments(), test_diarize_clustering(), test_diarize_short_segments_merge_only_for_embedding(), test_escape_markup() (+11 more)
+Cohesion: 0.11
+Nodes (19): Global Constraints, Task 6: Sidecar and edit-protected rendering, _render(), test_apply_transcript_append(), test_apply_transcript_replace_at_eof(), test_apply_transcript_replace_keeps_comments(), test_diarize_clustering(), test_diarize_short_segments_merge_only_for_embedding() (+11 more)
 
 ### Community 126 - "constants.dart"
 Cohesion: 0.05
 Nodes (39): buttonStyle, entry, icon, iconForKind, kEditorInset, kIcon, kIconSmall, kImageControlScrim (+31 more)
 
 ### Community 127 - "run_once"
-Cohesion: 0.07
-Nodes (50): Task 13: Context pass, finish_transcript(), load_sidecar(), save_sidecar(), section_text(), sidecar_path(), transcribe_v2(), test_backup_legacy_is_noop_once_sidecar_exists() (+42 more)
+Cohesion: 0.05
+Nodes (71): Task 13: Context pass, Task 22: Review pass, Task 7: Wire v2 transcription into the worker, backup_legacy(), backup_legacy_note(), finish_transcript(), load_sidecar(), save_sidecar() (+63 more)
 
 ### Community 128 - "retrieval_indexing_benchmark_test.dart"
-Cohesion: 0.07
-Nodes (25): benchmarkText, complete, completeChunk, count, countQueries, db, dir, embed (+17 more)
+Cohesion: 0.06
+Nodes (26): benchmarkText, complete, completeChunk, count, countQueries, db, dir, embed (+18 more)
 
 ### Community 129 - "Vault Import"
 Cohesion: 0.09
@@ -1285,9 +1280,9 @@ Nodes (21): _rootEtag, _changedRemoteFiles, _deleteRemote, _download, _downloadS
 Cohesion: 0.10
 Nodes (19): _commitAnnotation, commitAnnotationEdit, existing, extracted, _extractorVersion, id, now, parent (+11 more)
 
-### Community 137 - "package:tylog/nextcloud_sync.dart"
-Cohesion: 0.08
-Nodes (13): main, base, extended, main, main, _RefusingDonorStorage, writeText, main (+5 more)
+### Community 137 - "article_jobs.dart"
+Cohesion: 0.14
+Nodes (12): ArticleJob, directory, enqueue, jobs, loadArticleJobs, origin, parse, path (+4 more)
 
 ### Community 139 - "Markdown Import Flow"
 Cohesion: 0.10
@@ -1305,21 +1300,21 @@ Nodes (21): Anti-goals (failure even if it "works"), App changes, Audio notes v2
 Cohesion: 0.05
 Nodes (43): any, _audio, _audioExtensions, AudioTake, build, bytes, _cancel, color (+35 more)
 
-### Community 143 - "p22_private_graph_native_test.dart"
-Cohesion: 0.04
-Nodes (46): binding, bounded, edgeCount, graph, main, nodeCount, _p95, _representativeBoundedGraph (+38 more)
+### Community 143 - "enrich_flow_test.dart"
+Cohesion: 0.08
+Nodes (23): createDirectory, _day, _dayPath, delete, desktop, _directories, _emptyStartup, exists (+15 more)
 
 ### Community 144 - "settings_catalog.dart"
 Cohesion: 0.07
 Nodes (20): _about, _ai, _articles, _audio, builder, _calendars, _general, keywords (+12 more)
 
 ### Community 145 - "P24 — migration rehearsal and integrated failures"
-Cohesion: 0.15
-Nodes (13): 423 Locked Treated as Final Bug, Controller Restart-Boundary Matrix, Host acceptance rerun (2026-09-22), Host failure-rehearsal rerun (2026-09-21), Native post-commit restart evidence (2026-09-20), P24 — migration rehearsal and integrated failures, Real-account rehearsal (2026-10-03), HTTP Transient Failure Retry Logic (+5 more)
+Cohesion: 0.12
+Nodes (18): 423 Locked Treated as Final Bug, Autosave Sync Throttling, Controller Restart-Boundary Matrix, P25 Sync Calm-down, Host acceptance rerun (2026-09-22), Host failure-rehearsal rerun (2026-09-21), Native post-commit restart evidence (2026-09-20), P24 — migration rehearsal and integrated failures (+10 more)
 
 ### Community 146 - "P25 — production migration and release acceptance"
-Cohesion: 0.11
-Nodes (16): P21 cited navigation host seam, Citation UI seam (2026-09-22), Dart primitive measurements (2026-09-20), Host acceptance rerun (2026-09-22), In-app semantic search wiring (2026-09-27), P21 progress — vector retrieval primitive, A24 profile reinstall after integration-test cleanup (2026-09-23), Android native report packaging (2026-09-22) (+8 more)
+Cohesion: 0.12
+Nodes (15): Citation UI seam (2026-09-22), Dart primitive measurements (2026-09-20), Host acceptance rerun (2026-09-22), In-app semantic search wiring (2026-09-27), P21 progress — vector retrieval primitive, A24 profile reinstall after integration-test cleanup (2026-09-23), Android native report packaging (2026-09-22), ARM64 release rerun (2026-09-21) (+7 more)
 
 ### Community 147 - "IntoDart"
 Cohesion: 0.10
@@ -1357,13 +1352,13 @@ Nodes (14): alreadyUploaded, chunkedUpload, chunkNumber, chunks, chunkSize, dest
 Cohesion: 0.11
 Nodes (17): digest, end, extracted, null, offset, page, pages, PdfExtraction (+9 more)
 
-### Community 156 - "run_review"
-Cohesion: 0.16
-Nodes (19): Task 22: Review pass, review_job(), review_llm(), fake(), run_review(), score_by_translation(), test_low_score_line_retranslated_once(), answer() (+11 more)
+### Community 156 - "article_links_flow_test.dart"
+Cohesion: 0.09
+Nodes (21): createDirectory, delete, _directories, _emptyStartup, exists, _files, hash, home (+13 more)
 
 ### Community 157 - "tylog_core/test/search_index_test.dart"
-Cohesion: 0.12
-Nodes (12): _buildIndex, buildStorage, main, _note, notesDir, _readSearchJson, storage, vault (+4 more)
+Cohesion: 0.10
+Nodes (13): _buildIndex, buildStorage, main, _note, notesDir, _readSearchJson, storage, vault (+5 more)
 
 ### Community 158 - "vector_index.dart"
 Cohesion: 0.12
@@ -1386,8 +1381,8 @@ Cohesion: 0.12
 Nodes (11): hash, initial, initialize, nextTaskReminder, plugin, problems, reconcile, requestPermission (+3 more)
 
 ### Community 163 - "StatelessWidget"
-Cohesion: 0.03
-Nodes (65): GraphLegend, _LegendEntry, _Avatar, _avatarPath, build, _Chips, EntityHeader, icon (+57 more)
+Cohesion: 0.02
+Nodes (86): GraphLegend, _LegendEntry, AppEmptyState, build, hint, icon, loading, primaryAction (+78 more)
 
 ### Community 164 - "write_ai"
 Cohesion: 0.10
@@ -1410,16 +1405,16 @@ Cohesion: 0.05
 Nodes (38): days, deepestFirst, directories, done, files, id, _idPattern, installed (+30 more)
 
 ### Community 169 - "transcribe_worker.py"
-Cohesion: 0.04
-Nodes (60): load_task(), test_abandoned_processing_job_is_taken_again(), test_cli_core(), fake_transcribe(), test_failed_transcription_keeps_note(), fail(), test_ru_needs_one_cyrillic_letter_per_three_words(), test_settings_path_prefers_whole_local_file() (+52 more)
+Cohesion: 0.03
+Nodes (61): test_abandoned_processing_job_is_taken_again(), test_cli_core(), fake_transcribe(), test_failed_transcription_keeps_note(), fail(), test_mac_fallback_refused_when_memory_low(), test_settings_path_prefers_whole_local_file(), test_three_languages_always_enqueued() (+53 more)
 
 ### Community 170 - "login_flow.dart"
-Cohesion: 0.12
-Nodes (13): appPassword, httpClient, interval, LoginFlowStart, loginName, loginUrl, pollEndpoint, pollLoginFlow (+5 more)
+Cohesion: 0.11
+Nodes (14): appPassword, httpClient, interval, LoginFlowResult, LoginFlowStart, loginName, loginUrl, pollEndpoint (+6 more)
 
 ### Community 171 - "screenshots_settings.dart"
-Cohesion: 0.10
-Nodes (16): build, busy, createState, dispose, editable, folder, health, initState (+8 more)
+Cohesion: 0.07
+Nodes (20): importPlatformFile, openPlatformFile, uri, writeBytes, build, busy, createState, dispose (+12 more)
 
 ### Community 173 - "Release Workflow"
 Cohesion: 0.22
@@ -1437,9 +1432,9 @@ Nodes (14): commitImportedNode, commitNodeEdit, P07 — authoritative graph, sou
 Cohesion: 0.12
 Nodes (4): FlutterWindow, flutter_controller_, FlutterWindow::FlutterWindow(), project_
 
-### Community 177 - "scanner_cache_test.dart"
+### Community 177 - "rebuild_twice_test.dart"
 Cohesion: 0.10
-Nodes (18): createDirectory, delete, exists, hash, hashes, inner, inspect, inspected (+10 more)
+Nodes (18): clear, createDirectory, delete, exists, hash, inner, list, listings (+10 more)
 
 ### Community 178 - "quicklook_ffi.rs"
 Cohesion: 0.24
@@ -1477,13 +1472,13 @@ Nodes (12): chunks, chunkText, end, id, overlap, sha256, sourceVersionId, _split
 Cohesion: 0.04
 Nodes (45): appendComment, at, audioAssetNote, audioNoteBody, audioPathOf, audioStamp, audioTitle, base (+37 more)
 
-### Community 189 - "p21_semantic_search_native_test.dart"
-Cohesion: 0.09
-Nodes (20): _citationTile, configured, _copyDirectory, create, ensureCreated, installedRoot, main, _makeFixture (+12 more)
+### Community 189 - "dart:math"
+Cohesion: 0.03
+Nodes (55): _awaitPushedModel, create, dir, _goldenPath, _handshake, main, _modelPath, _passageGoldenPath (+47 more)
 
 ### Community 190 - "reproduction_test.dart"
 Cohesion: 0.06
-Nodes (32): armGate, calls, config, createDirectory, deadline, delete, _directories, _etags (+24 more)
+Nodes (31): armGate, calls, config, createDirectory, deadline, delete, _directories, _etags (+23 more)
 
 ### Community 191 - "Rich Editor Device Testing"
 Cohesion: 0.18
@@ -1498,7 +1493,7 @@ Cohesion: 0.06
 Nodes (30): block, close, depth, end, hiddenRanges, key, lines, lineStart (+22 more)
 
 ### Community 195 - "Win32Window"
-Cohesion: 0.19
+Cohesion: 0.24
 Nodes (4): Win32Window, child_content_, quit_on_close_, window_handle_
 
 ### Community 196 - "Conflict Storage"
@@ -1545,13 +1540,13 @@ Nodes (22): _adts, _adtsFrame, _appleEsdsDescriptors, channels, end, f, fill, _f
 Cohesion: 0.12
 Nodes (15): createEntityForTesting, relinkArticlesForTesting, saveLinksAsArticlesForTesting, sharePdfForTesting, RemoteArchiveSnapshot, _appendTrace, _copySyncState, _isChanged (+7 more)
 
-### Community 210 - "processing_screen_test.dart"
+### Community 210 - "audio_widgets_test.dart"
 Cohesion: 0.04
-Nodes (36): AudioTab, WaveformSeekBar, AiSettingsSection, AudioTranscriptRow, bars, main, _attachment, copied (+28 more)
+Nodes (38): AudioTab, WaveformSeekBar, AiSettingsSection, AudioTranscriptRow, bars, main, _attachment, copied (+30 more)
 
 ### Community 211 - "chunked_upload_test.dart"
-Cohesion: 0.13
-Nodes (13): assembled, chunks, client, davBase, dirExists, failChunk2Once, headers, main (+5 more)
+Cohesion: 0.08
+Nodes (22): ChunkUploadException, assembled, chunks, client, davBase, dirExists, failChunk2Once, headers (+14 more)
 
 ### Community 213 - "Model Benchmark Scripts"
 Cohesion: 0.17
@@ -1574,8 +1569,8 @@ Cohesion: 0.18
 Nodes (11): Context, Execution, One primitive, three consumers, Outcome, Phase 1: core, Phase 2: typing a task, Phase 3: the line shows its state, Phase 4: one row everywhere (+3 more)
 
 ### Community 218 - "screenshots_test.dart"
-Cohesion: 0.03
-Nodes (45): main, plainNote, reading, shelf, summarized, unread, body, main (+37 more)
+Cohesion: 0.02
+Nodes (67): appBanner, showSnack, main, plainNote, reading, shelf, summarized, unread (+59 more)
 
 ### Community 219 - "Task Management Features"
 Cohesion: 0.18
@@ -1602,8 +1597,8 @@ Cohesion: 0.24
 Nodes (4): Cocoa, FlutterMacOS, RunnerTests, RunnerTests
 
 ### Community 226 - "Part A — Inventory"
-Cohesion: 0.20
-Nodes (10): Dark mode and text scaling, Duplication worth removing, Existing definitions, Hard-coded values outside the theme — top 20 files, Part A — Inventory, Part B — Ranked findings, Part C — Minimal tokens and migration order, Surface coverage and remaining top-of-screen space (+2 more)
+Cohesion: 0.14
+Nodes (12): High: autosave failure is normally invisible to the user, Dark mode and text scaling, Duplication worth removing, Existing definitions, Hard-coded values outside the theme — top 20 files, Hard-coded colour, padding, radius, duration values outside theme: 229 occurrences, Part A — Inventory, Part B — Ranked findings (+4 more)
 
 ### Community 227 - "Tier-A Task Board"
 Cohesion: 0.20
@@ -1618,12 +1613,12 @@ Cohesion: 0.20
 Nodes (10): Cosine Search Primitive, embeddedChunkCandidates, nativeEmbedder, nativePassageEmbedder, nativeQueryEmbedder, searchStoredChunks, searchStoredChunksHybrid, searchStoredChunksHybridWithNavigation (+2 more)
 
 ### Community 230 - "P22 progress — bounded graph traversal"
-Cohesion: 0.20
-Nodes (10): A24 native handoff (2026-09-22), A24 real-vault graph gate (2026-09-27), Contract-sized rerun (2026-09-24), Host query-plan gate (2026-09-21), macOS profile GraphView interaction timing (2026-09-23), macOS real-vault graph gate (2026-09-27) — P22 DONE, Mode-switch cost analysis (2026-09-26), P22 progress — bounded graph traversal (+2 more)
-
-### Community 231 - "p05_embedding_profile_test.dart"
 Cohesion: 0.11
-Nodes (11): _awaitPushedModel, create, dir, _goldenPath, _handshake, main, _modelPath, _passageGoldenPath (+3 more)
+Nodes (16): Formatted 900-row gate: 10 of 1104 edits over budget (0.91 percent), thin margin, Real-keyboard and IME check on the A24 still open, P12 frame gates on the A24 (2026-10-03), Plain 900-row gate: 7 of 1200 edits over budget (0.58 percent), A24 native handoff (2026-09-22), A24 real-vault graph gate (2026-09-27), Contract-sized rerun (2026-09-24), Host query-plan gate (2026-09-21) (+8 more)
+
+### Community 231 - "scanner_legacy_tags_test.dart"
+Cohesion: 0.17
+Nodes (11): _EmptyTagsInspector, _FailingInspector, inspect, main, scan, _staleCacheTests, _synonymFileTests, synonyms (+3 more)
 
 ### Community 232 - "Sync Conflict Findings"
 Cohesion: 0.20
@@ -1633,9 +1628,9 @@ Nodes (9): Sync conflict recovery plan, 1. The shared index ("hard computing on 
 Cohesion: 0.17
 Nodes (3): CompiledDocument, crate::api::vault_import::VaultNoteResult, TypstEngine
 
-### Community 234 - "studio_stub"
-Cohesion: 0.12
-Nodes (13): fake_v2_audio(), ffprobe(), isolated_state(), shot_llm(), chat(), studio_context(), studio_stub(), sweep_vault() (+5 more)
+### Community 234 - "llm_chat"
+Cohesion: 0.07
+Nodes (30): Where it runs, _studio_request(), chat(), request(), urlopen(), chat(), studio_context(), studio_stub() (+22 more)
 
 ### Community 236 - "Native Embedding"
 Cohesion: 0.17
@@ -1666,8 +1661,8 @@ Cohesion: 0.22
 Nodes (9): Archived reliability remediation tracker, Completion accounting, Execution decisions, Outcomes to measure, Queue, Suggested batches, T00 first populated run, T00 real vault profile (+1 more)
 
 ### Community 243 - "dart:async"
-Cohesion: 0.03
-Nodes (59): T01 Result, T02 Result, T03 Result, main, main, smokeValue, main, _p95 (+51 more)
+Cohesion: 0.02
+Nodes (101): Safe Android profile checks, main, smokeValue, main, _p95, sorted, json, main (+93 more)
 
 ### Community 244 - "Embedding Parity"
 Cohesion: 0.22
@@ -1681,9 +1676,9 @@ Nodes (7): Controls with no existing test, Counts, Long-press-only actions, U0 c
 Cohesion: 0.23
 Nodes (11): PKMS competitive audit: Logseq OG vs Logseq 2.0 DB vs Tine vs TyLog, 16-Row Feature Matrix, Logseq 2.0 DB (audit subject), Logseq OG (audit subject), Tine (audit subject), Logseq 2.0 DB Version Feature-Surface Competitive Audit, Unified [[ ]] References (DB), Logseq DB-Version Graph Storage Format (Research) (+3 more)
 
-### Community 247 - "enrich_flow_test.dart"
-Cohesion: 0.03
-Nodes (57): _appKinds, entityFieldsForKind, entityKindChoices, fields, key, _kinds, others, seen (+49 more)
+### Community 247 - "p22_private_graph_native_test.dart"
+Cohesion: 0.04
+Nodes (46): binding, bounded, edgeCount, graph, main, nodeCount, _p95, _representativeBoundedGraph (+38 more)
 
 ### Community 248 - "ValueChanged"
 Cohesion: 0.08
@@ -1703,15 +1698,15 @@ Nodes (7): Experiment 1 — known-item retrieval, Experiment 2 — screenshots (
 
 ### Community 252 - "translate"
 Cohesion: 0.04
-Nodes (59): Audio notes v2 Implementation Plan, Executors, Global Constraints, Phase 1: clean transcript, Phase 1 gate result (2026-10-31), Phase 2-3 tasks (same conventions as Tasks 1-8), Phase 4 tasks (translation v2), Phase 5 tasks (app; executor: codex, Claude runs flutter test/analyze and commits) (+51 more)
+Nodes (61): Audio notes v2 Implementation Plan, Executors, Phase 1: clean transcript, Phase 1 gate result (2026-10-31), Phase 2-3 tasks (same conventions as Tasks 1-8), Phase 4 tasks (translation v2), Phase 5 tasks (app; executor: codex, Claude runs flutter test/analyze and commits), Phases 2-5 (outline; detailed plan written after the Phase 1 gate, with its numbers) (+53 more)
 
 ### Community 253 - "Executing one remediation task"
 Cohesion: 0.25
 Nodes (6): Coordinator, Dispatch template, Executing one remediation task, Source for delegation choices, Testing and promotion, Worker result: at most 200 words
 
 ### Community 254 - "2026-10-08-rules-compliance.md"
-Cohesion: 0.29
-Nodes (4): Native rebuild after native rebuild (device-safe evidence log), Profile APK built and installed over the device app before the driver run, Rebuild runs natively inside the worker isolate, F1 high: list chip edit clears unrelated task dates and repeat
+Cohesion: 0.11
+Nodes (15): Native rebuild after native rebuild (device-safe evidence log), Profile APK built and installed over the device app before the driver run, Rebuild runs natively inside the worker isolate, Additional named test references, F1 high: list chip edit clears unrelated task dates and repeat, Limits and verdict, Memory-only instructions to promote into repo docs, Numbered rule catalog (+7 more)
 
 ### Community 255 - "Android Profiling"
 Cohesion: 0.25
@@ -1742,24 +1737,24 @@ Cohesion: 0.25
 Nodes (7): Archived UI Fix Plan — execution status (2026-08-18), Blockers hit (why nothing is compiled), Delivered, Metrics (baseline → actual), Next, Residual risks flagged by the agents (worth your eye at review), Wave 2 additions (WP-12, WP-17)
 
 ### Community 263 - "push_client.dart"
-Cohesion: 0.14
-Nodes (12): close, _closed, config, _connect, _delaySeconds, dispose, _http, NextcloudPushClient (+4 more)
+Cohesion: 0.08
+Nodes (20): conflictRemoteBytesToShow, ConflictShape, conflictShapeHint, conflictSideLabel, defaultResolution, isSubset, isSuperset, NextcloudConfig (+12 more)
 
 ### Community 264 - "ai_settings.dart"
 Cohesion: 0.04
 Nodes (52): AiPreset, AiServerTask, aiSettingsPath, AiTask, all, articles, cloud, connection (+44 more)
 
-### Community 265 - "preprocess"
-Cohesion: 0.12
-Nodes (17): asset_basename(), extract_highlights(), extract_math(), image_destination(), is_empty_bullet(), is_image_path(), is_org_bookkeeping(), is_relative_image() (+9 more)
+### Community 265 - "fold_store.dart"
+Cohesion: 0.18
+Nodes (8): current, _file, instance, isFolded, _keys, open, toggle, _writes
 
 ### Community 266 - "workspace_note_rename.dart"
 Cohesion: 0.17
 Nodes (11): _renameNote, source, failure, firstArgument, message, path, RenameNoteFailure, RenameNoteResult (+3 more)
 
-### Community 269 - "ai_settings_test.dart"
-Cohesion: 0.12
-Nodes (12): dir, exists, existsNow, list, listNow, main, _PriorityOnlyStorage, readBytes (+4 more)
+### Community 269 - "audio_peaks.dart"
+Cohesion: 0.20
+Nodes (8): bars, bucketPeaks, buckets, dir, loudest, n, out, peaksFromAudioFile
 
 ### Community 270 - "Sync Self-Heal"
 Cohesion: 0.29
@@ -1790,8 +1785,8 @@ Cohesion: 0.14
 Nodes (13): budget, countLine, fontSize, GraphLabelSpec, kGraphCountAlpha, kGraphCountScale, maxLines, nameLine (+5 more)
 
 ### Community 277 - "embedding_reference.py"
-Cohesion: 0.09
-Nodes (19): P05.3 Mac Exact-Cosine Search Result, P05.6a — judged retrieval quality scorer, Exact cosine comparison method, Recall@10 retrieval-quality metric, EmbeddingQualityTest, BenchmarkTest, pack(), ValidateEmbeddingPackTest (+11 more)
+Cohesion: 0.11
+Nodes (24): digest(), evaluate(), main(), run(), benchmark(), file_sha256(), generate(), main() (+16 more)
 
 ### Community 278 - "processing_policy.dart"
 Cohesion: 0.10
@@ -1822,8 +1817,8 @@ Cohesion: 0.11
 Nodes (17): _adtsRate, _adtsRates, at, AudioInfo, bitrateKbps, bytes, ext, format (+9 more)
 
 ### Community 285 - "test_studio_chunks_timestamps_and_language"
-Cohesion: 0.06
-Nodes (17): Task 7: Wire v2 transcription into the worker, speech_regions(), FakeFFprobe, test_decode_nonempty_retries_via_ffmpeg_then_fails(), test_studio_call_is_cut_by_deadline(), test_studio_chunks_timestamps_and_language(), post(), test_studio_post_that_hangs_is_cut_by_deadline() (+9 more)
+Cohesion: 0.04
+Nodes (24): Phase 0: baseline and probes, Task 1: Hard deadline on HTTP calls; guarded Mac fallback, Task 2: Metrics script, Task 3: STT engine bake-off on Studio (probe + decision), fake_v2_audio(), FakeFFprobe, ffprobe(), isolated_state() (+16 more)
 
 ### Community 286 - "src/image_identity.dart"
 Cohesion: 0.15
@@ -1882,8 +1877,8 @@ Cohesion: 0.40
 Nodes (6): Classes and lab schedule, Consultations, Journal, Task timer, Tasks, Today agenda
 
 ### Community 300 - "re"
-Cohesion: 0.20
-Nodes (13): _entries(), _is_loop(), _is_marker(), main(), _mean_score(), note_metrics(), _section(), _translation_stats() (+5 more)
+Cohesion: 0.18
+Nodes (14): _entries(), _is_loop(), _is_marker(), main(), _mean_score(), note_metrics(), _section(), _translation_stats() (+6 more)
 
 ### Community 301 - "LLM Providers And Pipeline"
 Cohesion: 0.40
@@ -1902,7 +1897,7 @@ Cohesion: 0.40
 Nodes (3): T26 device profile result, T28 five-minute idle log, T28 device closure evidence
 
 ### Community 305 - "win32_window.cpp"
-Cohesion: 0.20
+Cohesion: 0.18
 Nodes (5): Scale(), Win32Window::Win32Window(), WindowClassRegistrar, class_registered_, instance_
 
 ### Community 306 - "windows_launcher/src/main.rs"
@@ -1917,13 +1912,13 @@ Nodes (13): clearCpuSamples, dispose, inclusive, isolate, main, name, samples, s
 Cohesion: 0.40
 Nodes (4): taskCancelledGlyph, taskCheckedGlyph, taskDoingGlyph, taskUncheckedGlyph
 
-### Community 309 - "note_picker_sheet.dart"
-Cohesion: 0.17
-Nodes (11): build, createLabel, createSentinel, createState, heading, _idSubtitle, NotePickerSheet, _NotePickerSheetState (+3 more)
+### Community 309 - "settings_path.dart"
+Cohesion: 0.20
+Nodes (9): activePath, bytes, createDirectory, existsNow, localPath, localSettingsPath, setSettingsDeviceOnly, settingsPathFor (+1 more)
 
-### Community 310 - "enrich_report.py"
-Cohesion: 0.23
-Nodes (8): group_names(), find(), key(), load(), main(), report(), page(), test_groups_case_forms_but_not_model_guesses()
+### Community 310 - "github_auth.dart"
+Cohesion: 0.10
+Nodes (16): _baseUri, clear, _client, _clientId, code, DeviceCodeResponse, GitHubAuth, interval (+8 more)
 
 ### Community 312 - "ai_connections_settings_test.dart"
 Cohesion: 0.10
@@ -1942,16 +1937,16 @@ Cohesion: 0.05
 Nodes (37): buffer, build, _bytes, createState, current, _detailsChildren, didUpdateWidget, dispose (+29 more)
 
 ### Community 316 - "sync_state_cache_test.dart"
-Cohesion: 0.04
-Nodes (45): VaultStorageEntry, failReadsFor, main, readText, storage, stray, _UnreadableStorage, vault (+37 more)
+Cohesion: 0.10
+Nodes (20): VaultStorageEntry, _config, createDirectory, delegate, delete, exists, fixedStat, hash (+12 more)
 
-### Community 318 - "image_crop_test.dart"
-Cohesion: 0.06
-Nodes (28): budgetUs, build, editorFrameMetrics, overBudget, p95, raster, span, frame (+20 more)
+### Community 318 - "editor_frame_metrics.dart"
+Cohesion: 0.25
+Nodes (7): budgetUs, build, editorFrameMetrics, overBudget, p95, raster, span
 
-### Community 319 - "contrast_test.dart"
-Cohesion: 0.06
-Nodes (25): b, _contrast, darker, darkScheme, g, kMinNonTextContrast, la, lb (+17 more)
+### Community 319 - "scanner_cache_test.dart"
+Cohesion: 0.10
+Nodes (18): createDirectory, delete, exists, hash, hashes, inner, inspect, inspected (+10 more)
 
 ### Community 320 - "EDN :graph Export"
 Cohesion: 0.22
@@ -1967,11 +1962,11 @@ Nodes (5): 0.3.0+92, Added, Changed, Fixed, Guarded
 
 ### Community 325 - "Activity plan (auto mode, started 2026-10-14)"
 Cohesion: 0.08
-Nodes (23): Activity plan (auto mode, started 2026-10-14), After 0.19.2 (2026-10-21, user UI requests), Audio notes v2 (2026-10-31, user: "run the work", loop, status every 5 min, max token save), Enrich backfill fast (2026-10-30, user: "go", status every 5 min), Issue log, Next (2026-10-21, after Settings pages / Windows build), Open items audit (2026-10-31, whole file re-read), Parked: pt-pt pack audio on Studio (2026-10-30, resume after the weekend TyLog run) (+15 more)
+Nodes (24): Activity plan (auto mode, started 2026-10-14), After 0.19.2 (2026-10-21, user UI requests), Audio notes v2 (2026-10-31, user: "run the work", loop, status every 5 min, max token save), Enrich backfill fast (2026-10-30, user: "go", status every 5 min), Issue log, Next (2026-10-21, after Settings pages / Windows build), Open items audit (2026-10-31, whole file re-read), Parked: pt-pt pack audio on Studio (2026-10-30, resume after the weekend TyLog run) (+16 more)
 
-### Community 326 - "VaultStorage"
-Cohesion: 0.04
-Nodes (51): _MemoryStorage, _ReadOnlyStorage, VaultStorage, _CountingStorage, createDirectory, current, delete, exists (+43 more)
+### Community 326 - "search_index_memory.dart"
+Cohesion: 0.09
+Nodes (22): after, before, createDirectory, delete, exists, hash, index, inner (+14 more)
 
 ### Community 327 - "revision_publisher.dart"
 Cohesion: 0.15
@@ -1998,16 +1993,16 @@ Cohesion: 0.50
 Nodes (4): F11 inserted images missing from preview and PDF file map, F12 report creation reads almost the entire vault into memory, Report export loads only compiler-requested dependencies, Profile build and integration log: share PDF after native rebuild
 
 ### Community 333 - "hashlib"
-Cohesion: 0.09
-Nodes (22): TyLogScaleFixtureTest, benchmark(), file_sha256(), generate(), main(), top_k(), encrypt_pdf(), key_rounds() (+14 more)
+Cohesion: 0.07
+Nodes (20): P05.6a — judged retrieval quality scorer, Recall@10 retrieval-quality metric, EmbeddingQualityTest, BenchmarkTest, TyLogScaleFixtureTest, pack(), ValidateEmbeddingPackTest, encrypt_pdf() (+12 more)
 
-### Community 334 - "agenda_timeline_test.dart"
-Cohesion: 0.15
-Nodes (10): _at, dotY, entries, h, main, pump, tapped, _article (+2 more)
+### Community 334 - "package:tylog_core/models.dart"
+Cohesion: 0.04
+Nodes (36): main, _task, today, _at, dotY, entries, h, main (+28 more)
 
-### Community 335 - "package:tylog_core/storage.dart"
-Cohesion: 0.03
-Nodes (45): main, current, _file, instance, isFolded, _keys, open, toggle (+37 more)
+### Community 335 - "dart:typed_data"
+Cohesion: 0.04
+Nodes (44): main, _FlakyInspector, inspect, main, throwNext, title, hash, main (+36 more)
 
 ### Community 336 - "Sync Safety Mechanisms"
 Cohesion: 0.50
@@ -2182,8 +2177,8 @@ Cohesion: 0.67
 Nodes (3): 0.9.5+119, Changed, Fixed
 
 ### Community 427 - "task_chip_strip.dart"
-Cohesion: 0.13
-Nodes (14): build, createState, _date, didUpdateWidget, dispose, initState, onCommand, showEmpty (+6 more)
+Cohesion: 0.07
+Nodes (25): elapsed, _entries, _flushed, _flushing, flushStartupTrace, flushStartupTraceWhenReady, _flushTimer, ms (+17 more)
 
 ### Community 461 - "cosine_search.dart"
 Cohesion: 0.17
@@ -2201,41 +2196,41 @@ Nodes (17): baseline, counts, evaluateLinks, feedback, files, memory, mentions, 
 Cohesion: 0.12
 Nodes (16): _castString, fromJson, hashCode, load, name, operator, _path, query (+8 more)
 
-### Community 522 - "dart:convert"
-Cohesion: 0.03
-Nodes (59): main, main, buildLegacyImportManifest, byPath, canonical, _classify, dialect, entries (+51 more)
+### Community 522 - "legacy_import_plan.dart"
+Cohesion: 0.12
+Nodes (16): buildLegacyImportManifest, byPath, canonical, _classify, dialect, entries, fingerprint, kind (+8 more)
 
 ### Community 527 - "eval_links_test.dart"
 Cohesion: 0.11
 Nodes (17): createDirectory, delete, exists, files, gold, hash, index, ledger (+9 more)
 
-### Community 528 - "WorkspaceController"
-Cohesion: 0.18
-Nodes (10): ProcessingJobs, SemanticSearchController, FoldStore, WorkspaceController, _TextPageWorkspace, _Workspace, _SearchStateProbe, _GatedStartupSyncController (+2 more)
+### Community 528 - "dialogs.dart"
+Cohesion: 0.22
+Nodes (7): barrierDismissible, cancelLabel, confirmed, confirmLabel, destructive, false, showConfirmDialog
 
 ### Community 532 - "transpile"
 Cohesion: 0.36
 Nodes (9): Journal Pages (DB, NL date input), Tag Properties / Class Inheritance, Task Class + Repeater Cookies (DB), Classes/Tags Ontology, Journal Pages Model, Properties as First-Class Entities, Task Model (#Task class), transpile() (+1 more)
 
-### Community 541 - "portable_roundtrip_test.dart"
-Cohesion: 0.06
-Nodes (25): parse, readModulePack, zip, bytes, dir, file, main, manifest (+17 more)
+### Community 541 - "pack_validate_cli_test.dart"
+Cohesion: 0.07
+Nodes (21): parse, readModulePack, zip, bytes, dir, file, main, manifest (+13 more)
 
 ### Community 568 - "Tine (martinkoutecky/tine)"
 Cohesion: 0.22
 Nodes (7): Split: logseq/og vs logseq/logseq Repos, Mobile: iOS Invite-Only, Android Pre-Alpha, 2026 Logseq Split (OG vs DB), OG Licensing / Governance / Company History, OG Mobile Platforms & Tracked Quality Issues, AGPL-3.0, Solo Maintainer, No Code PRs, Tine (martinkoutecky/tine)
 
-### Community 570 - "maintenance_listing_test.dart"
-Cohesion: 0.07
-Nodes (29): MaintenanceIndexed, MaintenanceProgress, MaintenanceSearchBuilt, MaintenanceSwept, MaintenanceValidated, VaultMaintenanceEvent, PkmsSearchIndex, CancellingStorage (+21 more)
+### Community 570 - "Map"
+Cohesion: 0.25
+Nodes (5): _bytes, _cached, load, text, TylogAssets
 
 ### Community 574 - "screenshot_strip.dart"
-Cohesion: 0.04
-Nodes (43): build, _chip, _confirmRemoveTag, decisions, EnrichReview, markers, onAcceptMarker, onRejectMarker (+35 more)
+Cohesion: 0.05
+Nodes (39): build, LoadingIndicator, size, strokeWidth, build, createLabel, createSentinel, createState (+31 more)
 
 ### Community 575 - "string"
-Cohesion: 0.08
-Nodes (16): ArticleJob, directory, enqueue, jobs, loadArticleJobs, origin, parse, path (+8 more)
+Cohesion: 0.12
+Nodes (4): wWinMain(), CreateAndAttachConsole(), GetCommandLineArguments(), Utf8FromUtf16()
 
 ### Community 588 - "8. Научная и инженерная база"
 Cohesion: 0.22
@@ -2246,12 +2241,12 @@ Cohesion: 0.07
 Nodes (23): audioExportContent, AudioExportFormat, audioTextLines, createAudioTextPage, created, existing, _flat, heading (+15 more)
 
 ### Community 592 - "lib/report.dart"
-Cohesion: 0.12
-Nodes (15): attempts, compiler, compileSourcePdf, exportReportPdf, exportReportPdfStorage, loadedBytes, loadedPaths, message (+7 more)
+Cohesion: 0.11
+Nodes (16): attempts, compiler, compileSourcePdf, exportReportPdf, exportReportPdfStorage, loadedBytes, loadedPaths, message (+8 more)
 
-### Community 593 - "dart:math"
-Cohesion: 0.08
-Nodes (18): _compact, create, dir, fromList, _handshake, main, random, _rowVector (+10 more)
+### Community 593 - "scanner.dart"
+Cohesion: 0.11
+Nodes (15): BareLink, bareLinks, end, hits, linkArticle, links, out, replacement (+7 more)
 
 ### Community 594 - "FakeMac"
 Cohesion: 0.25
@@ -2265,53 +2260,53 @@ Nodes (21): action, at, attentionOf, attentionStates, context, Decision, decisio
 Cohesion: 0.29
 Nodes (6): Audio + learning modules: delegated work plan (2026-10-14), Gate (Claude, after the run), Measures, Not in this plan, Run, Tasks (each one file or two, verify is one command)
 
-### Community 598 - "TyLog rules compliance audit — 2026-10-08"
-Cohesion: 0.33
-Nodes (6): Additional named test references, Limits and verdict, Memory-only instructions to promote into repo docs, Numbered rule catalog, Stale and contradictory statements, TyLog rules compliance audit — 2026-10-08
+### Community 598 - "preprocess"
+Cohesion: 0.12
+Nodes (17): asset_basename(), extract_highlights(), extract_math(), image_destination(), is_empty_bullet(), is_image_path(), is_org_bookkeeping(), is_relative_image() (+9 more)
 
-### Community 599 - "2026-10-08-status.md"
-Cohesion: 0.33
-Nodes (5): Audit items fixed or tested only, with verifying test names, Audit status — 2026-10-08 findings, checked 2026-10-09, Items not done under budget stop (C10, C12, C13, C16, DS5-other, DS6-other), Design migration (partial), Final local gates: flutter analyze clean, 1290 flutter tests and 385 core tests passed
+### Community 599 - "VaultStorage"
+Cohesion: 0.14
+Nodes (14): _MemoryStorage, _ReadOnlyStorage, CompositeVaultStorage, ReadOnlyVaultStorage, VaultStorage, _CountingStorage, _ReadOnlyStorage, _MemoryStorage (+6 more)
 
-### Community 600 - "embedding_jobs.dart"
-Cohesion: 0.18
-Nodes (8): ChunkEmbedder, claimed, completed, EmbeddingBatchResult, failed, limit, pending, runEmbeddingBatch
+### Community 600 - "olt_page.dart"
+Cohesion: 0.15
+Nodes (12): build, _busy, _client, _code, createState, dispose, _email, _message (+4 more)
 
-### Community 601 - "connection_probe_test.dart"
-Cohesion: 0.17
-Nodes (8): client, main, server, url, _GatedProxyHttp, _DnsFailureClient, _ResolveHttpClient, _ResolveHttpClient
+### Community 601 - "legacy_import_plan_test.dart"
+Cohesion: 0.14
+Nodes (12): createDirectory, delete, entries, exists, file, hash, list, main (+4 more)
 
 ### Community 602 - "device_only_switch.dart"
 Cohesion: 0.17
 Nodes (12): build, _busy, _change, createState, DeviceOnlySwitch, _DeviceOnlySwitchState, didUpdateWidget, _enabled (+4 more)
 
 ### Community 603 - "namespace_migration.dart"
-Cohesion: 0.14
+Cohesion: 0.13
 Nodes (12): aliases, applyNamespacePlan, byId, edges, ids, names, namespaceHeader, namespacePlan (+4 more)
 
 ### Community 604 - "TyLog Module Pack (`.tylogpack`) v1"
 Cohesion: 0.33
 Nodes (5): Install mapping (inside synced vault prefixes only), Layout, Rules for authors, Tokens in notes (resolved at install), TyLog Module Pack (`.tylogpack`) v1
 
-### Community 605 - "benchmark_dart_retrieval.dart"
-Cohesion: 0.20
-Nodes (9): count, dimension, expected, main, query, random, timings, vectors (+1 more)
+### Community 605 - "T01 Result"
+Cohesion: 0.40
+Nodes (4): T01 Result, T02 Result, T03 Result, T05 result
 
 ### Community 606 - "T04_transcription_doc/prompt.md"
 Cohesion: 0.33
 Nodes (5): Failure: on error set status failed with error text; never leave processing without finishing., Job file: path _system/jobs/transcripts/<sha1 of audio path>.json; fields audio (vault path), note (vault path of the kind:audio note), requested_at (UTC ISO), status queued|processing|done|failed, optional lang, model, finished_at, error. App never resets a claimed or done job; failed is re-queued by the app., Note format: replace or append the section '== Transcript' with one line per segment '- mm:ss text' (minutes 00-999, seconds 00-59), text escaped for Typst markup (escape \ # [ ] $ * _ @ with a backslash); never touch '== Comments' or any other line; keep the file's existing header bytes., Sync: job and note live under synced prefixes, so any machine with the vault can run the worker., Worker steps: list jobs, claim by setting status processing, read audio from the vault, transcribe, write the note section, set status done (or failed + error).
 
 ### Community 607 - "legacy_import_runner_test.dart"
-Cohesion: 0.04
-Nodes (46): Host rerun (2026-09-21), P09d4 — synthetic resumable import rehearsal, Legacy Import (10k), createDirectory, delete, exists, files, hash (+38 more)
+Cohesion: 0.05
+Nodes (34): Host rerun (2026-09-21), P09d4 — synthetic resumable import rehearsal, Legacy Import (10k), createDirectory, delete, exists, files, hash (+26 more)
 
 ### Community 610 - "olt_client_test.dart"
 Cohesion: 0.22
 Nodes (7): delete, main, read, _sessionJson, _signedIn, value, write
 
-### Community 611 - "a24-window.md"
-Cohesion: 0.22
-Nodes (6): Formatted 900-row gate: 10 of 1104 edits over budget (0.91 percent), thin margin, Real-keyboard and IME check on the A24 still open, P12 frame gates on the A24 (2026-10-03), Plain 900-row gate: 7 of 1200 edits over budget (0.58 percent), U0 integration sweep on the A24 (2026-10-03), P12 editor frame and parity milestone is OPEN
+### Community 611 - "task_fields_test.dart"
+Cohesion: 0.14
+Nodes (13): clearers, doing, expectCompiles, headers, iso, main, now, repoRoot (+5 more)
 
 ### Community 612 - "UI inventory (screen by screen, facts only)"
 Cohesion: 0.14
@@ -2321,9 +2316,9 @@ Nodes (13): 10. Sheets, dialogs, routes, notices, 11. Design tokens and icons as
 Cohesion: 0.25
 Nodes (7): Acceptance rerun (2026-09-22), Host acceptance rerun (2026-09-21), Native ambiguous-anchor review on Mac (2026-09-28), P19 progress — durable annotations, Reader integration (2026-09-20), Real-account annotation sync (2026-09-28), Redacted Mac corpus pass (2026-09-22)
 
-### Community 619 - "task_row_test.dart"
-Cohesion: 0.08
-Nodes (19): Host acceptance rerun (2026-09-22), P23 — complete research workflow, Search navigation (2026-09-21), Bounded Hybrid Merger, KnowledgeScreen Widget, build, notesForSearchResults Function, Open-note Callback (+11 more)
+### Community 619 - "P23 — complete research workflow"
+Cohesion: 0.24
+Nodes (9): P21 cited navigation host seam, Host acceptance rerun (2026-09-22), P23 — complete research workflow, Search navigation (2026-09-21), Bounded Hybrid Merger, KnowledgeScreen Widget, notesForSearchResults Function, Open-note Callback (+1 more)
 
 ### Community 620 - "Локальные LLM и телефон как вычислительная нода для TyLog"
 Cohesion: 0.25
@@ -2345,9 +2340,9 @@ Nodes (8): 1. What exists today, 2. Pain points found, 3. What a regular user wa
 Cohesion: 0.12
 Nodes (15): checkEdits, checkIdentity, cursor, editByPattern, editExample, editRevert, editTried, _esc (+7 more)
 
-### Community 627 - "dedupe_test.dart"
-Cohesion: 0.22
-Nodes (8): _cli, file, files, main, _note, _snapshot, _write, writeAsString
+### Community 627 - "image_identity_test.dart"
+Cohesion: 0.40
+Nodes (3): _be16, _jpeg, main
 
 ### Community 628 - "Result"
 Cohesion: 0.22
@@ -2362,20 +2357,24 @@ Cohesion: 0.38
 Nodes (5): P09a result — durable import checkpoints, P09c1 result — atomic imported-node materialization, Import Items, Import Jobs, Schema Version 5
 
 ### Community 632 - "return"
-Cohesion: 0.10
-Nodes (17): _nfcCache, nfcPath, s, base, line, n, rawUrl, readingLogLine (+9 more)
+Cohesion: 0.08
+Nodes (21): _nfcCache, nfcPath, s, base, line, n, rawUrl, readingLogLine (+13 more)
 
 ### Community 633 - "10. Поэтапная реализация"
 Cohesion: 0.29
 Nodes (7): 10. Поэтапная реализация, Phase 0 — без изменения TyLog, Phase 1 — локальная генерация внутри TyLog, Phase 2 — локальный RAG, Phase 3 — телефон как LAN-нода, Phase 4 — discovery и scheduler, Phase 5 — только исследовательский
 
-### Community 634 - "nextcloud_sync.dart"
-Cohesion: 0.14
-Nodes (11): conflictRemoteBytesToShow, ConflictShape, conflictShapeHint, conflictSideLabel, defaultResolution, isSubset, isSuperset, changed (+3 more)
+### Community 634 - "legacy_import_runner.dart"
+Cohesion: 0.15
+Nodes (12): LegacyImportManifest, _code, converter, database, LegacyImportMaterializer, LegacyImportRunner, LegacyNodeConverter, manifest (+4 more)
 
-### Community 638 - "_MemoryStorage"
-Cohesion: 0.29
-Nodes (6): _FailingWriteStorage, _GatedOpenStorage, _GatedScanStorage, _GatedStorage, _GatedWriteStorage, _SnapshotReadStorage
+### Community 635 - "attention_test.dart"
+Cohesion: 0.15
+Nodes (12): createDirectory, delete, exists, files, hash, list, main, _MemoryStorage (+4 more)
+
+### Community 638 - "empty_note_cleanup_test.dart"
+Cohesion: 0.18
+Nodes (7): failReadsFor, main, readText, storage, stray, _UnreadableStorage, vault
 
 ### Community 639 - "compiler.dart"
 Cohesion: 0.14
@@ -2393,33 +2392,33 @@ Nodes (3): Sync and indexing: startup walk safety, Why a restart cannot trust an
 Cohesion: 0.40
 Nodes (5): 9.1 Test matrix, 9.2 Метрики, 9.3 Нагрузки, 9.4 Критерии решения, 9. Эксперимент: что измерять на P30 и A24
 
-### Community 644 - "olt_page.dart"
-Cohesion: 0.15
-Nodes (12): build, _busy, _client, _code, createState, dispose, _email, _message (+4 more)
+### Community 644 - "WorkspaceController"
+Cohesion: 0.18
+Nodes (10): ProcessingJobs, SemanticSearchController, FoldStore, WorkspaceController, _TextPageWorkspace, _Workspace, _SearchStateProbe, _GatedStartupSyncController (+2 more)
 
-### Community 645 - "llm_chat"
-Cohesion: 0.08
-Nodes (22): Where it runs, _studio_request(), StudioSTT, chat(), request(), urlopen(), test_deadline_interrupts_a_blocking_call(), test_deadline_restores_handler_and_clears_timer() (+14 more)
+### Community 645 - "StudioSTT"
+Cohesion: 0.26
+Nodes (3): StudioSTT, FakeStudio, test_studio_request_shape()
 
-### Community 647 - "dart:typed_data"
-Cohesion: 0.04
-Nodes (40): _baseFiles, _compiler, create, dispose, inspect, recover, setBaseFiles, activePath (+32 more)
+### Community 647 - "flutter_typst_inspector.dart"
+Cohesion: 0.20
+Nodes (7): _baseFiles, _compiler, create, dispose, inspect, recover, setBaseFiles
 
-### Community 649 - "Timer?"
-Cohesion: 0.15
-Nodes (11): elapsed, _entries, _flushed, _flushing, flushStartupTrace, flushStartupTraceWhenReady, _flushTimer, ms (+3 more)
+### Community 649 - "embedding_jobs.dart"
+Cohesion: 0.18
+Nodes (8): ChunkEmbedder, claimed, completed, EmbeddingBatchResult, failed, limit, pending, runEmbeddingBatch
 
 ### Community 650 - "Point"
+Cohesion: 0.21
+Nodes (6): Point, x, y, Size, height, width
+
+### Community 651 - "Stage-budget measurement correction (2026-09-23)"
 Cohesion: 0.50
-Nodes (3): Point, x, y
+Nodes (4): Corrected device results, Formatted-renderer layout attribution (2026-09-23), Isolated editor replacement evaluation (2026-09-23), Stage-budget measurement correction (2026-09-23)
 
-### Community 651 - "embedding.dart"
-Cohesion: 0.17
-Nodes (8): dimension, embed, EmbeddingResult, finite, hashCode, norm, operator, vector
-
-### Community 652 - "vault_storage.dart"
-Cohesion: 0.29
-Nodes (4): importPlatformFile, openPlatformFile, uri, writeBytes
+### Community 652 - "MaterialPageRoute"
+Cohesion: 0.50
+Nodes (3): build, main, main
 
 ### Community 653 - "5. Какие модели проверять"
 Cohesion: 0.50
@@ -2429,13 +2428,17 @@ Nodes (4): 5. Какие модели проверять, Кандидаты, К
 Cohesion: 0.50
 Nodes (4): 7.1 Что действительно децентрализуется, 7.2 Сильный тезис для работы, 7.3 Ограничения тезиса, 7. Децентрализация: точные тезисы
 
+### Community 655 - "Set"
+Cohesion: 0.20
+Nodes (8): _appKinds, entityFieldsForKind, entityKindChoices, fields, key, _kinds, others, seen
+
 ### Community 657 - "exceptions.dart"
 Cohesion: 0.32
 Nodes (6): diagnostics, message, toString, TypstCompileException, TypstException, TypstRenderException
 
 ### Community 658 - "models.dart"
-Cohesion: 0.08
-Nodes (21): AudioShelf, _AudioShelfState, build, createState, dispose, notes, onImport, onOpen (+13 more)
+Cohesion: 0.06
+Nodes (25): AudioShelf, _AudioShelfState, build, createState, dispose, notes, onImport, onOpen (+17 more)
 
 ### Community 659 - "0001 - Attention and decisions"
 Cohesion: 0.40
@@ -2444,10 +2447,6 @@ Nodes (4): 0001 - Attention and decisions, Consequences, Context, Decision
 ### Community 661 - "vault_lifecycle.dart"
 Cohesion: 0.17
 Nodes (11): _closeVault, _createAppLocalVault, _deleteVault, _forgetVault, _migrateAndroidVault, _moveVaultToAppStorage, _open, _openVault (+3 more)
-
-### Community 662 - "P25 Sync Calm-down"
-Cohesion: 0.40
-Nodes (5): Autosave Sync Throttling, P25 Sync Calm-down, PDF Page Size Export, Preview Continuous Screen-Wide Page, Managed v1 Themes
 
 ### Community 663 - "Conceptual data model"
 Cohesion: 0.22
@@ -2461,37 +2460,25 @@ Nodes (6): cloud, kind, label, ProviderPreset, providerPresets, url
 Cohesion: 0.29
 Nodes (6): Context, Execution mode (user: maximize codex, Claude save mode), Five primitives, everything else is a consumer, Phases, TyLog big update: modular HMI (entities, boards, extension vaults, connectors, form OCR), Verification (P1)
 
-### Community 666 - "Plain-Text File Storage / Data Ownership (OG)"
+### Community 672 - "Plain-Text File Storage / Data Ownership (OG)"
 Cohesion: 0.25
 Nodes (6): Markdown Mirror (as audit-doc synthesis point), Markdown Mirror (ADR 0016, one-way desktop-only), Typed Properties + Closed Values (UX), OG Note Model: key:: value Text Properties, Plain-Text File Storage / Data Ownership (OG), Byte-Compatible Logseq Markdown Files
 
-### Community 670 - "convert_db_export"
-Cohesion: 0.25
-Nodes (7): Asset Entities, CLI --db-edn Mode, convert_db_export(), Dart FFI Wiring (convertDbExport / DbImportResult / DbNote), DbConvertedNote, Logseq DB Dialect Detection (.edn / db.sqlite), SyntheticFile
-
-### Community 672 - "P25 — sync calm-down (2026-10-04)"
-Cohesion: 0.40
-Nodes (4): Fix — f3667ed, P25 — sync calm-down (2026-10-04), Phone trace before the fix, Related maintenance
-
-### Community 673 - "Map"
-Cohesion: 0.08
-Nodes (21): _bytes, _cached, load, text, TylogAssets, build, _byId, _byName (+13 more)
+### Community 673 - "ValueChanged"
+Cohesion: 0.04
+Nodes (52): board, build, busy, createState, didUpdateWidget, _drop, _dropIssue, entity (+44 more)
 
 ### Community 674 - "Audio v2 ASR bake-off on Studio (Task 3)"
 Cohesion: 0.33
 Nodes (5): Audio v2 ASR bake-off on Studio (Task 3), Client contract, Decision (Claude, overrides the plan rule), Reviewer notes (read by eye), Table
 
-### Community 675 - "Logseq DB Graph (datascript-backed)"
-Cohesion: 0.29
-Nodes (6): Nodes: Unified Pages/Blocks Model, block/order Fractional Indexing, Logseq DB Graph (datascript-backed), DbBlock, DbGraph, DbPage
+### Community 676 - "convert_db_export"
+Cohesion: 0.25
+Nodes (7): Asset Entities, CLI --db-edn Mode, convert_db_export(), Dart FFI Wiring (convertDbExport / DbImportResult / DbNote), DbConvertedNote, Logseq DB Dialect Detection (.edn / db.sqlite), SyntheticFile
 
-### Community 676 - "kvs SQLite Table"
-Cohesion: 0.33
-Nodes (7): RTC Sync / client-ops-db.sqlite, DB Search: fts5 trigram search-db.sqlite, client-ops-db.sqlite (sync ops), Logseq's Forked Datascript, kvs SQLite Table, search-db.sqlite (derived FTS), Transit-JSON Encoding
-
-### Community 677 - "mac_fallback_allowed"
-Cohesion: 0.09
-Nodes (12): Phase 0: baseline and probes, Task 1: Hard deadline on HTTP calls; guarded Mac fallback, Task 2: Metrics script, Task 3: STT engine bake-off on Studio (probe + decision), MacSTT, test_mac_fallback_loads_small_once_for_all_chunks(), test_mac_fallback_refused_when_memory_low(), test_mac_fallback_refused_when_memory_low_and_never_loads() (+4 more)
+### Community 677 - "MacSTT"
+Cohesion: 0.20
+Nodes (4): MacSTT, test_mac_fallback_loads_small_once_for_all_chunks(), test_mac_fallback_refused_when_memory_low_and_never_loads(), min_model()
 
 ### Community 679 - "State"
 Cohesion: 0.22
@@ -2505,21 +2492,33 @@ Nodes (5): Logseq/Obsidian import, Magic actions, Nextcloud sync, tylog Typst in
 Cohesion: 0.40
 Nodes (4): Change, Done when, Task A: project becomes an entity kind + part_of relation in the index, Tests (must fail before the change)
 
+### Community 683 - "Logseq DB Graph (datascript-backed)"
+Cohesion: 0.29
+Nodes (6): Nodes: Unified Pages/Blocks Model, block/order Fractional Indexing, Logseq DB Graph (datascript-backed), DbBlock, DbGraph, DbPage
+
+### Community 685 - "kvs SQLite Table"
+Cohesion: 0.33
+Nodes (7): RTC Sync / client-ops-db.sqlite, DB Search: fts5 trigram search-db.sqlite, client-ops-db.sqlite (sync ops), Logseq's Forked Datascript, kvs SQLite Table, search-db.sqlite (derived FTS), Transit-JSON Encoding
+
+### Community 686 - "P09d5 — private A24 import rehearsal"
+Cohesion: 0.40
+Nodes (4): Counts and verification, Follow-up, P09d5 — private A24 import rehearsal, Run
+
 ### Community 687 - "HttpClientRequest"
 Cohesion: 0.50
 Nodes (3): _ProxyRequest, _ResolveRequest, _ResolveRequest
 
-### Community 689 - "Exception"
-Cohesion: 0.18
-Nodes (10): _ProbeError, UpdateNotVerified, UpdateNotWritable, ChunkUploadException, _RemoteChanged, SyncCancelled, SyncDeferred, _Cancelled (+2 more)
-
-### Community 690 - "Size"
+### Community 688 - "HttpHeaders"
 Cohesion: 0.50
-Nodes (3): Size, height, width
+Nodes (3): _ProxyHeaders, _ResolveHeaders, _ResolveHeaders
+
+### Community 689 - "github_client.dart"
+Cohesion: 0.05
+Nodes (42): _ProbeError, UpdateNotVerified, UpdateNotWritable, GitHubDeviceFlowError, _baseUri, body, _client, closeIssue (+34 more)
 
 ### Community 691 - "olt_cache_test.dart"
-Cohesion: 0.19
-Nodes (5): main, _release, local, _localDay, main
+Cohesion: 0.40
+Nodes (3): local, _localDay, main
 
 ### Community 701 - "Task H: marker lines as issues (@TyLog @fixit ... -> kanban card -> GitHub issue)"
 Cohesion: 0.33
@@ -2529,34 +2528,30 @@ Nodes (5): Decision, GitHub part (P2, after OAuth), Model (P1 part, no network),
 Cohesion: 0.50
 Nodes (3): macOS verify P1 (2026-11-03, release build, scratch vault via CFFIXED_USER_HOME), Round 2 (rebuild after fixes), Round 3
 
-### Community 707 - "HttpHeaders"
-Cohesion: 0.50
-Nodes (3): _ProxyHeaders, _ResolveHeaders, _ResolveHeaders
-
 ## Ambiguous Edges - Review These
 - `P0-3: self-heal compared two frozen snapshots and deleted live conflicts` → `Failure shape 2: absent read as current`  [AMBIGUOUS]
   docs/audit-graph/GRAPH_REPORT.md · relation: conceptually_related_to
 
 ## Knowledge Gaps
-- **7698 isolated node(s):** `_GatedWebDavServer`, `timeout`, `deadline`, `calls`, `_files` (+7693 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 9731 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **266 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **7761 isolated node(s):** `_GatedWebDavServer`, `timeout`, `deadline`, `calls`, `_files` (+7756 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 9809 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **260 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `()` connect `Community 35` to `IntoIntoDart`, `SseDecode`, `SafBridge.kt`, `p05_ort_bench/src/main.rs`, `string`?**
-  _High betweenness centrality (0.034) - this node is a cross-community bridge._
+- **Why does `_` connect `Embedding Typst Bridge` to `API Platform Implementation`, `Import Bridge Decoding`, `int get`, `LocalVaultStorage`, `dart:async`, `WASM Module Bindings`, `Wire Protocol Implementation`?**
+  _High betweenness centrality (0.028) - this node is a cross-community bridge._
 - **What connects `_GatedWebDavServer`, `timeout`, `deadline` to the rest of the system?**
-  _7698 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _7761 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `src/scanner.dart` be split into smaller, more focused modules?**
   _Cohesion score 0.010416666666666666 - nodes in this community are weakly interconnected._
-- **Why does `SafBridge` connect `SafBridge` to `MainActivity`, `T00 device crash diagnosis`, `Result`, `SafBridge.kt`, `SafBridgeWriteTest`?**
-  _High betweenness centrality (0.032) - this node is a cross-community bridge._
+- **Why does `Guarded` connect `0.3.0+91` to `SafBridge`?**
+  _High betweenness centrality (0.028) - this node is a cross-community bridge._
 - **Should `app_mobile.dart` be split into smaller, more focused modules?**
-  _Cohesion score 0.005970149253731343 - nodes in this community are weakly interconnected._
-- **Why does `_` connect `Embedding Typst Bridge` to `API Platform Implementation`, `Import Bridge Decoding`, `dart:convert`, `embedding.dart`, `dart:async`, `WASM Module Bindings`, `Wire Protocol Implementation`?**
-  _High betweenness centrality (0.020) - this node is a cross-community bridge._
+  _Cohesion score 0.005952380952380952 - nodes in this community are weakly interconnected._
+- **Why does `Changelog` connect `Version Changelog` to `0.9.0+114`, `0.9.1+115`, `0.9.2+116`, `0.9.5+119`, `0.11.2+125`, `0.11.5+128`, `0.11.7+130`, `0.4.3+98`, `0.5.1+101`, `CHANGELOG.md`, `0.2.0+90`, `0.7.0+106`, `0.3.0+92`, `0.10.0+120`, `0.11.0+123`, `0.12.0+133`, `0.3.0+91`, `0.4.0+95`, `0.5.0+100`, `0.11.3+126`, `0.11.6+129`, `0.11.8+131`, `0.12.3+136`, `0.3.0+93`, `0.3.0+94`, `0.4.2+97`, `0.6.0+105`, `0.8.1+108`, `0.8.6+113`?**
+  _High betweenness centrality (0.028) - this node is a cross-community bridge._
 
 ### Low-confidence Hints
 _AMBIGUOUS edges — the extractor was unsure. Verify before acting on these._
