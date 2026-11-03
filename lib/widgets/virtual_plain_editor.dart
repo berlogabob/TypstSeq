@@ -13,11 +13,13 @@ class VirtualPlainEditor extends StatefulWidget {
     required this.source,
     required this.onChanged,
     this.onHistoryChanged,
+    this.readOnly = false,
   });
 
   final String source;
   final ValueChanged<String> onChanged;
   final VoidCallback? onHistoryChanged;
+  final bool readOnly;
 
   @override
   State<VirtualPlainEditor> createState() => VirtualPlainEditorState();
@@ -145,6 +147,7 @@ class VirtualPlainEditorState extends State<VirtualPlainEditor> {
     padding: const EdgeInsets.fromLTRB(18, kSpace8, 18, kSpace24),
     itemCount: _controllers.length,
     itemBuilder: (context, index) => TextField(
+      readOnly: widget.readOnly,
       controller: _controllers[index],
       maxLines: null,
       minLines: 1,

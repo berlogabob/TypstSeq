@@ -1081,6 +1081,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<bool> _save({bool syncAfter = true}) async {
+    if (workspace.noteIsExtension) return true;
     if (richController.isComposing) {
       richController.value = richController.value.copyWith(
         composing: TextRange.empty,
@@ -1102,6 +1103,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool get _editingRecently => workspace.editingRecently;
 
   void _queueAutosave() {
+    if (workspace.noteIsExtension) return;
     _refreshNoteAssets(_currentSource());
     workspace.edit(_currentSource());
   }
@@ -3107,6 +3109,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                         conflicts: syncConflicts.length,
                       );
                 return SettingsSheet(
+                  workspace: workspace,
                   onOpenProcessing: () => unawaited(_showProcessing()),
                   storage: vault?.storage,
                   calendarSettings: workspace.calendarSettings,
@@ -5632,6 +5635,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         controller: sourceController,
         onChanged: _queueAutosave,
         monospace: true,
+        readOnly: workspace.noteIsExtension,
       ),
       'split' => () {
         final stacked = MediaQuery.sizeOf(context).width < 600;
@@ -5644,6 +5648,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 controller: sourceController,
                 onChanged: _queueAutosave,
                 monospace: true,
+                readOnly: workspace.noteIsExtension,
               ),
             ),
             if (stacked)
@@ -5671,6 +5676,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       'normal' when currentNote?.kind == 'screenshot' && !_editScreenshot =>
         _screenshotView(currentNote!),
       'normal' when _usePlainLongEditor => VirtualPlainEditor(
+        readOnly: workspace.noteIsExtension,
         key: _plainEditorKey,
         onHistoryChanged: () => _plainHistoryRevision.value++,
         source: richController.text,
@@ -5683,6 +5689,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         },
       ),
       'normal' => TyLogRichEditor(
+        readOnly: workspace.noteIsExtension,
         popupBottomY: () {
           // Only pills docked at the bottom limit the popup. While the
           // keyboard is up the pills sit at the top (see `typing`), and
@@ -5971,6 +5978,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               const SizedBox.shrink()
             else
               references,
+        ],
+      );
+    }
+    if (workspace.extensionName case final name?) {
+      documentContent = Column(
+        children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: kSpace16,
+                vertical: kSpace4,
+              ),
+              child: Text(
+                'extension · $name',
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
+            ),
+          ),
+          Expanded(child: documentContent),
         ],
       );
     }

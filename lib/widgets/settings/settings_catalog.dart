@@ -6,6 +6,7 @@ import 'about_page.dart';
 import 'ai_page.dart';
 import 'calendars_page.dart';
 import 'general_page.dart';
+import 'extensions_page.dart';
 import 'maintenance_page.dart';
 import 'olt_page.dart';
 import 'sync_storage_page.dart';
@@ -75,6 +76,13 @@ const settingsSearchEntries = <SettingsSearchEntry>[
     path: 'Sync and storage',
     routeName: '$kSettingsRoute/page',
     builder: _sync,
+  ),
+  SettingsSearchEntry(
+    title: 'Extensions',
+    keywords: 'mounts folder github repositories',
+    path: 'Extensions',
+    routeName: '$kSettingsRoute/page',
+    builder: _extensions,
   ),
   SettingsSearchEntry(
     title: 'Maintenance',
@@ -152,6 +160,11 @@ Widget _maintenance(
   ValueChanged<String>? onPaperChanged,
   ValueChanged<ThemeMode>? onThemeChanged,
 }) => MaintenancePage(settings: s);
+Widget _extensions(
+  SettingsSheet s, {
+  ValueChanged<String>? onPaperChanged,
+  ValueChanged<ThemeMode>? onThemeChanged,
+}) => ExtensionsPage(workspace: s.workspace);
 Widget _about(
   SettingsSheet s, {
   ValueChanged<String>? onPaperChanged,

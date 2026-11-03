@@ -363,8 +363,8 @@ Issues found:
 - [x] P1.1 entity page: Part of/Contains in header card, compact header; editor >= 50% of 632 px (90 -> 330 px)
 - [x] P2-A composite storage + mount registry (core): 506 core tests pass
 - [x] P2-B1 controller loads mounts.json + index/scan through CompositeVaultStorage (worker too)
-- [ ] P2-B2 ext/ notes read-only in editor + badge
-- [ ] P2-B3 Settings > Extensions page (folder add/remove/refresh)
+- [x] P2-B2 ext/ notes read-only in editor + badge (badge padding -> tokens)
+- [x] P2-B3 Settings > Extensions page (test-only issue: scan must run in real async zone; codex full-access fixed). Full suite 1874 pass
 - [x] P2-B0 composite rejects ext/ writes, sync excludes ext/ (codex, partial P2-B run)
 - [x] P2-C GitHub client + device-flow auth (lib/github, 4 tests; UI comes with P2-B/D)
 - [ ] P2-C2 desktop: use existing `gh auth token` (GitHub CLI login) when present; device flow only for phones (user 11-03: official login, no key creation)

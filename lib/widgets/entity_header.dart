@@ -44,10 +44,13 @@ class EntityHeader extends StatelessWidget {
         )
         .toList();
     return Card(
-      margin: const EdgeInsets.fromLTRB(kSpace12, 6, kSpace12, 4),
+      margin: const EdgeInsets.fromLTRB(kSpace12, kSpace4, kSpace12, kSpace4),
       color: scheme.surfaceContainerLow,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(
+          horizontal: kSpace12,
+          vertical: kSpace4,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -84,7 +87,7 @@ class EntityHeader extends StatelessWidget {
                     key: const Key('entity-board-button'),
                     style: TextButton.styleFrom(
                       visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: kSpace8),
                     ),
                     onPressed: onOpenBoard,
                     icon: const Icon(Icons.view_kanban_outlined),
@@ -93,11 +96,11 @@ class EntityHeader extends StatelessWidget {
               ],
             ),
             if (note.aliases.isNotEmpty) ...[
-              const SizedBox(height: 4),
+              const SizedBox(height: kSpace4),
               _Chips(icon: Icons.badge_outlined, labels: note.aliases),
             ],
             if (note.tags.isNotEmpty) ...[
-              const SizedBox(height: 4),
+              const SizedBox(height: kSpace4),
               _Chips(icon: Icons.tag, labels: note.tags),
             ],
             ?relationships,

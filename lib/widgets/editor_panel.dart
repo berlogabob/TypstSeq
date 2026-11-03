@@ -7,11 +7,13 @@ class Editor extends StatefulWidget {
     required this.controller,
     required this.onChanged,
     this.monospace = false,
+    this.readOnly = false,
   });
 
   final TextEditingController controller;
   final VoidCallback onChanged;
   final bool monospace;
+  final bool readOnly;
 
   @override
   State<Editor> createState() => EditorState();
@@ -66,6 +68,7 @@ class EditorState extends State<Editor> {
     children: [
       Expanded(
         child: TextField(
+          readOnly: widget.readOnly,
           controller: widget.controller,
           focusNode: focusNode,
           expands: true,
@@ -91,7 +94,7 @@ class EditorState extends State<Editor> {
           duration: kMotionDock,
           curve: Curves.easeOut,
           alignment: Alignment.topCenter,
-          child: focusNode.hasFocus
+          child: focusNode.hasFocus && !widget.readOnly
               ? SafeArea(
                   top: false,
                   child: SizedBox(

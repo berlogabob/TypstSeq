@@ -28,6 +28,7 @@ import 'package:tylog/rich_editor.dart';
 import 'package:tylog/saved_searches.dart';
 import 'package:tylog_core/search_index.dart';
 import 'package:tylog_core/scanner.dart';
+import 'package:tylog_core/tylog_core.dart' show Mount, MountSource;
 import 'package:tylog/vault_registry.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_storage.dart';
@@ -185,6 +186,45 @@ Future<void> _tapTaskTimer(
 }
 
 void main() {
+  testWidgets('extension note is locked and shows its mount name', (
+    tester,
+  ) async {
+    final root = await tester.runAsync(
+      () => Directory.systemTemp.createTemp('extension-widget'),
+    );
+    addTearDown(() => root!.delete(recursive: true));
+    final file = File('${root!.path}/reference.typ');
+    await tester.runAsync(() => file.writeAsString('External text'));
+    await tester.pumpWidget(
+      const MaterialApp(home: HomeScreen(startup: _emptyStartup)),
+    );
+    await tester.pump();
+    final dynamic home = tester.state(find.byType(HomeScreen));
+    home.workspace.vault = Vault.withStorage(LocalVaultStorage(root));
+    home.workspace.mounts = [
+      Mount(
+        id: 'ref',
+        name: 'Reference',
+        source: MountSource(kind: 'folder', path: root.path),
+        push: false,
+      ),
+    ];
+    home.workspace.replaceNote('ext/ref/reference.typ', 'External text');
+    home.sourceController.text = 'External text';
+    home.richController.loadSource('External text');
+    home.mode = 'normal';
+    home.primaryDestination = 0;
+    home.workspace.notifyListeners();
+    await tester.pump();
+    expect(find.text('extension · Reference'), findsOneWidget);
+    final field = find.byKey(const Key('rich-journal-editor'));
+    expect(tester.widget<TextField>(field).readOnly, isTrue);
+    await tester.tap(field);
+    await tester.enterText(field, 'Changed');
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(home.workspace.dirty, isFalse);
+    expect(await tester.runAsync(() => file.readAsString()), 'External text');
+  });
   for (final (kind, label) in [
     ('audio', 'Audio'),
     ('screenshot', 'Screenshot'),
@@ -555,28 +595,57 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('More shows only Switch, Create, This note and Views with a note open', (tester) async {
-    await _mountTaskTimers(tester);
-    await tester.tap(find.text('More').last);
-    await tester.pumpAndSettle();
-    expect(tester.widgetList<AppSection>(find.byType(AppSection)).map((s) => s.title),
-      ['Switch', 'Create', 'This note', 'Views']);
-    expect(tester.widgetList<AppTile>(find.byType(AppTile)).map((t) => t.title),
-      ['Vaults', 'Settings', 'New page', 'New entity',
-       'Context', 'Share as PDF', 'Graph', 'Processing']);
-    for (final label in ['Audio', 'Maintenance', 'Problems', 'Rebuild index',
-      'Relink vault', 'Semantic search', 'Typst help', 'Split', 'Split editor']) {
+  testWidgets(
+    'More shows only Switch, Create, This note and Views with a note open',
+    (tester) async {
+      await _mountTaskTimers(tester);
+      await tester.tap(find.text('More').last);
+      await tester.pumpAndSettle();
       expect(
-        find.descendant(of: find.byType(AppSheet), matching: find.text(label)),
-        findsNothing,
+        tester
+            .widgetList<AppSection>(find.byType(AppSection))
+            .map((s) => s.title),
+        ['Switch', 'Create', 'This note', 'Views'],
       );
-    }
-    expect(find.text('New page'), findsOneWidget);
-    await tester.tap(find.text('New entity'));
-    await tester.pumpAndSettle();
-    expect(find.widgetWithText(AlertDialog, 'New entity'), findsOneWidget);
-    await tester.pumpWidget(const SizedBox());
-  });
+      expect(
+        tester.widgetList<AppTile>(find.byType(AppTile)).map((t) => t.title),
+        [
+          'Vaults',
+          'Settings',
+          'New page',
+          'New entity',
+          'Context',
+          'Share as PDF',
+          'Graph',
+          'Processing',
+        ],
+      );
+      for (final label in [
+        'Audio',
+        'Maintenance',
+        'Problems',
+        'Rebuild index',
+        'Relink vault',
+        'Semantic search',
+        'Typst help',
+        'Split',
+        'Split editor',
+      ]) {
+        expect(
+          find.descendant(
+            of: find.byType(AppSheet),
+            matching: find.text(label),
+          ),
+          findsNothing,
+        );
+      }
+      expect(find.text('New page'), findsOneWidget);
+      await tester.tap(find.text('New entity'));
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(AlertDialog, 'New entity'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets('New entity writes the chosen kind icon to kinds.json', (
     tester,
@@ -618,10 +687,16 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byType(NavigationDestination).last);
     await tester.pumpAndSettle();
-    expect(tester.widgetList<AppSection>(find.byType(AppSection)).map((s) => s.title),
-      ['Switch', 'Create', 'Views']);
-    expect(tester.widgetList<AppTile>(find.byType(AppTile)).map((t) => t.title),
-      ['Vaults', 'Settings', 'New page', 'New entity', 'Graph']);
+    expect(
+      tester
+          .widgetList<AppSection>(find.byType(AppSection))
+          .map((s) => s.title),
+      ['Switch', 'Create', 'Views'],
+    );
+    expect(
+      tester.widgetList<AppTile>(find.byType(AppTile)).map((t) => t.title),
+      ['Vaults', 'Settings', 'New page', 'New entity', 'Graph'],
+    );
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -1738,6 +1813,10 @@ void main() {
 
   testWidgets('settings menu shows real app data', (tester) async {
     final version = (await tester.runAsync(appVersion))!;
+    // Tall enough that every settings section is built (the list is lazy).
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
 
     await tester.pumpWidget(const TyLogApp());
     await tester.pumpAndSettle();
@@ -1761,6 +1840,7 @@ void main() {
         'Calendars',
         'AI',
         'Sync and storage',
+        'Extensions',
         'Maintenance',
         'About',
         'OpenLabTwin',

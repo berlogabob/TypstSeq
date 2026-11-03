@@ -5,6 +5,7 @@ import 'package:tylog_core/storage.dart';
 import 'package:flutter/material.dart';
 import 'date_format.dart' show shortStamp;
 import '../calendar_feeds.dart' show isValidFeedUrl;
+import '../workspace_controller.dart';
 import 'app_icons.dart';
 import '../ai/ai_settings.dart';
 import '../nextcloud_sync.dart';
@@ -22,6 +23,7 @@ class SettingsSheet extends StatefulWidget {
     this.onConfigureCalendars,
     required this.vaultPath,
     this.storage,
+    this.workspace,
     required this.cloud,
     required this.syncing,
     required this.syncStatusSubtitle,
@@ -82,6 +84,7 @@ class SettingsSheet extends StatefulWidget {
   final ValueChanged<String>? onPdfPaperChanged;
   final String vaultPath;
   final VaultStorage? storage;
+  final WorkspaceController? workspace;
   final NextcloudConfig? cloud;
   final bool syncing;
   final String syncStatusSubtitle;

@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:tylog_core/tylog_core.dart'
     show
         Mount,
+        encodeMounts,
         parseMounts,
         mountsSettingsPath,
         CompositeVaultStorage,
@@ -79,6 +80,13 @@ class WorkspaceController extends ChangeNotifier {
   VaultEntry? entry;
   VaultIndex? index;
   String? note;
+  bool get noteIsExtension => note?.startsWith('ext/') ?? false;
+  String? get extensionName {
+    if (!noteIsExtension) return null;
+    final id = note!.split('/')[1];
+    return mounts.where((mount) => mount.id == id).firstOrNull?.name ?? id;
+  }
+
   String source = '';
   String status = 'Opening vault...';
   bool dirty = false;
@@ -657,6 +665,7 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   void edit(String value) {
+    if (noteIsExtension) return;
     source = value;
     editRevision++;
     lastEditAt = _now();
@@ -678,6 +687,7 @@ class WorkspaceController extends ChangeNotifier {
       return false;
     }
     if (path == null) return false;
+    if (path.startsWith('ext/')) return true;
     final revision = editRevision;
     final template = emptyDailyTemplate(path);
     final value =
@@ -768,6 +778,26 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   String? _mountWarning;
+
+  Future<void> addMount(Mount mount) async {
+    if (mounts.any((item) => item.id == mount.id)) {
+      throw ArgumentError('Extension ID already exists: ${mount.id}');
+    }
+    await _writeMounts([...mounts, mount]);
+  }
+
+  Future<void> removeMount(String id) async {
+    await _writeMounts(mounts.where((mount) => mount.id != id).toList());
+  }
+
+  Future<void> _writeMounts(List<Mount> updated) async {
+    final opened = vault;
+    if (opened == null) throw StateError('No vault is open');
+    final path = await settingsPathFor(opened.storage, mountsSettingsPath);
+    await opened.storage.createDirectory('_system/settings');
+    await opened.storage.writeText(path, encodeMounts(updated));
+    await reloadMounts();
+  }
 
   Future<void> reloadMounts({bool rescan = true}) async {
     final opened = vault;
@@ -1322,6 +1352,9 @@ class WorkspaceController extends ChangeNotifier {
   final _noteWrites = <String, Future<void>>{};
 
   Future<void> _persistNote(Vault opened, String path, String? value) {
+    if (path.startsWith('ext/')) {
+      throw UnsupportedError('Read-only extension storage');
+    }
     final previous = _noteWrites[path];
     final wait = previous == null
         ? Future<void>.value()

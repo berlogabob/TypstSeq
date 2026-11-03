@@ -128,6 +128,7 @@ void main() {
         'Calendars',
         'AI',
         'Sync and storage',
+        'Extensions',
         'Maintenance',
         'About',
         'OpenLabTwin',

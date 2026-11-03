@@ -14,9 +14,11 @@ class TyLogRichEditor extends StatefulWidget {
     this.revealQuery,
     this.revealOffset,
     this.revealGeneration = 0,
+    this.readOnly = false,
   });
 
   final double? Function()? popupBottomY;
+  final bool readOnly;
   final String? revealQuery;
   final int? revealOffset;
 
@@ -1146,6 +1148,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor>
     required bool expands,
   }) {
     return TextField(
+      readOnly: widget.readOnly,
       key: const Key('rich-journal-editor'),
       controller: controller,
       scrollController: _taskScroll,
@@ -1590,7 +1593,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor>
           duration: kMotionDock,
           curve: Curves.easeOut,
           alignment: Alignment.topCenter,
-          child: !focusNode.hasFocus
+          child: !focusNode.hasFocus || widget.readOnly
               ? const SizedBox(width: double.infinity, height: 0)
               : TextFieldTapRegion(
                   child: SafeArea(

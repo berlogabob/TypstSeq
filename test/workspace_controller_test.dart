@@ -82,6 +82,15 @@ void main() {
       await controller.vault!.storage.readText('ext/ref/reference.typ'),
       contains('External reference'),
     );
+    controller.replaceNote('ext/ref/reference.typ', '= External reference');
+    controller.edit('changed');
+    expect(controller.dirty, isFalse);
+    expect(await controller.save(), isTrue);
+    expect(
+      await File('${external.path}/reference.typ').readAsString(),
+      '= External reference',
+    );
+    expect(await storage.exists('ext/ref/reference.typ'), isFalse);
     controller.close('Closed');
     await controller.openVault(entry, storage: storage);
     await controller.refreshIndex(always: true);
