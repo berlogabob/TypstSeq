@@ -3,10 +3,22 @@ import 'package:flutter/material.dart';
 import 'app_icons.dart';
 import 'constants.dart';
 import '../models.dart';
+import '../github/github_outbox.dart';
 import '../controlled_editor.dart' show localTime;
 import 'package:tylog_core/enrich.dart' show autoEntitiesMarker;
 import 'package:tylog_core/tylog_core.dart' show attentionOf;
 import 'ds/app_sheet.dart';
+
+List<NoteRef> githubConflictNotes(Iterable<GitHubOutboxEntry> entries) => [
+  for (final entry in entries.where((entry) => entry.state == 'conflict'))
+    NoteRef(
+      id: 'github-${entry.mountId}-${entry.id}',
+      path: 'github-conflict:${entry.mountId}/${entry.id}',
+      title: 'GitHub conflict: ${entry.path}',
+      kind: 'github-conflict',
+      outgoingLinks: const [],
+    ),
+];
 
 DateTime? screenshotCapturedAt(NoteRef note) =>
     DateTime.tryParse('${note.properties['captured_at'] ?? ''}')?.toLocal();
@@ -171,6 +183,7 @@ class ScreenshotStrip extends StatelessWidget {
                   width: 112,
                   child: InkWell(
                     onTap: () {
+                      if (note.kind == 'github-conflict') return;
                       if (note.path.startsWith('olt:')) {
                         showModalBottomSheet<void>(
                           context: context,
@@ -207,11 +220,20 @@ class ScreenshotStrip extends StatelessWidget {
                               builder: (context) => AppSheet(
                                 title: note.title,
                                 children: [
-                                  for (final (label, value) in [
-                                    ('Add to today', 'added-to-today'),
-                                    ('Schedule…', 'scheduled'),
-                                    ('Dismiss', 'dismissed'),
-                                  ])
+                                  for (final (label, value)
+                                      in note.kind == 'github-conflict'
+                                          ? [
+                                              ('Keep mine', 'keep-mine'),
+                                              ('Take theirs', 'take-theirs'),
+                                            ]
+                                          : [
+                                              (
+                                                'Add to today',
+                                                'added-to-today',
+                                              ),
+                                              ('Schedule…', 'scheduled'),
+                                              ('Dismiss', 'dismissed'),
+                                            ])
                                     ListTile(
                                       title: Text(label),
                                       onTap: () =>

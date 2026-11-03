@@ -6099,6 +6099,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         day,
         pending: day == isoDay(DateTime.now()),
       );
+      if (day == isoDay(DateTime.now())) {
+        external.addAll(githubConflictNotes(workspace.githubConflicts));
+      }
       final incomingCount = incomingOnDay(index, day).length + external.length;
       final referenceCount = dailyMore.isEmpty ? 0 : backlinks.length;
       dailyMore.insert(

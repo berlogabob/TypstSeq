@@ -127,6 +127,51 @@ class WorkspaceController extends ChangeNotifier {
   );
   Future<GitHubClient> githubClient() async =>
       (githubClientFactory ?? GitHubClient.new)(await githubToken());
+  List<GitHubOutboxEntry> githubConflicts = [];
+
+  Future<void> loadGitHubConflicts() async {
+    final opened = vault;
+    final generation = _vaultGeneration;
+    final conflicts = <GitHubOutboxEntry>[];
+    final githubMounts = mounts.where((mount) => mount.source.kind == 'github');
+    if (githubMounts.isNotEmpty) {
+      final outbox = await githubOutbox;
+      for (final mount in githubMounts.toList()) {
+        conflicts.addAll(
+          (await outbox.entriesFor(
+            mount.id,
+          )).where((entry) => entry.state == 'conflict'),
+        );
+      }
+    }
+    if (opened != null && _owns(opened, generation)) {
+      githubConflicts = conflicts;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> resolveGitHubConflict(
+    GitHubOutboxEntry entry,
+    String action,
+  ) async {
+    final mount = mounts.firstWhere((mount) => mount.id == entry.mountId);
+    final outbox = await githubOutbox;
+    final meta = File(
+      '${(await mountCache).path}/${mount.id}/.tylog-mount.json',
+    );
+    if (action == 'keep-mine') {
+      await outbox.keepMine(entry, await githubClient(), mount, meta);
+    } else {
+      await outbox.takeTheirs(entry, meta);
+    }
+    await loadGitHubConflicts();
+    final resolved = !(await outbox.entriesFor(
+      mount.id,
+    )).any((e) => e.id == entry.id);
+    if (resolved) await reloadMounts();
+    return resolved;
+  }
+
   Timer? _githubPushTimer;
   Future<void>? _githubPushFlight;
 
@@ -153,7 +198,7 @@ class WorkspaceController extends ChangeNotifier {
         File('${cache.path}/${mount.id}/.tylog-mount.json'),
       );
     }
-    if (_owns(opened, generation)) notifyListeners();
+    if (_owns(opened, generation)) await loadGitHubConflicts();
   }
 
   void pushPendingInBackground() {
@@ -515,6 +560,7 @@ class WorkspaceController extends ChangeNotifier {
     calendarSettings = {};
     kindRegistry.value = const {};
     mounts = const [];
+    githubConflicts = [];
     _mountPaths = const {};
     vault = null;
     entry = null;
@@ -1004,6 +1050,7 @@ class WorkspaceController extends ChangeNotifier {
           : 'Unavailable extensions: ${unavailable.join(', ')}';
       if (_mountWarning != null) status = _mountWarning!;
       if (rescan) await _scan(opened, generation: generation);
+      if (_owns(opened, generation)) await loadGitHubConflicts();
     } catch (error) {
       if (!_owns(opened, generation)) return;
       _mountWarning = 'Could not read extensions: $error';

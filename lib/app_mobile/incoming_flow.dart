@@ -5,6 +5,30 @@ extension _IncomingFlow on _HomeScreenState {
     final v = vault;
     final device = vaultRegistry?.deviceId;
     if (v == null || device == null) return;
+    if (note.kind == 'github-conflict') {
+      final entry = workspace.githubConflicts
+          .where(
+            (entry) =>
+                note.path == 'github-conflict:${entry.mountId}/${entry.id}',
+          )
+          .firstOrNull;
+      if (entry == null ||
+          !await workspace.resolveGitHubConflict(entry, action)) {
+        return;
+      }
+      await _appendIncomingDecision(
+        v,
+        device,
+        Decision(
+          at: DateTime.now().toIso8601String(),
+          device: device,
+          item: note.id,
+          source: 'github',
+          action: action,
+        ),
+      );
+      return;
+    }
     var targetDay = isoDay(DateTime.now());
     if (action == 'scheduled') {
       final selected = await showDatePicker(
