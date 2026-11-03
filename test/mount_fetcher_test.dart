@@ -6,6 +6,7 @@ import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/github/github_auth.dart';
 import 'package:tylog/github/github_client.dart';
+import 'package:tylog/github/github_outbox.dart';
 import 'package:tylog/github/mount_fetcher.dart';
 import 'package:tylog_core/tylog_core.dart';
 
@@ -94,6 +95,33 @@ void main() {
     ).writeAsString(jsonEncode({'sha': 'old'}));
     await fetcher.refresh(mount);
     expect((await fetcher.metadata(mount))!['blobs']['note.typ'], isNotNull);
+  });
+  test('refresh preserves pending local file and its base sha', () async {
+    final outbox = GitHubOutbox(Directory('${dir.path}/outbox'));
+    fetcher = MountFetcher(
+      cache: dir,
+      client: client,
+      reload: () async {},
+      outbox: outbox,
+    );
+    await File('${dir.path}/repo/note.typ').writeAsString('mine');
+    await File('${dir.path}/repo/.tylog-mount.json').writeAsString(
+      jsonEncode({
+        'sha': 'old',
+        'blobs': {'note.typ': 'base'},
+      }),
+    );
+    await outbox.enqueue(
+      mountId: 'repo',
+      path: 'note.typ',
+      baseSha: 'base',
+      message: 'edit',
+      device: 'test',
+    );
+    client.zip = zip('root/typst/note.typ');
+    await fetcher.refresh(mount);
+    expect(await File('${dir.path}/repo/note.typ').readAsString(), 'mine');
+    expect((await fetcher.metadata(mount))!['blobs']['note.typ'], 'base');
   });
   test('unsafe archive and network failure preserve cache', () async {
     client.zip = zip('root/typst/../../escape');

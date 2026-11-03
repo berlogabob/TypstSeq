@@ -49,6 +49,9 @@ class Mount {
     Map<String, dynamic> extra = const {},
   }) : extra = Map.of(extra) {
     if (!_mountId.hasMatch(id)) throw FormatException('Invalid mount id: $id');
+    if (push && source.kind != 'github') {
+      throw const FormatException('Only GitHub mounts can push');
+    }
   }
 
   final String id, name;

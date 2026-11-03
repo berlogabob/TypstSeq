@@ -8,16 +8,19 @@ import 'package:crypto/crypto.dart';
 import 'package:tylog_core/tylog_core.dart' show Mount;
 
 import 'github_client.dart';
+import 'github_outbox.dart';
 
 class MountFetcher {
   MountFetcher({
     required this.cache,
     required this.client,
     required this.reload,
+    this.outbox,
   });
   final Directory cache;
   final GitHubClient client;
   final Future<void> Function() reload;
+  final GitHubOutbox? outbox;
   final Map<String, Future<void>> _flights = {};
   final Map<String, DateTime> _attempts = {};
 
@@ -78,6 +81,32 @@ class MountFetcher {
       final blobs = await Isolate.run(
         () => _extract(zip, tmp.path, mount.source.subdir),
       );
+      for (final entry
+          in await outbox?.entriesFor(mount.id) ?? <GitHubOutboxEntry>[]) {
+        final local = File('${target.path}/${entry.path}');
+        if (await local.exists()) {
+          final preserved = File('${tmp.path}/${entry.path}');
+          await preserved.parent.create(recursive: true);
+          await local.copy(preserved.path);
+        }
+        final oldBlobs = meta?['blobs'];
+        if (oldBlobs is Map && oldBlobs[entry.path] is String) {
+          blobs[entry.path] = oldBlobs[entry.path] as String;
+        } else {
+          blobs.remove(entry.path);
+        }
+        final dot = entry.path.lastIndexOf('.');
+        final slash = entry.path.lastIndexOf('/');
+        final remotePath = dot > slash + 1
+            ? '${entry.path.substring(0, dot)}.remote${entry.path.substring(dot)}'
+            : '${entry.path}.remote';
+        final remote = File('${target.path}/$remotePath');
+        if (entry.state == 'conflict' && await remote.exists()) {
+          final preserved = File('${tmp.path}/$remotePath');
+          await preserved.parent.create(recursive: true);
+          await remote.copy(preserved.path);
+        }
+      }
       await File('${tmp.path}/.tylog-mount.json').writeAsString(
         jsonEncode({
           'sha': sha,

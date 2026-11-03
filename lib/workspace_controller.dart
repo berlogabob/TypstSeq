@@ -18,6 +18,7 @@ import 'package:tylog_core/graph.dart';
 import 'calendar_feeds.dart';
 import 'github/github_auth.dart';
 import 'github/github_client.dart';
+import 'github/github_outbox.dart';
 import 'github/module_updates.dart';
 import 'package:tylog_core/tylog_core.dart'
     show ModulePack, listInstalledModules, moduleRecordPath;
@@ -116,10 +117,14 @@ class WorkspaceController extends ChangeNotifier {
   Future<Directory> get mountCache async =>
       mountCacheDirectory ??
       Directory('${(await getApplicationSupportDirectory()).path}/mounts');
+  Future<GitHubOutbox> get githubOutbox async => GitHubOutbox(
+    Directory('${(await mountCache).parent.path}/outbox/github'),
+  );
   Future<MountFetcher> get mountFetcher async => _mountFetcher ??= MountFetcher(
     cache: await mountCache,
     client: (githubClientFactory ?? GitHubClient.new)(await githubToken()),
     reload: reloadMounts,
+    outbox: await githubOutbox,
   );
   Future<GitHubClient> githubClient() async =>
       (githubClientFactory ?? GitHubClient.new)(await githubToken());
