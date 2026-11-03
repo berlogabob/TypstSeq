@@ -329,6 +329,10 @@ class _FakeGitHub extends GitHubClient {
   int? closed;
   List<String>? labels;
   @override
+  Future<List<Map<String, dynamic>>> searchIssues(String repo, String marker) =>
+      Future.error(StateError('Search unavailable'));
+
+  @override
   Future<Map<String, dynamic>> createIssue(
     String repo,
     String title,

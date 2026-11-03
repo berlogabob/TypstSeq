@@ -5,7 +5,7 @@ import 'package:tylog_core/tylog_core.dart';
 
 import '../vault.dart';
 import '../github/github_client.dart';
-import '../kind_registry.dart';
+import '../github/send_issue.dart';
 import '../controlled_editor.dart';
 import 'constants.dart';
 
@@ -176,67 +176,19 @@ class _EntityBoardState extends State<EntityBoard> {
     }
   }
 
-  String? _repo(IssueRef issue) {
-    final queue = <String>[issue.projectId];
-    final seen = <String>{};
-    while (queue.isNotEmpty) {
-      final id = queue.removeAt(0);
-      if (!seen.add(id)) continue;
-      final note = index.notesByPath.values
-          .where((n) => n.id == id || n.title == id || n.aliases.contains(id))
-          .firstOrNull;
-      if (note == null) continue;
-      final repo = note.properties['github'];
-      if (repo is String && RegExp(r'^[^/\s]+/[^/\s]+$').hasMatch(repo)) {
-        return repo;
-      }
-      queue.addAll(note.partOf);
-    }
-    return null;
-  }
+  String? _repo(IssueRef issue) => issueGithubRepo(issue, index);
 
   Future<void> _send(IssueRef issue) async {
     final repo = _repo(issue);
     if (repo == null || widget.githubClient == null || busy) return;
     setState(() => busy = true);
     try {
-      final registry = await readKindRegistry(widget.vault.storage);
-      final entry = registry[issue.marker];
-      final label = entry is Map && entry['github_label'] is String
-          ? entry['github_label'] as String
-          : issue.marker;
-      final date = DateTime.now().toIso8601String().substring(0, 10);
-      final result = await (await widget.githubClient!()).createIssue(
-        repo,
-        issuePreview(issue.text),
-        'From TyLog ${issue.notePath}, $date',
-        [label],
-      );
-      final number = result['number'] as int;
-      if (!await widget.mutateNote(
-        issue.notePath,
-        (s) => setIssueGithubNumber(s, issue, number),
-      )) {
-        throw StateError('Issue could not be saved');
-      }
-      await widget.vault.storage.createDirectory(decisionsDir);
-      const path = '$decisionsDir/github.jsonl';
-      final old = await widget.vault.storage.exists(path)
-          ? await widget.vault.storage.readText(path)
-          : '';
-      await widget.vault.storage.writeText(
-        path,
-        old +
-            encodeDecisions([
-              Decision(
-                at: DateTime.now().toIso8601String(),
-                device: 'github',
-                item: issue.notePath,
-                source: 'issue',
-                action: 'sent',
-                target: '$repo#$number',
-              ),
-            ]),
+      await sendIssueToGithub(
+        issue: issue,
+        repo: repo,
+        vault: widget.vault,
+        githubClient: widget.githubClient!,
+        mutateNote: widget.mutateNote,
       );
       final next = await widget.refreshIndex();
       if (mounted && next != null) index = next;

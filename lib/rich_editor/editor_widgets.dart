@@ -15,8 +15,10 @@ class TyLogRichEditor extends StatefulWidget {
     this.revealOffset,
     this.revealGeneration = 0,
     this.readOnly = false,
+    this.issueAction,
   });
 
+  final VoidCallback? Function(int line)? issueAction;
   final double? Function()? popupBottomY;
   final bool readOnly;
   final String? revealQuery;
@@ -1198,42 +1200,82 @@ class _TyLogRichEditorState extends State<TyLogRichEditor>
             ),
       onTap: () => widget.controller.handleEditorTap(),
       onTapOutside: (_) => focusNode.unfocus(),
-      contextMenuBuilder: (context, state) => TextFieldTapRegion(
-        child: AdaptiveTextSelectionToolbar.buttonItems(
-          anchors: state.contextMenuAnchors,
-          buttonItems: [
-            if (!widget.controller.selection.isCollapsed)
+      contextMenuBuilder: (context, state) {
+        final doc = widget.controller.document;
+        final offset = widget.controller.selection.baseOffset;
+        final ranges = doc._ranges;
+        final hit = ranges
+            .where((r) => offset >= r.start && offset <= r.end)
+            .firstOrNull;
+        VoidCallback? action;
+        if (hit != null && widget.issueAction != null) {
+          var line = '\n'.allMatches(doc.prefix).length + 1;
+          for (var i = 0; i < hit.index; i++) {
+            final block = doc.blocks[i];
+            line += '\n'
+                .allMatches(
+                  block.dirty ? _serializeBlock(block) : block.originalSource,
+                )
+                .length;
+            line += '\n'
+                .allMatches(block.separator.isEmpty ? '\n\n' : block.separator)
+                .length;
+          }
+          line += '\n'
+              .allMatches(
+                doc.blocks[hit.index].visibleText.substring(
+                  0,
+                  offset - hit.start,
+                ),
+              )
+              .length;
+          action = widget.issueAction!(line);
+        }
+        return TextFieldTapRegion(
+          child: AdaptiveTextSelectionToolbar.buttonItems(
+            anchors: state.contextMenuAnchors,
+            buttonItems: [
+              if (action != null)
+                ContextMenuButtonItem(
+                  label: 'Send to GitHub',
+                  onPressed: () {
+                    state.hideToolbar();
+                    action!();
+                  },
+                ),
+              if (!widget.controller.selection.isCollapsed)
+                ContextMenuButtonItem(
+                  type: ContextMenuButtonType.copy,
+                  onPressed: () {
+                    state.hideToolbar();
+                    widget.controller.copySelection();
+                  },
+                ),
+              if (!widget.controller.selection.isCollapsed)
+                ContextMenuButtonItem(
+                  type: ContextMenuButtonType.cut,
+                  onPressed: () {
+                    state.hideToolbar();
+                    widget.controller.cutSelection();
+                  },
+                ),
               ContextMenuButtonItem(
-                type: ContextMenuButtonType.copy,
+                type: ContextMenuButtonType.paste,
                 onPressed: () {
                   state.hideToolbar();
-                  widget.controller.copySelection();
+                  widget.controller.paste();
                 },
               ),
-            if (!widget.controller.selection.isCollapsed)
               ContextMenuButtonItem(
-                type: ContextMenuButtonType.cut,
+                type: ContextMenuButtonType.selectAll,
                 onPressed: () {
-                  state.hideToolbar();
-                  widget.controller.cutSelection();
+                  _selectAll(state);
                 },
               ),
-            ContextMenuButtonItem(
-              type: ContextMenuButtonType.paste,
-              onPressed: () {
-                state.hideToolbar();
-                widget.controller.paste();
-              },
-            ),
-            ContextMenuButtonItem(
-              type: ContextMenuButtonType.selectAll,
-              onPressed: () {
-                _selectAll(state);
-              },
-            ),
-          ],
-        ),
-      ),
+            ],
+          ),
+        );
+      },
     );
   }
 

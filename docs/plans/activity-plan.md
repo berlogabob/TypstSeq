@@ -377,7 +377,7 @@ Issues found:
 - [x] P2-F3a pull skips pending/conflict paths
 - [x] P2-F3b Incoming review item 'GitHub conflict' with Keep mine / Take theirs
 - [x] P2-G issue lines <-> GitHub issues (github: property, Send to GitHub, number written back hidden, closed<->done sync, #n chip)
-- [ ] P2-G2 no duplicate issues if local write fails after create (recovery record / match by marker in body) + Send action in Today issue menu
+- [x] P2-G2 no duplicate issues if local write fails after create (recovery record / match by marker in body) + Send action in Today issue menu (search query used literal '+': fixed by Claude; recovery map .tylog/github-issues.json syncs across devices). Suite 1900 pass
 - [ ] P2 review + full suite + macOS verify + P30
 - [ ] USER (11-03 chose reuse GitDoIt app): its client id (Iv1..., a GitHub App) returns 'Not Found' at /login/device/code -> enable Device Flow in the GitHub App settings or create an OAuth app; send client id
 - [x] PT pack repo: lesson rework committed 293ced8, version 1.3.0 (voices/ left untracked: licence unknown)

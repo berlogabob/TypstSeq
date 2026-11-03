@@ -27,6 +27,25 @@ void main() {
     return server.close(force: true);
   });
 
+  test('issue search encodes spaces in the query', () async {
+    server.listen((request) async {
+      expect(request.uri.path, '/search/issues');
+      expect(
+        request.uri.queryParameters['q'],
+        'repo:a/b "tylog-issue: path#hash" in:body',
+      );
+      expect(request.uri.query, contains('%20'));
+      expect(request.uri.query, isNot(contains('%2B')));
+      request.response.write('{"items":[]}');
+      await request.response.close();
+    });
+    await GitHubClient(
+      null,
+      http,
+      base,
+    ).searchIssues('a/b', 'tylog-issue: path#hash');
+  });
+
   test('device flow handles pending, slow down and saves token', () async {
     var polls = 0;
     final delays = <Duration>[];

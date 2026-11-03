@@ -32,8 +32,13 @@ class GitHubClient {
       repo.split('/').map(Uri.encodeComponent).join('/');
   String _path(String path) =>
       path.split('/').map(Uri.encodeComponent).join('/');
-  Uri _uri(String path, [Map<String, String>? query]) =>
-      _baseUri.resolve(path).replace(queryParameters: query);
+  Uri _uri(String path, [Map<String, String>? query]) => Uri.parse(
+    _baseUri
+        .resolve(path)
+        .replace(queryParameters: query)
+        .toString()
+        .replaceAll('+', '%20'),
+  );
 
   Future<Uint8List> _request(
     String method,
@@ -217,6 +222,17 @@ class GitHubClient {
     _uri('/repos/${_repo(repo)}/issues'),
     body: {'title': title, 'body': body, 'labels': labels},
   );
+  Future<List<Map<String, dynamic>>> searchIssues(
+    String repo,
+    String marker,
+  ) async {
+    final data = await _json(
+      'GET',
+      _uri('/search/issues', {'q': 'repo:$repo "$marker" in:body'}),
+    );
+    return (data['items'] as List).cast<Map<String, dynamic>>();
+  }
+
   Future<Map<String, dynamic>> issue(String repo, int number) =>
       _json('GET', _uri('/repos/${_repo(repo)}/issues/$number'));
   Future<Map<String, dynamic>> closeIssue(String repo, int number) => _json(

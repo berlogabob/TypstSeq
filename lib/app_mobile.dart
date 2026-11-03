@@ -70,6 +70,7 @@ import 'widgets/date_format.dart';
 import 'widgets/note_picker_sheet.dart';
 import 'widgets/entity_header.dart';
 import 'widgets/entity_board.dart';
+import 'github/send_issue.dart';
 import 'package:tylog_core/tylog_core.dart' show hasBoardItems;
 import 'widgets/kind_icon_picker.dart';
 import 'widgets/enrich_review.dart';
@@ -5691,6 +5692,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         },
       ),
       'normal' => TyLogRichEditor(
+        issueAction:
+            primaryDestination == 0 &&
+                currentDaily != null &&
+                v != null &&
+                index != null &&
+                !workspace.noteIsExtension
+            ? (line) {
+                final issue = index!.issues
+                    .where(
+                      (i) =>
+                          i.notePath == current &&
+                          i.line == line &&
+                          i.githubNumber == null,
+                    )
+                    .firstOrNull;
+                if (issue == null) return null;
+                final repo = issueGithubRepo(issue, index!);
+                if (repo == null) return null;
+                return () async {
+                  try {
+                    await sendIssueToGithub(
+                      issue: issue,
+                      repo: repo,
+                      vault: v,
+                      githubClient: workspace.githubClient,
+                      mutateNote: workspace.mutateNote,
+                    );
+                    await workspace.waitForMutationRefresh();
+                  } catch (e) {
+                    if (context.mounted) {
+                      showSnack(context, 'Could not send issue: $e');
+                    }
+                  }
+                };
+              }
+            : null,
         readOnly: workspace.noteIsExtension,
         popupBottomY: () {
           // Only pills docked at the bottom limit the popup. While the
