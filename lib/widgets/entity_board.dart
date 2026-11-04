@@ -185,12 +185,30 @@ class _EntityBoardState extends State<EntityBoard> {
               .map((label) => label['name'])
               .whereType<String>()
               .toList();
-          await client.updateIssueColumn(
-            repository,
-            issue.githubNumber!,
-            column,
-            labels,
-          );
+          try {
+            await client.updateIssueColumn(
+              repository,
+              issue.githubNumber!,
+              column,
+              labels,
+            );
+          } catch (error) {
+            final actual = await client.issue(repository, issue.githubNumber!);
+            target = _remoteColumn(actual);
+            await _recordConflict(
+              repository,
+              issue.githubNumber!,
+              target,
+              'move to $column failed: $error',
+            );
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('GitHub move failed; refreshed: $error'),
+                ),
+              );
+            }
+          }
         }
       }
       if (!await widget.mutateNote(
@@ -340,7 +358,22 @@ class _EntityBoardState extends State<EntityBoard> {
             .map((label) => label['name'])
             .whereType<String>()
             .toList();
-        await client.updateIssueColumn(repository, number, column, labels);
+        try {
+          await client.updateIssueColumn(repository, number, column, labels);
+        } catch (error) {
+          final actual = await client.issue(repository, number);
+          await _recordConflict(
+            repository,
+            number,
+            _remoteColumn(actual),
+            'move to $column failed: $error',
+          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('GitHub move failed; refreshed: $error')),
+            );
+          }
+        }
       }
       final rows = await client.repositoryIssues(repository);
       if (mounted && repo == repository) setState(() => remoteIssues = rows);

@@ -463,7 +463,8 @@ Issues found:
 - [x] S6-rest-rest Pull GitHub status into linked note-backed issue cards, recording disagreements in the decision ledger.
 - [x] S6-rest-rest-rest Push linked note-backed card moves to GitHub with GitHub winning conflicts detected at preflight.
 - [x] S6-rest-rest-rest-rest Preserve unrelated GitHub labels added concurrently during linked and repository-only card moves.
-- [ ] S6-rest-rest-rest-rest-rest Protect issue status and the doing label from concurrent GitHub changes between preflight and update, and recover partial moves; GitHub's issue API does not offer conditional updates, and status and label changes are separate requests.
+- [x] S6-rest-rest-rest-rest-rest Recover failed GitHub issue moves by reloading the remote status, reconciling cards and recording the failure.
+- [ ] S6-rest-rest-rest-rest-rest-rest Protect issue status and the doing label from concurrent GitHub changes between preflight and update; recover moves interrupted before reconciliation or when the reload fails. GitHub issue updates are not conditional and status and labels use separate requests.
 - [x] S7 OLT rooms tree + equipment stock levels on the whiteboard
 - [x] S8 Pack update check: weekly GitHub release check, "update available" in Extensions
 - [x] S9 Mention chooser: select a ranked candidate or search pages from Incoming and daily review.

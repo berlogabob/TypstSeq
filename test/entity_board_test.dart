@@ -496,6 +496,15 @@ void main() {
       () => vault.storage.readText('_system/decisions/github.jsonl'),
     );
     expect(log, contains('GitHub conflict'));
+
+    client.failAfterReopen = true;
+    await move('doing');
+    for (var i = 0; i < 30 && !source.contains('\"todo\"'); i++) {
+      await io();
+    }
+    expect(client.state, 'open');
+    expect(source, contains('\"tylog-issue-status\": \"todo\"'));
+    expect(source, contains('unsaved edit'));
   });
 
   testWidgets('sends and syncs linked issues using a fake client', (
@@ -627,6 +636,7 @@ class _FakeGitHub extends GitHubClient {
 
   String state = 'open';
   bool linkedDoing = false;
+  bool failAfterReopen = false;
   int? closed;
   List<String>? labels;
   @override
@@ -636,6 +646,16 @@ class _FakeGitHub extends GitHubClient {
     String column,
     List<String> labels,
   ) async {
+    if (failAfterReopen) {
+      failAfterReopen = false;
+      if (number == 42) {
+        remoteStatus = 'done';
+      } else {
+        state = 'open';
+        linkedDoing = false;
+      }
+      throw StateError('label update failed');
+    }
     if (number == 42) {
       remoteStatus = column;
     } else {
