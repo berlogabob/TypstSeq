@@ -6072,31 +6072,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ),
             );
           }
-          // Logseq lets `[[X]]` name a page that has no file yet. Without this
-          // row a page that does not exist is simply unreachable from the
-          // editor and the user has to accept whichever near-miss ranked
-          // first. Selecting it emits an ordinary ref-note to the typed title,
-          // which renders as the existing tappable "unresolved" chip — tapping
-          // that runs _createFromLink, and until then the link shows up in the
-          // broken-link triage like any other missing page.
+          // Let either trigger create a person or an ordinary note without
+          // forcing a near match to an existing page.
           final typed = query.trim();
           if (typed.isNotEmpty &&
               !suggestions.any(
                 (s) => s.title.toLowerCase() == typed.toLowerCase(),
               )) {
-            suggestions.add(
-              MentionSuggestion(
-                id: typed,
-                title: typed,
-                subtitle: 'New page — not created yet',
-                create: true,
-              ),
-            );
+            for (final kind in ['person', 'note']) {
+              suggestions.add(
+                MentionSuggestion(
+                  id: typed,
+                  title: typed,
+                  noteKind: kind,
+                  subtitle: 'Create $kind',
+                  create: true,
+                ),
+              );
+            }
           }
           return suggestions;
         },
         onCommandSelected: _runMagic,
-        onCreateNote: (title) {
+        onCreateNote: (title, kind) {
           final v = vault;
           if (v == null) return null;
           final direct =
@@ -6114,7 +6112,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             create: () async {
               if (existing != null) return;
               if (!identical(vault, v)) throw StateError('Vault changed');
-              final file = await workspace.createPage(title, id: id);
+              final file = await workspace.createPage(
+                title,
+                kind: kind,
+                id: id,
+              );
               if (context.mounted) showSnack(context, 'Created $file');
               unawaited(workspace.refreshIndex(always: true));
             },

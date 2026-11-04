@@ -485,6 +485,53 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('editor can create a person from a mention', (tester) async {
+    final home = await _mountToday(tester, const Size(1100, 800));
+    final editor = find.byKey(const Key('rich-journal-editor'));
+    await tester.tap(editor);
+    await tester.enterText(editor, '@Alice');
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pump();
+    await tester.tap(find.text('Create person'));
+    await tester.pumpAndSettle();
+    final source = await home.workspace.vault.storage.readText(
+      'notes/Alice.typ',
+    );
+    expect(source, contains('title: "Alice"'));
+    expect(source, contains('kind: "person"'));
+    final id = RegExp(r'id: "([^"]+)"').firstMatch(source)!.group(1)!;
+    expect(
+      home.richController.document.toSource(),
+      contains('ref-note("$id")'),
+    );
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  for (final kind in ['person', 'note']) {
+    testWidgets('editor creates a $kind from a full-name wiki link', (
+      tester,
+    ) async {
+      final home = await _mountToday(tester, const Size(1100, 800));
+      final editor = find.byKey(const Key('rich-journal-editor'));
+      await tester.tap(editor);
+      await tester.enterText(editor, '[[André Sabino');
+      await tester.pump(const Duration(milliseconds: 250));
+      await tester.pump();
+      await tester.tap(find.text('Create $kind'));
+      await tester.pumpAndSettle();
+      final source = await home.workspace.vault.storage.readText(
+        'notes/André Sabino.typ',
+      );
+      expect(source, contains('kind: "$kind"'));
+      final id = RegExp(r'id: "([^"]+)"').firstMatch(source)!.group(1)!;
+      expect(
+        home.richController.document.toSource(),
+        contains('ref-note("$id")'),
+      );
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
   testWidgets('tapping a daily Cyrillic Search result opens that daily note', (
     tester,
   ) async {

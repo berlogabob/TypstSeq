@@ -27,7 +27,7 @@ void main() {
               onMentionQuery: (_, _) async => const [
                 MentionSuggestion(id: 'New', title: 'New', create: true),
               ],
-              onCreateNote: (_) => (
+              onCreateNote: (_, _) => (
                 id: 'allocated-id',
                 create: () {
                   // Creation cannot start until the reference is safely inserted.
@@ -83,7 +83,7 @@ void main() {
             onMentionQuery: (_, _) async => const [
               MentionSuggestion(id: 'New', title: 'New', create: true),
             ],
-            onCreateNote: (_) =>
+            onCreateNote: (_, _) =>
                 (id: 'unresolved-id', create: () => pending.future),
           ),
         ),

@@ -48,7 +48,10 @@ class TyLogRichEditor extends StatefulWidget {
   final Future<void> Function(MagicAction action)? onCommandSelected;
 
   /// Allocates an id locally; creation runs after the reference is inserted.
-  final ({String id, Future<void> Function() create})? Function(String title)?
+  final ({String id, Future<void> Function() create})? Function(
+    String title,
+    String kind,
+  )?
   onCreateNote;
   final Future<void> Function(MentionSuggestion)? onSelectMention;
 
@@ -449,6 +452,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor>
                   MentionSuggestion(
                     id: trigger.query,
                     title: trigger.query,
+                    noteKind: item.noteKind,
                     subtitle: item.subtitle,
                     create: true,
                   ),
@@ -581,7 +585,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor>
     }
     if (!mounted) return;
     final creation = item.create && item.kind == MentionKind.note
-        ? widget.onCreateNote?.call(item.title)
+        ? widget.onCreateNote?.call(item.title, item.noteKind ?? 'note')
         : null;
     final createdId = creation?.id;
     // One atomic edit: the selection is set over the "@query"/"[[query"
@@ -956,7 +960,9 @@ class _TyLogRichEditorState extends State<TyLogRichEditor>
       itemBuilder: (context, index) {
         final item = state.mentionItems[index];
         return ListTile(
-          key: Key('autocomplete-mention-${item.id}'),
+          key: Key(
+            'autocomplete-mention-${item.id}${item.create && item.noteKind != null ? '-${item.noteKind}' : ''}',
+          ),
           minTileHeight: 48,
           dense: true,
           tileColor: index == state.highlighted

@@ -67,7 +67,7 @@ class MentionSuggestion {
   final MentionKind kind;
 
   /// The referenced note's `kind` (`project`, `person`, `article`, …), for the
-  /// row icon. Null for concepts and for the create row.
+  /// row icon and, for a create row, the kind of page to create.
   final String? noteKind;
 
   /// One line under the title telling two same-titled notes apart — an
