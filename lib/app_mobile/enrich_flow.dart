@@ -475,7 +475,18 @@ extension _EnrichIncoming on _HomeScreenState {
       return views;
     }
 
-    var future = load();
+    Future<(Map<String, _EnrichView>, List<OcrReviewRow>)> loadQueue() async =>
+        (
+          await load(),
+          day == null
+              ? await loadOcrReviewRows(
+                  v.storage,
+                  workspace.mounts.map((mount) => mount.id),
+                  await loadDecisions(v.storage),
+                )
+              : <OcrReviewRow>[],
+        );
+    var future = loadQueue();
     if (!mounted) return;
     await showModalBottomSheet<void>(
       context: context,
@@ -488,7 +499,7 @@ extension _EnrichIncoming on _HomeScreenState {
                 await action();
                 if (context.mounted) {
                   setSheetState(() {
-                    future = load();
+                    future = loadQueue();
                   });
                 }
               }),
@@ -498,10 +509,19 @@ extension _EnrichIncoming on _HomeScreenState {
           return SafeArea(
             child: SizedBox(
               height: MediaQuery.sizeOf(context).height * .75,
-              child: FutureBuilder<Map<String, _EnrichView>>(
+              child: FutureBuilder<(Map<String, _EnrichView>, List<OcrReviewRow>)>(
                 future: future,
                 builder: (context, snapshot) {
-                  final views = snapshot.data;
+                  final views = snapshot.data?.$1;
+                  final rows = snapshot.data?.$2 ?? <OcrReviewRow>[];
+                  final bookings = day == null
+                      ? oltIncomingOnDay(
+                          _oltCache,
+                          _oltDecided,
+                          isoDay(DateTime.now()),
+                          pending: true,
+                        ).where((note) => note.kind == 'booking').toList()
+                      : <NoteRef>[];
                   return ListView(
                     children: [
                       const ListTile(title: Text('Incoming')),
@@ -511,9 +531,12 @@ extension _EnrichIncoming on _HomeScreenState {
                         )
                       else if (views == null)
                         const Center(child: CircularProgressIndicator())
-                      else if (views.isEmpty)
-                        const ListTile(title: Text('No suggestions'))
-                      else
+                      else if (views.isEmpty &&
+                          rows.isEmpty &&
+                          bookings.isEmpty)
+                        const ListTile(title: Text('No suggestions')),
+                      if (views != null && views.isNotEmpty) ...[
+                        const ListTile(title: Text('Enrich mentions')),
                         for (final entry in views.entries) ...[
                           ListTile(
                             title: Text(
@@ -546,11 +569,90 @@ extension _EnrichIncoming on _HomeScreenState {
                             ),
                           ),
                         ],
+                      ],
+                      if (rows.isNotEmpty) ...[
+                        const ListTile(title: Text('OCR rows')),
+                        for (final row in rows)
+                          ListTile(
+                            title: Text(row.dataset),
+                            subtitle: Text(row.fields),
+                            trailing: Wrap(
+                              children: [
+                                IconButton(
+                                  tooltip: 'Accept',
+                                  icon: const Icon(Icons.check),
+                                  onPressed: () => decide(() async {
+                                    final device = vaultRegistry?.deviceId;
+                                    if (device == null) return;
+                                    await _appendIncomingDecision(
+                                      v,
+                                      device,
+                                      Decision(
+                                        at: DateTime.now().toIso8601String(),
+                                        device: device,
+                                        item: row.id,
+                                        source: 'ocr',
+                                        action: 'accepted',
+                                      ),
+                                    );
+                                  }),
+                                ),
+                                IconButton(
+                                  tooltip: 'Reject',
+                                  icon: const Icon(Icons.close),
+                                  onPressed: () => decide(() async {
+                                    final device = vaultRegistry?.deviceId;
+                                    if (device == null) return;
+                                    await _appendIncomingDecision(
+                                      v,
+                                      device,
+                                      Decision(
+                                        at: DateTime.now().toIso8601String(),
+                                        device: device,
+                                        item: row.id,
+                                        source: 'ocr',
+                                        action: 'rejected',
+                                      ),
+                                    );
+                                  }),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                      if (bookings.isNotEmpty) ...[
+                        const ListTile(title: Text('OpenLabTwin bookings')),
+                        for (final booking in bookings)
+                          ListTile(
+                            title: Text(booking.title),
+                            subtitle: Text(
+                              '${booking.date ?? ''} · ${booking.properties['places'] ?? ''}',
+                            ),
+                            trailing: Wrap(
+                              children: [
+                                IconButton(
+                                  tooltip: 'Accept booking',
+                                  icon: const Icon(Icons.check),
+                                  onPressed: () => decide(
+                                    () => _decideIncoming(booking, 'accepted'),
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: 'Reject booking',
+                                  icon: const Icon(Icons.close),
+                                  onPressed: () => decide(
+                                    () => _decideIncoming(booking, 'rejected'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
                       if (views != null && more)
                         TextButton(
                           onPressed: () => setSheetState(() {
                             limit += 7;
-                            future = load();
+                            future = loadQueue();
                           }),
                           child: const Text('Show older'),
                         ),

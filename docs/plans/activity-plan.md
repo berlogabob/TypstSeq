@@ -438,7 +438,8 @@ Issues found:
 - [ ] P6 Telegram bot vaults: blocked by bot code freeze
 
 ## Wave 22 (2026-11-04, user OK: suggestions 1-8)
-- [ ] S1 One review queue: OCR rows, OLT bookings, bot drafts land in Incoming with the same accept/reject + decision ledger
+- [x] S1 One review queue: OCR rows, OLT bookings, bot drafts land in Incoming with the same accept/reject + decision ledger
+- [ ] S1-rest Add audio proposals to Incoming when S5 is ready, and move queue types into a shared registry with seven-day paging.
 - [x] S2 Namespace -> structure: one-tap convert of Logseq `A/B/C` titles into parent pages + part_of
 - [ ] S3 Duplicate finder + merge (same name/alias/email; links repointed), e.g. André Sabino x2, IADE x3
 - [x] S4 Person timeline: dailies, audio, screenshots, tasks mentioning the person, by date

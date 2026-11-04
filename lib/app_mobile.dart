@@ -1,5 +1,6 @@
 import 'widgets/github_project_board.dart';
 import 'reading_log.dart';
+import 'review_queue.dart';
 import 'namespace_migration.dart';
 import 'dart:async';
 import 'widgets/app_icons.dart';
@@ -22,7 +23,7 @@ import 'package:tylog_audio/tylog_audio.dart'
     show audioDurationMs, peaksFromWav;
 import 'package:tylog_core/enrich.dart';
 import 'package:tylog_core/tylog_core.dart'
-    show Decision, decisionsDir, encodeDecisions;
+    show Decision, decisionsDir, encodeDecisions, loadDecisions;
 import 'package:tylog_core/values.dart';
 import 'package:url_launcher/url_launcher.dart';
 
