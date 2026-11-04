@@ -478,3 +478,8 @@ Issues found:
 - [ ] M5 PT pack 1.3.1 blocked: Studio GPU full even with Ornith unloaded (Chatterbox 400); user: nvidia-smi on Studio or allow CPU TTS.
 - [ ] M6 P6 bot vaults: no freeze; design doc first (bot <-> TyLog folder contract, 5 open questions), user approves before code.
 - [x] M7 Build policy: one APK at plan end (user 2026-11-04); exception only for blocking bugs.
+
+## Wave 24 (2026-11-04 evening, A24 final-build findings)
+- [ ] K1 CRITICAL data: daily/2026/11/2026-11-02.typ was overwritten at 2026-11-04 01:19 with a revision JSON record ({"revision":...,"history":...,"node":...}) instead of the note text, right when the task 20261102-095848 Doing clock was stopped (status doing->done, clocked end 01:19:10). Recovered by Claude from node.content. Find the write path that put revision JSON at the note path (task status/clock write, revisions store, SAF write channel mix-up?), fix it, and add a guard: never write content to a .typ path that does not start like a note (or fails scanNote) — refuse + log. Regression test that fails before the fix.
+- [ ] K2 Keyboard closes again (A24 a43d286): user text typed after an old `// tylog:auto-entities` marker counts as "our block" (enrichContentSha strips from the marker), so each save rewrites the block and reloads the editor. Markers removed from the vault by Claude. Code: the app must never write/rewrite an auto-entities block any more (M1), and enrichment must never mutate the note open in the editor while it is being edited.
+- [ ] K3 Timestamp button (clock+ icon) inserts the time but the editor does not scroll to the new line/caret; scroll it into view (keyboard open and closed).
