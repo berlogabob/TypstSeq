@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/widgets/settings/ai_page.dart';
+import 'package:tylog/widgets/settings/extensions_page.dart';
 import 'package:tylog/widgets/settings_sheet.dart';
 
 SettingsSheet settings() => SettingsSheet(
@@ -25,7 +26,10 @@ SettingsSheet settings() => SettingsSheet(
   readScreenshotsStatus: () async => 'Ready',
 );
 
-Future<void> pumpSettings(WidgetTester tester, {Size size = const Size(400, 800)}) async {
+Future<void> pumpSettings(
+  WidgetTester tester, {
+  Size size = const Size(400, 800),
+}) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
@@ -35,6 +39,33 @@ Future<void> pumpSettings(WidgetTester tester, {Size size = const Size(400, 800)
 }
 
 void main() {
+  testWidgets('OpenLabTwin search opens Extensions sources', (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(MaterialApp(home: settings()));
+    await tester.enterText(
+      find.byKey(const ValueKey('settings-search')),
+      'OpenLabTwin',
+    );
+    await tester.pump();
+    expect(find.text('Extensions › OpenLabTwin'), findsOneWidget);
+    await tester.tap(find.widgetWithText(ListTile, 'OpenLabTwin'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(ExtensionsPage), findsOneWidget);
+    expect(find.text('Sources'), findsOneWidget);
+    await tester.tap(find.byType(ExpansionTile));
+    await tester.pump();
+    await tester.runAsync(
+      () async => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pump(const Duration(seconds: 6));
+    expect(find.text('Send code'), findsOneWidget);
+    expect(find.text('6-digit code'), findsOneWidget);
+  });
+
   testWidgets("searching OCR opens Screenshots", (tester) async {
     await pumpSettings(tester);
 

@@ -131,7 +131,6 @@ void main() {
         'Extensions',
         'Maintenance',
         'About',
-        'OpenLabTwin',
       ],
     );
     expect(tester.takeException(), isNull);

@@ -7,6 +7,7 @@ import 'date_format.dart' show shortStamp;
 import '../calendar_feeds.dart' show isValidFeedUrl;
 import '../workspace_controller.dart';
 import '../github/github_auth.dart' show githubToken;
+import '../olt/olt_client.dart';
 import 'app_icons.dart';
 import '../ai/ai_settings.dart';
 import '../nextcloud_sync.dart';
@@ -187,10 +188,18 @@ class _SettingsSheetState extends State<SettingsSheet> {
                   subtitle:
                       entry.title == 'Extensions' &&
                           (_query.trim().isEmpty || entry.path == entry.title)
-                      ? FutureBuilder<String?>(
-                          future: githubToken(),
+                      ? FutureBuilder<List<bool>>(
+                          future: Future.wait([
+                            githubToken().then((token) => token != null),
+                            OltClient().session.then(
+                              (session) => session != null,
+                            ),
+                          ]),
                           builder: (context, snapshot) => Text(
-                            _extensionsSummary(snapshot.data != null),
+                            _extensionsSummary(
+                              snapshot.data?[0] ?? false,
+                              snapshot.data?[1] ?? false,
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -224,8 +233,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
     _ => entry.path,
   };
 
-  String _extensionsSummary(bool signedIn) {
-    final count = widget.workspace?.mounts.length ?? 0;
+  String _extensionsSummary(bool signedIn, bool oltSignedIn) {
+    final count =
+        (widget.workspace?.mounts.length ?? 0) + (oltSignedIn ? 1 : 0);
     final mounts = count == 0
         ? 'None'
         : '$count ${count == 1 ? 'extension' : 'extensions'}';
@@ -248,6 +258,7 @@ class _SettingsSheetState extends State<SettingsSheet> {
         ),
       ),
     );
+    if (mounted) setState(() {});
     if (mounted) setState(() {});
   }
 
