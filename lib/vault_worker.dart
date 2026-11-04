@@ -131,6 +131,11 @@ class SearchResidentCommand extends VaultWorkerCommand {
   final SendPort replyTo;
 }
 
+class CommunitiesCommand extends VaultWorkerCommand {
+  const CommunitiesCommand(this.replyTo);
+  final SendPort replyTo;
+}
+
 // ── Events (worker → UI) ─────────────────────────────────────────────────────
 
 sealed class VaultWorkerEvent {
@@ -250,6 +255,7 @@ class _VaultWorker {
   int _searchRevision = 0;
   int _indexGeneration = 0;
   int _searchGeneration = -1;
+  VaultIndex? _currentIndex;
   Future<void>? _searchLoad;
   Future<void>? _searchWarmup;
   Timer? _searchIdleTimer;
@@ -295,6 +301,15 @@ class _VaultWorker {
           if (!_busy && !_stopped.isCompleted) _stopped.complete();
         case SearchResidentCommand(:final replyTo):
           replyTo.send(_searchLoaded);
+        case CommunitiesCommand(:final replyTo):
+          final index = _currentIndex;
+          if (index == null) {
+            replyTo.send(null);
+          } else {
+            // This isolate owns the index. Compute here so the UI isolate does
+            // not serialize the complete index merely to move it to an isolate.
+            replyTo.send(computeCommunities(index));
+          }
         case final SearchCommand command:
           // Loading the cache is deliberately async so rebuild startup does
           // not pay that cost. A query may still arrive while a scan runs.
@@ -335,6 +350,7 @@ class _VaultWorker {
             cached.version == kVaultIndexVersion &&
             !cached.notesByPath.keys.any((p) => p.startsWith('ext/'))) {
           _send(IndexBuiltEvent(cached, fromCache: true));
+          _currentIndex = cached;
           _indexSent = true;
         }
       }
@@ -375,6 +391,7 @@ class _VaultWorker {
             :final parsedNotes,
             :final durationMs,
           ):
+            _currentIndex = index;
             _send(
               IndexBuiltEvent(
                 index,
@@ -645,6 +662,23 @@ class VaultWorkerClient {
     try {
       _commands.send(SearchResidentCommand(reply.sendPort));
       return await reply.first as bool;
+    } finally {
+      reply.close();
+    }
+  }
+
+  /// Derives communities beside the worker-owned index without copying that
+  /// index through the root isolate.
+  Future<CommunityMap?> communities() async {
+    if (_disposed || _relay.isClosed) return null;
+    final reply = ReceivePort('tylog-vault-worker-communities');
+    try {
+      _commands.send(CommunitiesCommand(reply.sendPort));
+      return await reply.first.timeout(
+            const Duration(seconds: 60),
+            onTimeout: () => null,
+          )
+          as CommunityMap?;
     } finally {
       reply.close();
     }

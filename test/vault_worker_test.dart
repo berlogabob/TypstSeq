@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tylog_core/graph.dart';
 import 'package:tylog_core/search_index.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_registry.dart';
@@ -189,6 +190,28 @@ void main() {
     expect(hits.map((r) => r.path), contains('notes/Note0.typ'));
     expect(await worker.search('nothingmatchesthisquery'), isEmpty);
   });
+
+  test(
+    'the worker derives communities from its resident index on request',
+    () async {
+      final vault = await seed(4);
+      final worker = await VaultWorkerClient.spawn(entry: vault.entry);
+      addTearDown(worker.dispose);
+      final events = await worker
+          .run(const RebuildIndexCommand(stale: {}))
+          .toList();
+      final index = events.whereType<IndexBuiltEvent>().last.index;
+
+      final communities = await worker.communities();
+
+      expect(communities?.tagToCluster, computeCommunities(index).tagToCluster);
+      expect(
+        communities?.noteToCluster,
+        computeCommunities(index).noteToCluster,
+      );
+      expect(communities?.clusterOrder, computeCommunities(index).clusterOrder);
+    },
+  );
 
   test(
     'releases the search index after idle and reloads it on the next query',

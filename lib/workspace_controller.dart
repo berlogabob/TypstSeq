@@ -489,7 +489,14 @@ class WorkspaceController extends ChangeNotifier {
     _derivingRevision = revision;
     final CommunityMap next;
     try {
-      next = await compute(computeCommunitiesIsolate, current);
+      final worker = _worker;
+      if (worker == null) {
+        next = await compute(computeCommunitiesIsolate, current);
+      } else {
+        next =
+            (await worker.communities()) ??
+            await compute(computeCommunitiesIsolate, current);
+      }
     } catch (_) {
       return; // Derived state is an optimization; the UI degrades to null.
     } finally {

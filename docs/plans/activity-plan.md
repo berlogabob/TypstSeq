@@ -539,4 +539,5 @@ Issues found:
 - [x] PF1b Entity board: use linear task ordering and lazily build column cards with position-aware drop targets (audit #1).
 - [x] PF1b-rest Measure entity board build/layout CPU and frame percentiles on device with 100, 1,000, and 5,000 tasks, including drag and release (audit #1; also tracked by PF1-rest).
 - [x] PF7 Defer community detection until the graph or Library needs it.
-- [ ] PF7-rest Remaining startup scan on the P30 (15 s from launch, off the UI isolate): list-stat 4.5 s (SAF listing of 10k files), validate 1.7 s, communities 1.4 s, sync 2-7 s. Investigate safe cached listings, validation and sync; avoid transferring the index on the UI isolate when communities are requested, and measure startup and view-opening performance on the P30.
+- [x] PF7-rest Derive requested communities beside the worker-owned index so the UI isolate does not serialize the full index. P30 profile, 2026-11-04, 10,067 notes: cold startup scan done 20.278 s (list-stat 7.064 s, validate 0.378 s), sync done 20.920 s; opening Library triggered a scan done at 36.678 s (list-stat 6.545 s).
+- [ ] PF7-rest-rest Reduce and measure P30 SAF list-stat and startup-sync time; measure community view-opening latency and frames on the real vault, including cold and repeated opens.
