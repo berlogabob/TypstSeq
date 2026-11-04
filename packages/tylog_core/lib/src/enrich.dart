@@ -690,6 +690,13 @@ String linkMentionInline(String source, EnrichMention mention, NoteRef target) {
   if (at < 0) return source;
   // Already inside a call or its content? Leave it.
   final before = line.substring(0, at);
+  // An argument line of a multi-line call (`  text: "..."`) or text after an
+  // odd number of quotes is a Typst string: a link there breaks the file, and
+  // the editor then reverts every edit (A24, 2026-11-04).
+  if (RegExp(r'^\s*[\w-]+:\s').hasMatch(line) ||
+      RegExp(r'(?<!\\)"').allMatches(before).length.isOdd) {
+    return source;
+  }
   if (before.contains('#tylog.') &&
       before.lastIndexOf('#tylog.') > before.lastIndexOf(']')) {
     return source;

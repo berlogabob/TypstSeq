@@ -562,6 +562,25 @@ void main() {
       expect(writeAutoEntities(inline, note, [linked], const []), inline);
     });
 
+    test('inline link never lands inside a string or a call argument', () {
+      const task =
+          '= d\n\n#tylog.task(\n  id: "1",\n  text: "Angela. remind morning",\n  status: "done",\n)\n'
+          '- "Angela" said\n';
+      final angela = entity('angela', 'Angela Silvestre');
+      for (final line in [5, 8]) {
+        final mention = EnrichMention(
+          surface: 'Angela',
+          type: 'person',
+          line: line,
+        );
+        expect(
+          linkMentionInline(task, mention, angela),
+          task,
+          reason: 'line $line',
+        );
+      }
+    });
+
     test('inline link edits only that mention and skips existing markup', () {
       const mention = EnrichMention(surface: 'André', type: 'person', line: 7);
       final out = linkMentionInline(header, mention, silva);
