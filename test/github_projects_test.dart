@@ -12,6 +12,7 @@ class FakeGraphQL extends GitHubClient {
   bool fail = false;
   String viewer = 'a';
   bool canUpdate = false;
+  int? itemCount;
   @override
   Future<Map<String, dynamic>> graphQL(
     String query,
@@ -43,26 +44,42 @@ class FakeGraphQL extends GitHubClient {
             ],
           },
           'items': {
-            'nodes': [
-              {
-                'id': second ? 'two' : 'one',
-                'fieldValues': {
-                  'nodes': [
+            'nodes': itemCount != null
+                ? [
+                    for (var i = 0; i < itemCount!; i++)
+                      {
+                        'id': 'item-$i',
+                        'fieldValues': {
+                          'nodes': [
+                            {
+                              'optionId': 'todo',
+                              'field': {'id': 'field'},
+                            },
+                          ],
+                        },
+                        'content': {'title': 'Card $i'},
+                      },
+                  ]
+                : [
                     {
-                      'optionId': 'todo',
-                      'field': {'id': 'field'},
+                      'id': second ? 'two' : 'one',
+                      'fieldValues': {
+                        'nodes': [
+                          {
+                            'optionId': 'todo',
+                            'field': {'id': 'field'},
+                          },
+                        ],
+                      },
+                      'content': {
+                        'title': second ? 'Second' : 'First',
+                        'number': 1,
+                        'repository': {'nameWithOwner': 'a/b'},
+                      },
                     },
                   ],
-                },
-                'content': {
-                  'title': second ? 'Second' : 'First',
-                  'number': 1,
-                  'repository': {'nameWithOwner': 'a/b'},
-                },
-              },
-            ],
             'pageInfo': {
-              'hasNextPage': !second,
+              'hasNextPage': itemCount == null && !second,
               'endCursor': second ? null : 'cursor',
             },
           },
@@ -73,6 +90,49 @@ class FakeGraphQL extends GitHubClient {
 }
 
 void main() {
+  testWidgets('large project columns build cards as they are scrolled', (
+    tester,
+  ) async {
+    final dir = await tester.runAsync(
+      () => Directory.systemTemp.createTemp('github-board-lazy'),
+    );
+    addTearDown(() => dir!.delete(recursive: true));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GitHubProjectBoard(
+          board: const Board(
+            id: 'b',
+            title: 'Board',
+            scopeExtra: {
+              'github_project': {'owner': 'a', 'number': 1},
+            },
+          ),
+          storage: Vault(dir!).storage,
+          client: () async => FakeGraphQL()..itemCount = 100,
+          deviceId: 'test',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final list = tester.widget<ListView>(
+      find.descendant(
+        of: find.byKey(const ValueKey('project-column-todo')),
+        matching: find.byType(ListView),
+      ),
+    );
+    expect(list.childrenDelegate, isA<SliverChildBuilderDelegate>());
+    expect(find.text('Card 0'), findsOneWidget);
+    expect(find.text('Card 99', skipOffstage: false), findsNothing);
+    await tester.scrollUntilVisible(
+      find.text('Card 99'),
+      500,
+      scrollable: find.descendant(
+        of: find.byKey(const ValueKey('project-column-todo')),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    expect(find.text('Card 99'), findsOneWidget);
+  });
   test('status options, paginated items and mutation', () async {
     final client = FakeGraphQL();
     final projects = GitHubProjects(client);

@@ -513,7 +513,8 @@ Issues found:
 - [x] PERF1 Performance audit (user 2026-11-04): codex static report docs/audits/2026-11-04-performance.md (read-only) + Claude device measurements on P30 profile build (cold start TYLOG_STARTUP, index, frame jank, memory) -> ranked fix list.
 - [x] PF0 Reduce index-check cost by comparing reused entries by identity and rebuilt entries individually. P30, 10067 notes, 2026-11-04: index-check 6.0 s → 0.23 s and scan 39.9 s → 28.0 s, with two notes parsed in both runs (TYLOG_STARTUP stageMillis).
 - [ ] PF0-rest Instrument and reduce scan-finalize (18.5 s after PF0), load-index, listing, validation and communities as needed to reach < 5 s total background rescan on the P30; measure before/after with TYLOG_STARTUP stageMillis.
-- [ ] PF1 Board ordering quadratic + eager card layout (audit #1, #13, #15)
+- [x] PF1 GitHub project columns group cards once and build them lazily (audit #15).
+- [ ] PF1-rest Fix entity board quadratic ordering, repeated hierarchy scans, and eager card layout with position-aware drop targets (audit #1, #13); measure both board types on device at 100, 1,000, and 5,000 cards, including drag and frame timings.
 - [ ] PF2 Incoming work not bounded by the 7-day limit (audit #2, #7)
 - [ ] PF3 Mention matching per mention over all entities on UI isolate (audit #3, #16)
 - [ ] PF4 Journal sorts whole daily index on scroll; task rows search whole task index; source cache unbounded (audit #4, #5, #12)

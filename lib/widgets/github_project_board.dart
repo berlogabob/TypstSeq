@@ -107,6 +107,10 @@ class _GitHubProjectBoardState extends State<GitHubProjectBoard> {
           return const Center(child: CircularProgressIndicator());
         }
         final board = snapshot.data!;
+        final itemsByStatus = <String?, List<ProjectItem>>{};
+        for (final item in board.items) {
+          (itemsByStatus[item.status] ??= []).add(item);
+        }
         return Column(
           children: [
             if (!board.canMove)
@@ -148,58 +152,47 @@ class _GitHubProjectBoardState extends State<GitHubProjectBoard> {
                                             : Theme.of(
                                                 context,
                                               ).colorScheme.primaryContainer,
-                                        child: ListView(
-                                          children: [
-                                            for (final item
-                                                in board.items.where(
-                                                  (item) =>
-                                                      item.status == column.id,
-                                                ))
-                                              if (board.canMove)
-                                                LongPressDraggable<ProjectItem>(
-                                                  data: item,
-                                                  feedback: Material(
-                                                    child: SizedBox(
-                                                      width: 240,
-                                                      child: ListTile(
-                                                        title: Text(item.title),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  childWhenDragging:
-                                                      const SizedBox(
-                                                        height: 48,
-                                                      ),
-                                                  child: Card(
-                                                    child: ListTile(
-                                                      title: Text(item.title),
-                                                      subtitle: Text(
-                                                        [
-                                                          if (item.number !=
-                                                              null)
-                                                            '#${item.number}',
-                                                          if (item.repo != null)
-                                                            item.repo!,
-                                                        ].join(' · '),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                )
-                                              else
-                                                Card(
+                                        child: ListView.builder(
+                                          itemCount:
+                                              itemsByStatus[column.id]
+                                                  ?.length ??
+                                              0,
+                                          itemBuilder: (context, index) {
+                                            final item =
+                                                itemsByStatus[column
+                                                    .id]![index];
+                                            final card = Card(
+                                              child: ListTile(
+                                                title: Text(item.title),
+                                                subtitle: Text(
+                                                  [
+                                                    if (item.number != null)
+                                                      '#${item.number}',
+                                                    if (item.repo != null)
+                                                      item.repo!,
+                                                  ].join(' · '),
+                                                ),
+                                              ),
+                                            );
+                                            if (!board.canMove) return card;
+                                            return LongPressDraggable<
+                                              ProjectItem
+                                            >(
+                                              data: item,
+                                              feedback: Material(
+                                                child: SizedBox(
+                                                  width: 240,
                                                   child: ListTile(
                                                     title: Text(item.title),
-                                                    subtitle: Text(
-                                                      [
-                                                        if (item.number != null)
-                                                          '#${item.number}',
-                                                        if (item.repo != null)
-                                                          item.repo!,
-                                                      ].join(' · '),
-                                                    ),
                                                   ),
                                                 ),
-                                          ],
+                                              ),
+                                              childWhenDragging: const SizedBox(
+                                                height: 48,
+                                              ),
+                                              child: card,
+                                            );
+                                          },
                                         ),
                                       ),
                                 ),
