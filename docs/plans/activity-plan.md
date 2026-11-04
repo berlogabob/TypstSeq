@@ -527,4 +527,5 @@ Issues found:
 - [ ] PF6-rest Load vendored packages after the editor is usable while preserving compile readiness and vault-switch cancellation (audit #11); measure startup and rebuild notifications, frames, and resource use on device (audit #11, #14).
 - [x] PF0b Skip issue-marker discovery when markers are configured, and skip issue matching when none exist. P30 profile cold starts, 2026-11-04, 10,067 notes and two parsed: scan 30.9 → 27.8 s; scan-finalize 19.7 → 18.0 s (single runs; timing varies).
 - [ ] PF0b-rest Make issue matching and other scan-finalize work proportional to changed notes, with correct invalidation for marker settings, discovery, project names and aliases; reduce load-index, listing and communities as needed. Measure on the P30 using TYLOG_STARTUP stageMillis; target total background scan < 8 s.
-- [ ] PF1b Entity board (lib/widgets/entity_board.dart:514-590) ordering quadratic + eager layout (audit #1) — PF1 only fixed GitHub project board.
+- [x] PF1b Entity board: use linear task ordering and lazily build column cards with position-aware drop targets (audit #1).
+- [ ] PF1b-rest Measure entity board build/layout CPU and frame percentiles on device with 100, 1,000, and 5,000 tasks, including drag and release (audit #1; also tracked by PF1-rest).

@@ -463,6 +463,24 @@ class _EntityBoardState extends State<EntityBoard> {
   Widget build(BuildContext context) {
     final tasks = tasksForEntity(widget.entity.id, index);
     final issues = issuesForEntity(widget.entity.id, index);
+    final tasksByStatus = <String, List<TaskRef>>{};
+    for (final task in tasks) {
+      (tasksByStatus[task.status] ??= []).add(task);
+    }
+    final issuesByStatus = <String, List<IssueRef>>{};
+    final linkedNumbers = <Object?>{};
+    for (final issue in issues) {
+      (issuesByStatus[issue.status] ??= []).add(issue);
+      if (_repo(issue)?.toLowerCase() == repo?.toLowerCase()) {
+        linkedNumbers.add(issue.githubNumber);
+      }
+    }
+    final remoteByStatus = <String, List<Map<String, dynamic>>>{};
+    for (final remote in remoteIssues) {
+      if (!linkedNumbers.contains(remote['number'])) {
+        (remoteByStatus[_remoteColumn(remote)] ??= []).add(remote);
+      }
+    }
     final columns = [
       ...board.columns.values,
       if (board.columns.showCancelled &&
@@ -514,17 +532,20 @@ class _EntityBoardState extends State<EntityBoard> {
                   for (final column in columns)
                     Builder(
                       builder: (context) {
-                        final matching = tasks
-                            .where((t) => t.status == column)
-                            .toList();
+                        final matching = tasksByStatus[column] ?? <TaskRef>[];
                         final orderedIds = board.orderCards(
                           column,
                           matching.map((t) => t.id),
                         );
-                        final cards = [
-                          for (final id in orderedIds)
-                            matching.firstWhere((t) => t.id == id),
-                        ];
+                        final byId = <String, TaskRef>{};
+                        for (final task in matching) {
+                          byId.putIfAbsent(task.id, () => task);
+                        }
+                        final cards = [for (final id in orderedIds) byId[id]!];
+                        final columnIssues =
+                            issuesByStatus[column] ?? <IssueRef>[];
+                        final columnRemote =
+                            remoteByStatus[column] ?? <Map<String, dynamic>>[];
                         Widget target(int position, {bool fill = false}) =>
                             DragTarget<Object>(
                               onWillAcceptWithDetails: (_) => !busy,
@@ -569,220 +590,179 @@ class _EntityBoardState extends State<EntityBoard> {
                                   ).textTheme.titleMedium,
                                 ),
                                 Expanded(
-                                  child: LayoutBuilder(
-                                    builder: (context, constraints) => ListView(
-                                      children: [
-                                        ConstrainedBox(
-                                          constraints: BoxConstraints(
-                                            minHeight: constraints.maxHeight,
-                                          ),
-                                          child: IntrinsicHeight(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.stretch,
-                                              children: [
-                                                for (
-                                                  var i = 0;
-                                                  i < cards.length;
-                                                  i++
-                                                ) ...[
-                                                  target(i),
-                                                  LongPressDraggable<Object>(
-                                                    data: cards[i],
-                                                    feedback: Material(
-                                                      elevation: 4,
-                                                      child: SizedBox(
-                                                        width: 240,
-                                                        child: ListTile(
-                                                          title: Text(
-                                                            cards[i].text,
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    childWhenDragging:
-                                                        const SizedBox(
-                                                          height: 48,
-                                                        ),
-                                                    child: Card(
-                                                      child: ListTile(
-                                                        title: Text(
-                                                          cards[i].text,
-                                                        ),
-                                                        subtitle:
-                                                            [
-                                                              if (cards[i]
-                                                                      .priority !=
-                                                                  'normal')
-                                                                cards[i]
-                                                                    .priority,
-                                                              if (cards[i]
-                                                                      .due !=
-                                                                  null)
-                                                                cards[i].due!,
-                                                            ].isEmpty
-                                                            ? null
-                                                            : Text(
-                                                                [
-                                                                  if (cards[i]
-                                                                          .priority !=
-                                                                      'normal')
-                                                                    cards[i]
-                                                                        .priority,
-                                                                  if (cards[i]
-                                                                          .due !=
-                                                                      null)
-                                                                    cards[i]
-                                                                        .due!,
-                                                                ].join(' · '),
-                                                              ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
-                                                for (final issue
-                                                    in issues.where(
-                                                      (i) => i.status == column,
-                                                    ))
-                                                  LongPressDraggable<Object>(
-                                                    data: issue,
-                                                    feedback: Material(
-                                                      child: SizedBox(
-                                                        width: 240,
-                                                        child: ListTile(
-                                                          title: Text(
-                                                            issuePreview(
-                                                              issue.text,
-                                                            ),
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    childWhenDragging:
-                                                        const SizedBox(
-                                                          height: 48,
-                                                        ),
-                                                    child: Card(
-                                                      child: ListTile(
-                                                        title: Text(
-                                                          issuePreview(
-                                                            issue.text,
-                                                          ),
-                                                        ),
-                                                        trailing:
-                                                            issue.githubNumber ==
-                                                                    null &&
-                                                                _repo(issue) !=
-                                                                    null &&
-                                                                widget.githubClient !=
-                                                                    null
-                                                            ? IconButton(
-                                                                tooltip:
-                                                                    'Send to GitHub',
-                                                                onPressed: busy
-                                                                    ? null
-                                                                    : () => _send(
-                                                                        issue,
-                                                                      ),
-                                                                icon: const Icon(
-                                                                  Icons.upload,
-                                                                ),
-                                                              )
-                                                            : null,
-                                                        subtitle: Wrap(
-                                                          children: [
-                                                            if (issue.githubNumber !=
-                                                                    null &&
-                                                                _repo(issue) !=
-                                                                    null)
-                                                              ActionChip(
-                                                                label: Text(
-                                                                  '#${issue.githubNumber}',
-                                                                ),
-                                                                onPressed: () =>
-                                                                    widget
-                                                                        .onOpenUrl
-                                                                        ?.call(
-                                                                          'https://github.com/${_repo(issue)}/issues/${issue.githubNumber}',
-                                                                        ),
-                                                              ),
-                                                            Chip(
-                                                              avatar: Icon(
-                                                                iconForKind(
-                                                                  issue.marker,
-                                                                ),
-                                                              ),
-                                                              label: Text(
-                                                                issue.marker,
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                for (final remote in remoteIssues.where(
-                                                  (remote) =>
-                                                      _remoteColumn(remote) ==
-                                                          column &&
-                                                      !issues.any(
-                                                        (local) =>
-                                                            local.githubNumber ==
-                                                                remote['number'] &&
-                                                            _repo(
-                                                                  local,
-                                                                )?.toLowerCase() ==
-                                                                repo?.toLowerCase(),
-                                                      ),
-                                                ))
-                                                  LongPressDraggable<Object>(
-                                                    data: remote,
-                                                    feedback: Material(
-                                                      child: SizedBox(
-                                                        width: 240,
-                                                        child: ListTile(
-                                                          title: Text(
-                                                            remote['title']
-                                                                    as String? ??
-                                                                '',
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    childWhenDragging:
-                                                        const SizedBox(
-                                                          height: 48,
-                                                        ),
-                                                    child: Card(
-                                                      child: ListTile(
-                                                        title: Text(
-                                                          remote['title']
-                                                                  as String? ??
-                                                              '',
-                                                        ),
-                                                        subtitle: Text(
-                                                          'GitHub #${remote['number']}',
-                                                        ),
-                                                        onTap: () => widget
-                                                            .onOpenUrl
-                                                            ?.call(
-                                                              'https://github.com/$repo/issues/${remote['number']}',
-                                                            ),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                Expanded(
-                                                  child: target(
-                                                    cards.length,
-                                                    fill: true,
+                                  child: CustomScrollView(
+                                    slivers: [
+                                      SliverList.builder(
+                                        itemCount:
+                                            cards.length * 2 +
+                                            columnIssues.length +
+                                            columnRemote.length,
+                                        itemBuilder: (context, itemIndex) {
+                                          if (itemIndex < cards.length * 2) {
+                                            final i = itemIndex ~/ 2;
+                                            if (itemIndex.isEven)
+                                              return target(i);
+                                            return LongPressDraggable<Object>(
+                                              data: cards[i],
+                                              feedback: Material(
+                                                elevation: 4,
+                                                child: SizedBox(
+                                                  width: 240,
+                                                  child: ListTile(
+                                                    title: Text(cards[i].text),
                                                   ),
                                                 ),
-                                              ],
+                                              ),
+                                              childWhenDragging: const SizedBox(
+                                                height: 48,
+                                              ),
+                                              child: Card(
+                                                child: ListTile(
+                                                  title: Text(cards[i].text),
+                                                  subtitle:
+                                                      [
+                                                        if (cards[i].priority !=
+                                                            'normal')
+                                                          cards[i].priority,
+                                                        if (cards[i].due !=
+                                                            null)
+                                                          cards[i].due!,
+                                                      ].isEmpty
+                                                      ? null
+                                                      : Text(
+                                                          [
+                                                            if (cards[i]
+                                                                    .priority !=
+                                                                'normal')
+                                                              cards[i].priority,
+                                                            if (cards[i].due !=
+                                                                null)
+                                                              cards[i].due!,
+                                                          ].join(' · '),
+                                                        ),
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                          final issueIndex =
+                                              itemIndex - cards.length * 2;
+                                          if (issueIndex <
+                                              columnIssues.length) {
+                                            final issue =
+                                                columnIssues[issueIndex];
+                                            return LongPressDraggable<Object>(
+                                              data: issue,
+                                              feedback: Material(
+                                                child: SizedBox(
+                                                  width: 240,
+                                                  child: ListTile(
+                                                    title: Text(
+                                                      issuePreview(issue.text),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                              childWhenDragging: const SizedBox(
+                                                height: 48,
+                                              ),
+                                              child: Card(
+                                                child: ListTile(
+                                                  title: Text(
+                                                    issuePreview(issue.text),
+                                                  ),
+                                                  trailing:
+                                                      issue.githubNumber ==
+                                                              null &&
+                                                          _repo(issue) !=
+                                                              null &&
+                                                          widget.githubClient !=
+                                                              null
+                                                      ? IconButton(
+                                                          tooltip:
+                                                              'Send to GitHub',
+                                                          onPressed: busy
+                                                              ? null
+                                                              : () => _send(
+                                                                  issue,
+                                                                ),
+                                                          icon: const Icon(
+                                                            Icons.upload,
+                                                          ),
+                                                        )
+                                                      : null,
+                                                  subtitle: Wrap(
+                                                    children: [
+                                                      if (issue.githubNumber !=
+                                                              null &&
+                                                          _repo(issue) != null)
+                                                        ActionChip(
+                                                          label: Text(
+                                                            '#${issue.githubNumber}',
+                                                          ),
+                                                          onPressed: () => widget
+                                                              .onOpenUrl
+                                                              ?.call(
+                                                                'https://github.com/${_repo(issue)}/issues/${issue.githubNumber}',
+                                                              ),
+                                                        ),
+                                                      Chip(
+                                                        avatar: Icon(
+                                                          iconForKind(
+                                                            issue.marker,
+                                                          ),
+                                                        ),
+                                                        label: Text(
+                                                          issue.marker,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                          final remote =
+                                              columnRemote[issueIndex -
+                                                  columnIssues.length];
+                                          return LongPressDraggable<Object>(
+                                            data: remote,
+                                            feedback: Material(
+                                              child: SizedBox(
+                                                width: 240,
+                                                child: ListTile(
+                                                  title: Text(
+                                                    remote['title']
+                                                            as String? ??
+                                                        '',
+                                                  ),
+                                                ),
+                                              ),
                                             ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
+                                            childWhenDragging: const SizedBox(
+                                              height: 48,
+                                            ),
+                                            child: Card(
+                                              child: ListTile(
+                                                title: Text(
+                                                  remote['title'] as String? ??
+                                                      '',
+                                                ),
+                                                subtitle: Text(
+                                                  'GitHub #${remote['number']}',
+                                                ),
+                                                onTap: () => widget.onOpenUrl?.call(
+                                                  'https://github.com/$repo/issues/${remote['number']}',
+                                                ),
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                      SliverFillRemaining(
+                                        hasScrollBody: false,
+                                        child: target(cards.length, fill: true),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],

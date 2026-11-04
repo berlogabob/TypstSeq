@@ -9,6 +9,139 @@ import 'package:tylog/widgets/entity_board.dart';
 import 'package:tylog/widgets/unified_board.dart';
 
 void main() {
+  testWidgets('large columns build cards lazily and scroll to the end', (
+    tester,
+  ) async {
+    final dir = await tester.runAsync(
+      () => Directory.systemTemp.createTemp('large-board'),
+    );
+    if (dir == null) throw StateError('No temp directory');
+    addTearDown(() => dir.delete(recursive: true));
+    const entity = NoteRef(
+      id: 'p',
+      path: 'p.typ',
+      title: 'P',
+      outgoingLinks: [],
+    );
+    final index = VaultIndex(
+      notesByPath: const {'p.typ': entity},
+      backlinksByTarget: const {},
+      tasks: [
+        for (var i = 0; i < 100; i++)
+          TaskRef(id: '$i', notePath: 'p.typ', text: 'Task $i'),
+      ],
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EntityBoard(
+          entity: entity,
+          vault: Vault(dir),
+          index: index,
+          setStatus: (_, _) async {},
+          mutateNote: (_, _) async => false,
+          refreshIndex: () async => index,
+        ),
+      ),
+    );
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pump();
+    expect(find.text('Task 0'), findsOneWidget);
+    expect(find.text('Task 99', skipOffstage: false), findsNothing);
+    await tester.scrollUntilVisible(
+      find.text('Task 99'),
+      500,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const ValueKey('board-column-todo')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    expect(find.text('Task 99'), findsOneWidget);
+  });
+  testWidgets('reordering tasks persists and reloads their order', (
+    tester,
+  ) async {
+    final dir = await tester.runAsync(
+      () => Directory.systemTemp.createTemp('ordered-board'),
+    );
+    if (dir == null) throw StateError('No temp directory');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    const entity = NoteRef(
+      id: 'p',
+      path: 'p.typ',
+      title: 'P',
+      outgoingLinks: [],
+    );
+    const index = VaultIndex(
+      notesByPath: {'p.typ': entity},
+      backlinksByTarget: {},
+      tasks: [
+        TaskRef(id: 'a', notePath: 'p.typ', text: 'First task'),
+        TaskRef(id: 'b', notePath: 'p.typ', text: 'Second task'),
+      ],
+    );
+    Widget view() => MaterialApp(
+      home: EntityBoard(
+        boardId: 'order',
+        entity: entity,
+        vault: vault,
+        index: index,
+        setStatus: (_, _) async {},
+        mutateNote: (_, _) async => false,
+        refreshIndex: () async => index,
+      ),
+    );
+    Future<void> io() async {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 80)),
+      );
+      await tester.pump();
+    }
+
+    await tester.pumpWidget(view());
+    await io();
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('First task')),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.moveTo(
+      tester.getBottomLeft(find.byKey(const ValueKey('board-column-todo'))) +
+          const Offset(100, -30),
+    );
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+    for (var i = 0; i < 10; i++) {
+      await io();
+      if (await tester.runAsync(
+            () => vault.storage.exists(boardPath('order')),
+          ) ==
+          true)
+        break;
+    }
+    final saved = await tester.runAsync(
+      () => readBoard(vault.storage, 'order'),
+    );
+    expect(saved?.order['todo'], ['b', 'a']);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpWidget(view());
+    for (
+      var i = 0;
+      i < 10 && find.text('Second task').evaluate().isEmpty;
+      i++
+    ) {
+      await io();
+    }
+    expect(
+      tester.getTopLeft(find.text('Second task')).dy,
+      lessThan(tester.getTopLeft(find.text('First task')).dy),
+    );
+  });
+
   testWidgets(
     'repository setting persists and displays refreshed GitHub issues',
     (tester) async {
