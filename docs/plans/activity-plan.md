@@ -510,3 +510,4 @@ Issues found:
 - [ ] U1e-rest Polish Extensions: OLT sources, GitHub sign-in states, mounts, and remaining pack states and phone layouts.
 - [x] U1f Keep GitHub repository board controls and repository identity usable at 360 dp.
 - [ ] U1f-rest Polish remaining board states and flows: GitHub repo columns, OLT whiteboard cards, empty board, and add-card flows; review loading, errors, navigation, and phone layouts.
+- [ ] PERF1 Performance audit (user 2026-11-04): codex static report docs/audits/2026-11-04-performance.md (read-only) + Claude device measurements on P30 profile build (cold start TYLOG_STARTUP, index, frame jank, memory) -> ranked fix list.
