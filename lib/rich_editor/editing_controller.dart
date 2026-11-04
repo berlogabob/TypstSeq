@@ -9,7 +9,7 @@ class RichEditorSyntaxError implements Exception {
 }
 
 int? _richSyntaxErrorLine(String source) {
-  // Detect known task corruption and unclosed task, table, or formatting calls.
+  // Detect known task corruption and unclosed Typst calls.
   final pattern = RegExp(
     r'text\s*:\s*"(?:\\.|[^"\\])*#tylog\.ref-note\s*\(\s*"',
   );
@@ -59,9 +59,15 @@ int? _richSyntaxErrorLine(String source) {
       final end = inlineCallEnd(source, i);
       if (end != null) {
         i = end - 1;
-      } else if (source.startsWith('#strong[', i) ||
-          source.startsWith('#emph[', i)) {
-        return '\n'.allMatches(source.substring(0, i)).length + 1;
+      } else {
+        final name = RegExp(
+          r'#[A-Za-z][A-Za-z0-9_-]*(?:\.[A-Za-z][A-Za-z0-9_-]*)*',
+        ).matchAsPrefix(source, i);
+        if (name != null &&
+            name.end < source.length &&
+            (source[name.end] == '(' || source[name.end] == '[')) {
+          return '\n'.allMatches(source.substring(0, i)).length + 1;
+        }
       }
     }
   }

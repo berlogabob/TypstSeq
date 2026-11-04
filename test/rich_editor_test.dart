@@ -65,6 +65,24 @@ void main() {
     expect(saved, isEmpty);
     expect(errors.single.toString(), 'Syntax error at line 4');
   });
+  test('unclosed generic Typst call reports its source line and blocks writes', () {
+    const source = '= Day\n\n#custom(\n  value: [1, 2]';
+    final errors = <Object>[];
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: source,
+      onSourceChanged: saved.add,
+      onError: errors.add,
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    controller.value = TextEditingValue(
+      text: '${controller.text}!',
+      selection: TextSelection.collapsed(offset: controller.text.length + 1),
+    );
+    expect(saved, isEmpty);
+    expect(errors.single.toString(), 'Syntax error at line 3');
+  });
   test('formatting examples in raw text and comments remain editable', () {
     const source = '= Day\n\n```typ\n\n#strong[example\n```\n\n'
         '// #emph[example\n\nText';

@@ -434,7 +434,7 @@ Issues found:
 - [x] E1-rest Detect unclosed task calls, report their source line and offer Open Source for repair.
 - [x] E1-rest-rest Detect unclosed table calls with accurate source lines and an Open Source action.
 - [x] E1-rest-rest-rest Detect unclosed strong/emph formatting calls, with accurate source lines and an Open Source action.
-- [ ] E1-rest-rest-rest-rest Detect remaining malformed Typst that blocks rich edits, with accurate source lines and an Open Source action.
+- [x] E1-rest-rest-rest-rest Detect remaining malformed Typst that blocks rich edits, with accurate source lines and an Open Source action.
 - [ ] A24 "add vault" screen after freeze: unconfirmed cause, recheck on 5863f60
 - [x] T1 Share audio from WhatsApp/Telegram: "From" person picker (codex, spec 2026-11-04-wave21/t1)
 - [x] T2 Flaky tests: workspace_controller issues + whiteboard Tree (codex, t2)
