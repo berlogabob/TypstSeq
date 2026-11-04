@@ -21,17 +21,23 @@ Future<void> writeFileAtomic(File file, List<int> bytes) async {
   await temporary.rename(file.path);
 }
 
-/// Reject revision envelopes at note paths before touching the destination.
+/// Reject invalid UTF-8 and revision envelopes before they replace note text.
 void guardNoteWrite(String path, List<int> bytes) {
   if (!path.endsWith('.typ') ||
       path.startsWith('_system/') ||
       path.startsWith('_index/') ||
       path.startsWith('.tylog/'))
     return;
+  String text;
+  try {
+    text = utf8.decode(bytes);
+  } on FormatException {
+    stderr.writeln('Refusing invalid UTF-8 at note path: $path');
+    rethrow;
+  }
+  if (!text.trimLeft().startsWith('{')) return;
   Object? value;
   try {
-    final text = utf8.decode(bytes);
-    if (!text.trimLeft().startsWith('{')) return;
     value = jsonDecode(text);
   } on FormatException {
     return;
@@ -247,8 +253,14 @@ class LocalVaultStorage extends VaultStorage {
     _appends[target] = done.future;
     try {
       if (previous != null) await previous;
-      final marker = await markIndexDirty(path);
       final file = File(target);
+      if (path.endsWith('.typ')) {
+        final existing = await file.exists()
+            ? await file.readAsBytes()
+            : <int>[];
+        guardNoteWrite(path, [...existing, ...bytes]);
+      }
+      final marker = await markIndexDirty(path);
       await file.parent.create(recursive: true);
       final sink = file.openWrite(mode: FileMode.append);
       try {

@@ -50,6 +50,62 @@ void main() {
     },
   );
 
+  test(
+    'note writes and appends reject invalid UTF-8 and preserve legacy text',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('tylog_guard_extra_');
+      addTearDown(() => dir.delete(recursive: true));
+      final storage = LocalVaultStorage(dir);
+      const path = 'notes/legacy.typ';
+      const legacy = 'A headerless legacy note with {braces}.\n';
+      await storage.writeText(path, legacy);
+      await expectLater(storage.writeBytes(path, [255]), throwsFormatException);
+      expect(await storage.readText(path), legacy);
+      const other = 'notes/append.typ';
+      await expectLater(
+        storage.appendBytes(other, [255]),
+        throwsFormatException,
+      );
+      expect(await storage.exists(other), isFalse);
+      await storage.writeText(other, '{"legacy": true}');
+      expect(await storage.readText(other), '{"legacy": true}');
+      await storage.appendBytes(path, utf8.encode('More text.\n'));
+      expect(
+        await storage.readText(path),
+        '$legacy'
+        'More text.\n',
+      );
+    },
+  );
+
+  test('SAF append validates note bytes before sending the append', () async {
+    final calls = <String>[];
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(AndroidTreeVaultStorage.channel, (
+      call,
+    ) async {
+      calls.add(call.method);
+      if (call.method == 'exists') return false;
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(
+        AndroidTreeVaultStorage.channel,
+        null,
+      ),
+    );
+    final storage = AndroidTreeVaultStorage(
+      uri: 'content://test/tree',
+      name: 'Test',
+    );
+    await expectLater(
+      storage.appendBytes('notes/a.typ', [255]),
+      throwsFormatException,
+    );
+    expect(calls, ['exists']);
+  });
+
   test('vault paths reject aliases and control characters', () {
     for (final path in ['assets/./a.bin', 'assets/../a.bin', 'assets/a\nbin']) {
       expect(() => validateVaultPath(path), throwsArgumentError);

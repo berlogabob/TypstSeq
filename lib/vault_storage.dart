@@ -214,6 +214,10 @@ class AndroidTreeVaultStorage extends VaultStorage {
 
   @override
   Future<void> appendBytes(String path, List<int> bytes) async {
+    if (path.endsWith('.typ')) {
+      final existing = await exists(path) ? await readBytes(path) : <int>[];
+      guardNoteWrite(path, [...existing, ...bytes]);
+    }
     final marker = await markIndexDirty(path);
     try {
       await invoke(
