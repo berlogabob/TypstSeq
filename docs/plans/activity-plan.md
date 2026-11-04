@@ -424,3 +424,11 @@ Issues found:
 - [x] Enrich pending suggestions only in Incoming (grouped per day, accept/reject markers/tags/mentions, decisions logged as before); daily page: no EnrichReview section, small 'N suggestions' chip -> Incoming filtered to that day
 - [ ] DEFERRED: Auto-entities block (// tylog:auto-entities, 19 dailies) stays in files; editor renders it as one folded line (codex declined: needs read-only block preserving offsets; base it on TyLogBlockStyle.protected, careful editor task) 'Auto: IADE · #tag' (byte-exact round-trip, no file rewrite)
 - [x] OpenLabTwin moved into Settings > Extensions (sign-in, status, refresh, last error); old OpenLabTwin settings entry removed; Extensions = folders, GitHub, OpenLabTwin
+
+## Wave 21 (2026-11-04, A24 feedback)
+- [x] Incoming offered people who exist (kind note, case forms, Cyrillic, surname) — 8ccb5bd
+- [x] Incoming freeze: per-mention NFD folding over 1356 pages (562 s) — cached; 7 days per page — 5863f60
+- [x] Audio language swap: Studio first-seconds guess (pt) beat the text — text decides — 5863f60
+- [ ] A24 "add vault" screen after freeze: unconfirmed cause, recheck on 5863f60
+- [ ] Share audio from WhatsApp/Telegram: no sender in the intent; add "From" person picker on share
+- [ ] Re-process PTT-20261104-WA0001 after the worker fix (user, Re-process)
