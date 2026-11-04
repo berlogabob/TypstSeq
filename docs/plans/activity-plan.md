@@ -523,7 +523,8 @@ Issues found:
 - [x] PF4-rest Index journal task rows by note and task ID (audit #5).
 - [ ] PF4-rest-rest Bound and invalidate the journal source cache without losing visible edits (audit #12), and measure journal scrolling, task rendering, and memory on device (audit #4, #5, #12).
 - [x] PF5 Cache entity timeline entries per index and defer rebuilding them while collapsed (audit #6).
-- [ ] PF5-rest Reuse the workspace resolver and index task references by entity; make merge preview verification scalable while preserving unsupported-reference and concurrent-change checks (audit #6, #8). Measure timeline CPU and frames, and merge preview reads, bytes, time, CPU and heap on app-local and SAF fixtures.
+- [x] PF5-rest Reuse the workspace resolver when opening entity timelines, and refresh entries if the resolver changes.
+- [ ] PF5-rest-rest Index task references by entity; make merge preview verification scalable while preserving unsupported-reference and concurrent-change checks (audit #6, #8). Measure timeline CPU and frames, and merge preview reads, bytes, time, CPU and heap on app-local and SAF fixtures.
 - [x] PF6 Route manual rebuild progress through the narrow notifier and throttle updates (audit #14).
 - [ ] PF6-rest Load vendored packages after the editor is usable while preserving compile readiness and vault-switch cancellation (audit #11); measure startup and rebuild notifications, frames, and resource use on device (audit #11, #14).
 - [x] PF0b Skip issue-marker discovery when markers are configured, and skip issue matching when none exist. P30 profile cold starts, 2026-11-04, 10,067 notes and two parsed: scan 30.9 → 27.8 s; scan-finalize 19.7 → 18.0 s (single runs; timing varies).

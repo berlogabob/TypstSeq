@@ -6,6 +6,50 @@ import 'package:tylog_core/tylog_core.dart';
 import 'package:tylog/widgets/entity_timeline.dart';
 
 void main() {
+  testWidgets('uses the supplied resolver and refreshes when it changes', (
+    tester,
+  ) async {
+    const entity = NoteRef(
+      id: 'p',
+      path: 'p.typ',
+      title: 'Person',
+      kind: 'person',
+      outgoingLinks: [],
+    );
+    final index = VaultIndex(
+      notesByPath: const {'p.typ': entity},
+      backlinksByTarget: const {},
+      tasks: const [
+        TaskRef(id: 't', notePath: 'p.typ', text: 'Call', assignees: ['alias']),
+      ],
+    );
+    var resolver = LinkResolver(const []);
+    Widget build() => MaterialApp(
+      home: Scaffold(
+        body: EntityTimeline(
+          entity: entity,
+          index: index,
+          resolver: resolver,
+          onOpenPath: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpWidget(build());
+    expect(find.text('Call'), findsNothing);
+    resolver = LinkResolver(const [
+      NoteRef(
+        id: 'p',
+        path: 'p.typ',
+        title: 'Person',
+        kind: 'person',
+        aliases: ['alias'],
+        outgoingLinks: [],
+      ),
+    ]);
+    await tester.pumpWidget(build());
+    expect(find.text('Call'), findsOneWidget);
+  });
+
   testWidgets('reuses entries and defers changed index while collapsed', (
     tester,
   ) async {

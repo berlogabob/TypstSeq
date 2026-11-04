@@ -6209,6 +6209,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       builder: (context) => EntityTimeline(
                         entity: currentNote,
                         index: index!,
+                        resolver: workspace.linkResolver,
                         onOpenPath: (path) {
                           Navigator.pop(context);
                           _openPath(path);

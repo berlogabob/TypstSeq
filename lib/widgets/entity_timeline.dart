@@ -10,11 +10,13 @@ class EntityTimeline extends StatefulWidget {
     super.key,
     required this.entity,
     required this.index,
+    this.resolver,
     required this.onOpenPath,
   });
 
   final NoteRef entity;
   final VaultIndex index;
+  final LinkResolver? resolver;
   final ValueChanged<String> onOpenPath;
 
   @override
@@ -31,14 +33,15 @@ class _EntityTimelineState extends State<EntityTimeline> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.entity.path != widget.entity.path) _limit = 20;
     if (oldWidget.entity.path != widget.entity.path ||
-        !identical(oldWidget.index, widget.index)) {
+        !identical(oldWidget.index, widget.index) ||
+        !identical(oldWidget.resolver, widget.resolver)) {
       _entries = null;
     }
   }
 
   List<({String day, String title, String path, String kind})> _buildEntries() {
     final index = widget.index;
-    final resolver = LinkResolver(index.notesByPath.values);
+    final resolver = widget.resolver ?? LinkResolver(index.notesByPath.values);
     final entries = <({String day, String title, String path, String kind})>[];
     String day(String? value, NoteRef? note) {
       final date =
