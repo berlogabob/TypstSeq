@@ -11,7 +11,27 @@ void main() {
       'Audio proposals',
       'OCR rows',
       'OpenLabTwin bookings',
+      'Vault health',
     ]);
+  });
+
+  test('health queue reads only the latest dated report', () async {
+    final dir = await Directory.systemTemp.createTemp('health-review');
+    addTearDown(() => dir.delete(recursive: true));
+    final storage = LocalVaultStorage(dir);
+    await storage.writeText(
+      '_system/health/2026-11-03.json',
+      '{"issues":[{"path":"notes/old.typ","code":"unreadable"}]}',
+    );
+    await storage.writeText(
+      '_system/health/2026-11-04.json',
+      '{"issues":[{"path":"notes/new.typ","code":"missing-note-header"},{"path":"../outside.typ","code":"unreadable"}]}',
+    );
+    await storage.writeText('_system/health/not-a-date.json', '{"issues":[]}');
+    final issues = await loadHealthFindings(storage);
+    expect(issues, hasLength(1));
+    expect(issues.single.path, 'notes/new.typ');
+    expect(issues.single.code, 'missing-note-header');
   });
 
   test('audio proposals load and decisions hide them', () async {

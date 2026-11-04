@@ -452,7 +452,14 @@ extension _EnrichIncoming on _HomeScreenState {
       return views;
     }
 
-    Future<(Map<String, _EnrichView>, List<OcrReviewRow>, List<AudioProposal>)>
+    Future<
+      (
+        Map<String, _EnrichView>,
+        List<OcrReviewRow>,
+        List<AudioProposal>,
+        List<HealthFinding>,
+      )
+    >
     loadQueue() async => (
       await load(),
       day == null
@@ -465,6 +472,7 @@ extension _EnrichIncoming on _HomeScreenState {
       day == null
           ? await loadAudioProposals(v.storage, await loadDecisions(v.storage))
           : <AudioProposal>[],
+      day == null ? await loadHealthFindings(v.storage) : <HealthFinding>[],
     );
     var future = loadQueue();
     if (!mounted) return;
@@ -495,6 +503,7 @@ extension _EnrichIncoming on _HomeScreenState {
                       Map<String, _EnrichView>,
                       List<OcrReviewRow>,
                       List<AudioProposal>,
+                      List<HealthFinding>,
                     )
                   >(
                     future: future,
@@ -502,6 +511,7 @@ extension _EnrichIncoming on _HomeScreenState {
                       final views = snapshot.data?.$1;
                       final rows = snapshot.data?.$2 ?? <OcrReviewRow>[];
                       final audio = snapshot.data?.$3 ?? <AudioProposal>[];
+                      final health = snapshot.data?.$4 ?? <HealthFinding>[];
                       final bookings = day == null
                           ? oltIncomingOnDay(
                               _oltCache,
@@ -522,9 +532,40 @@ extension _EnrichIncoming on _HomeScreenState {
                           else if (views.isEmpty &&
                               rows.isEmpty &&
                               audio.isEmpty &&
+                              health.isEmpty &&
                               bookings.isEmpty)
                             const ListTile(title: Text('No suggestions')),
                           for (final type in reviewQueueTypes) ...[
+                            if (type == ReviewQueueType.health &&
+                                health.isNotEmpty) ...[
+                              ListTile(title: Text(type.label)),
+                              for (final finding in health)
+                                ListTile(
+                                  title: Text(finding.path),
+                                  subtitle: Text(finding.code),
+                                  trailing: Wrap(
+                                    children: [
+                                      TextButton(
+                                        onPressed: () async {
+                                          Navigator.of(context).pop();
+                                          await _openNote(finding.path);
+                                        },
+                                        child: const Text('Open'),
+                                      ),
+                                      TextButton(
+                                        onPressed: () async {
+                                          Navigator.of(context).pop();
+                                          if (await _openNote(finding.path) &&
+                                              mounted) {
+                                            _setEditorMode('source');
+                                          }
+                                        },
+                                        child: const Text('Open Source'),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
                             if (type == ReviewQueueType.mentions &&
                                 views != null &&
                                 views.isNotEmpty) ...[

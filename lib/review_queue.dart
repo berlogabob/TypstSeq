@@ -6,13 +6,65 @@ enum ReviewQueueType {
   mentions('Enrich mentions'),
   audio('Audio proposals'),
   ocr('OCR rows'),
-  bookings('OpenLabTwin bookings');
+  bookings('OpenLabTwin bookings'),
+  health('Vault health');
 
   const ReviewQueueType(this.label);
   final String label;
 }
 
 const reviewQueueTypes = ReviewQueueType.values;
+
+class HealthFinding {
+  const HealthFinding(this.path, this.code);
+  final String path, code;
+}
+
+Future<List<HealthFinding>> loadHealthFindings(VaultStorage storage) async {
+  const root = '_system/health';
+  if (!await storage.exists(root)) return [];
+  final reports =
+      (await storage.list(path: root))
+          .where(
+            (file) =>
+                !file.isDirectory &&
+                RegExp(
+                  r'^_system/health/\d{4}-\d{2}-\d{2}\.json$',
+                ).hasMatch(file.path),
+          )
+          .map((file) => file.path)
+          .toList()
+        ..sort();
+  if (reports.isEmpty) return [];
+  final report = jsonDecode(await storage.readText(reports.last)) as Map;
+  final findings = <HealthFinding>[];
+  for (final issue in report['issues'] as List) {
+    if (issue is! Map || issue['path'] is! String || issue['code'] is! String)
+      continue;
+    final path = issue['path'] as String;
+    final parts = path.split('/');
+    if (parts.length < 2 ||
+        parts.any(
+          (part) =>
+              part.isEmpty ||
+              part == '.' ||
+              part == '..' ||
+              part.contains('\\'),
+        ) ||
+        !const {
+          'daily',
+          'notes',
+          'projects',
+          'articles',
+          'screenshots',
+          'ext',
+        }.contains(parts.first) ||
+        !path.endsWith('.typ'))
+      continue;
+    findings.add(HealthFinding(path, issue['code'] as String));
+  }
+  return findings;
+}
 
 class OcrReviewRow {
   const OcrReviewRow(this.id, this.dataset, this.date, this.fields);

@@ -150,6 +150,38 @@ Future<void> _openIncoming(WidgetTester tester) async {
 }
 
 void main() {
+  for (final sourceMode in [false, true]) {
+    testWidgets(
+      'Incoming opens a health finding ${sourceMode ? 'in source mode' : 'as a note'}',
+      (tester) async {
+        final (home, storage) = await _mount(tester);
+        await storage.writeText(
+          '_system/health/2026-11-04.json',
+          jsonEncode({
+            'issues': [
+              {'path': 'notes/kz.typ', 'code': 'missing-note-header'},
+            ],
+          }),
+        );
+        Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
+        await _pump(tester);
+        await tester.tap(find.textContaining('More').first);
+        await _pump(tester);
+        await tester.tap(find.byKey(const ValueKey('incoming-open')));
+        await _pump(tester);
+        await tester.ensureVisible(find.text('Vault health'));
+        expect(find.text('missing-note-header'), findsOneWidget);
+        final action = find.text(sourceMode ? 'Open Source' : 'Open');
+        await tester.ensureVisible(action);
+        await tester.tap(action);
+        await _pump(tester);
+        expect(home.workspace.note, 'notes/kz.typ');
+        expect(home.mode, sourceMode ? 'source' : 'normal');
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+  }
+
   testWidgets('opening enrichment does not change the open note', (
     tester,
   ) async {
