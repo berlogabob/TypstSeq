@@ -134,6 +134,21 @@ class GitHubClient {
             ),
           )
           as Map<String, dynamic>;
+  Future<Map<String, dynamic>> graphQL(
+    String query,
+    Map<String, dynamic> variables,
+  ) async {
+    final result = await _json(
+      'POST',
+      _uri('/graphql'),
+      body: {'query': query, 'variables': variables},
+    );
+    if (result['errors'] != null) {
+      throw StateError('GitHub GraphQL: ${result['errors']}');
+    }
+    return result['data'] as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> currentUser() => _json('GET', _uri('/user'));
 
   Future<String> defaultBranch(String repo) async =>

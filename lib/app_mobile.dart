@@ -1,3 +1,4 @@
+import 'widgets/github_project_board.dart';
 import 'reading_log.dart';
 import 'namespace_migration.dart';
 import 'dart:async';
@@ -5571,9 +5572,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       'library' => LibraryView(
         boardStorage: v?.storage,
+        githubClient: workspace.githubClient,
         boardDeviceId: vaultRegistry?.deviceId ?? 'unknown',
         onOpenColumns: (context, board) {
           if (v == null) return;
+          if (board.scopeExtra['github_project'] is Map) {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => GitHubProjectBoard(
+                  board: board,
+                  storage: v.storage,
+                  client: workspace.githubClient,
+                  deviceId: vaultRegistry?.deviceId ?? 'unknown',
+                ),
+              ),
+            );
+            return;
+          }
           final boardIndex =
               index ?? const VaultIndex(notesByPath: {}, backlinksByTarget: {});
           final entityId = board.scopeEntity ?? board.id;

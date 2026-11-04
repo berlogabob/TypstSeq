@@ -10,6 +10,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:tylog_core/tylog_core.dart';
 
+import '../github/github_client.dart';
+import '../github/github_projects.dart';
 import 'constants.dart';
 import 'note_picker_sheet.dart';
 
@@ -21,8 +23,10 @@ class BoardsTab extends StatefulWidget {
     this.imageResolver,
     this.onOpenPath,
     this.onOpenColumns,
+    this.githubClient,
     this.deviceId = 'unknown',
   });
+  final Future<GitHubClient> Function()? githubClient;
   final void Function(BuildContext, Board)? onOpenColumns;
   final String deviceId;
   final VaultStorage storage;
@@ -80,9 +84,65 @@ class _BoardsTabState extends State<BoardsTab> {
     if (mounted) setState(() => boards = load());
   }
 
+  Future<void> newProjectBoard() async {
+    try {
+      final projects = await GitHubProjects(
+        await widget.githubClient!(),
+      ).fetchProjectsFromGitHub();
+      if (!mounted) return;
+      final project = await showDialog<GitHubProject>(
+        context: context,
+        builder: (context) => SimpleDialog(
+          title: const Text('Choose a GitHub project'),
+          children: [
+            for (final project in projects)
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(context, project),
+                child: Text(
+                  '${project.owner} · ${project.title} (#${project.number})',
+                ),
+              ),
+            if (projects.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('No projects found'),
+              ),
+          ],
+        ),
+      );
+      if (project == null || !mounted) return;
+      await open(
+        Board(
+          id: 'github-${DateTime.now().microsecondsSinceEpoch}',
+          title: project.title,
+          scopeExtra: {
+            'github_project': {
+              'owner': project.owner,
+              'number': project.number,
+            },
+          },
+        ),
+        create: true,
+      );
+      if (mounted) setState(() => boards = load());
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not load GitHub projects: $error')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Column(
     children: [
+      if (widget.githubClient != null)
+        TextButton.icon(
+          onPressed: newProjectBoard,
+          icon: const Icon(Icons.add),
+          label: const Text('New GitHub project board'),
+        ),
       Align(
         alignment: Alignment.centerRight,
         child: TextButton.icon(

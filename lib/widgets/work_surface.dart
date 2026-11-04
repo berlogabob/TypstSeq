@@ -1,3 +1,4 @@
+import '../github/github_client.dart';
 import 'dart:async';
 import 'package:tylog_core/tylog_core.dart' show VaultStorage, Board;
 import 'whiteboard.dart';
@@ -509,10 +510,12 @@ class LibraryView extends StatelessWidget {
     this.shelfPrefs = const {},
     this.onShelfPrefsChanged,
     this.boardStorage,
+    this.githubClient,
     this.onOpenColumns,
     this.boardDeviceId = 'unknown',
   });
 
+  final Future<GitHubClient> Function()? githubClient;
   final VaultStorage? boardStorage;
   final void Function(BuildContext, Board)? onOpenColumns;
   final String boardDeviceId;
@@ -645,6 +648,7 @@ class LibraryView extends StatelessWidget {
                   if (boardStorage != null)
                     BoardsTab(
                       storage: boardStorage!,
+                      githubClient: githubClient,
                       onOpenColumns: onOpenColumns,
                       deviceId: boardDeviceId,
                       index: index,
