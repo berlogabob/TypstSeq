@@ -153,8 +153,9 @@ String _renameReferences(
   String source,
   Set<String> targets,
   String oldTitle,
-  String title,
-) {
+  String title, {
+  String? labelTitle,
+}) {
   final firstArgument = RegExp(
     r'^#tylog\.ref-note\s*\(\s*("((?:\\.|[^"\\])*)")',
   );
@@ -173,7 +174,7 @@ String _renameReferences(
       replacement = replacement.replaceRange(
         content.end - content[1]!.length - 1,
         content.end - 1,
-        escapeMarkup(title),
+        escapeMarkup(labelTitle ?? title),
       );
     }
     replacement = replacement.replaceRange(

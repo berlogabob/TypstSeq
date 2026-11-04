@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:tylog_core/tylog_core.dart' show VaultIndex, findDuplicates;
+import 'package:tylog_core/tylog_core.dart' show findDuplicates, NoteRef;
+import '../../workspace_controller.dart';
 import '../app_icons.dart';
 import '../ds/app_tile.dart';
 import '../settings_sheet.dart';
@@ -26,7 +27,7 @@ class MaintenancePage extends StatelessWidget {
             : () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (_) =>
-                      _DuplicatesPage(index: settings.workspace!.index!),
+                      _DuplicatesPage(workspace: settings.workspace!),
                 ),
               ),
       ),
@@ -81,12 +82,72 @@ class MaintenancePage extends StatelessWidget {
   );
 }
 
-class _DuplicatesPage extends StatelessWidget {
-  const _DuplicatesPage({required this.index});
-  final VaultIndex index;
+class _DuplicatesPage extends StatefulWidget {
+  const _DuplicatesPage({required this.workspace});
+  final WorkspaceController workspace;
+
+  @override
+  State<_DuplicatesPage> createState() => _DuplicatesPageState();
+}
+
+class _DuplicatesPageState extends State<_DuplicatesPage> {
+  Future<void> merge(List<NoteRef> group, NoteRef loser) async {
+    final survivor = await showDialog<NoteRef>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text('Keep which page instead of ${loser.title}?'),
+        children: [
+          for (final n in group.where((n) => n.path != loser.path))
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, n),
+              child: Text('${n.title} · ${n.path}'),
+            ),
+        ],
+      ),
+    );
+    if (survivor == null || !mounted) return;
+    try {
+      final preview = await widget.workspace.previewDuplicateMerge(
+        survivor.path,
+        loser.path,
+      );
+      if (!mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Preview merge'),
+          content: SingleChildScrollView(
+            child: Text(
+              'Keep: ${survivor.path}\nRemove: ${loser.path}\n\nOnly indexed #tylog.ref-note links are updated. Check other link forms before merging.\n\nFiles to change:\n${preview.files.join('\n')}',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Merge'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+      await widget.workspace.mergeDuplicate(preview);
+      if (mounted) setState(() {});
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Merge could not finish: $error')),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final index = widget.workspace.index!;
     final groups = findDuplicates(index);
     return Scaffold(
       appBar: AppBar(title: const Text('Duplicates')),
@@ -100,6 +161,10 @@ class _DuplicatesPage extends StatelessWidget {
                     for (final note in groups[i])
                       ListTile(
                         title: Text(note.title),
+                        trailing: TextButton(
+                          onPressed: () => merge(groups[i], note),
+                          child: const Text('Merge…'),
+                        ),
                         subtitle: Text(
                           '${note.path} · ${(index.backlinksByTarget[note.path] ?? const []).length} backlinks',
                         ),

@@ -14,6 +14,8 @@ import 'package:tylog_core/tylog_core.dart'
         CompositeVaultStorage;
 
 import 'package:tylog_core/graph.dart';
+import 'package:tylog_core/tylog_core.dart'
+    show Decision, decisionsDir, encodeDecisions;
 
 import 'calendar_feeds.dart';
 import 'connectors/connector.dart';
@@ -47,6 +49,7 @@ import 'vault_worker.dart';
 import 'package:tylog_core/values.dart';
 
 part 'workspace_note_rename.dart';
+part 'workspace_note_merge.dart';
 
 class WorkspaceSyncNotConfigured implements Exception {
   const WorkspaceSyncNotConfigured();
@@ -1555,6 +1558,14 @@ class WorkspaceController extends ChangeNotifier {
     _renameTail = operation.then<void>((_) {});
     return operation;
   }
+
+  Future<DuplicateMergePreview> previewDuplicateMerge(
+    String survivor,
+    String loser,
+  ) => _previewDuplicateMerge(survivor, loser);
+
+  Future<void> mergeDuplicate(DuplicateMergePreview preview) =>
+      _mergeDuplicate(preview);
 
   Future<bool> deleteNote(String path) {
     final opened = vault;
