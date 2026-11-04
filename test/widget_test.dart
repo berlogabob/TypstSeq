@@ -3313,6 +3313,61 @@ void main() {
     });
   }
 
+  for (final keyboardOpen in [false, true]) {
+    for (final headerless in [false, true]) {
+      testWidgets(
+        'timestamp reveals caret with keyboard ${keyboardOpen ? "open" : "closed"}, ${headerless ? "headerless" : "daily template"}',
+        (tester) async {
+          tester.view.physicalSize = const Size(400, 800);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          addTearDown(tester.view.resetViewInsets);
+          final storage = _FailingStorage();
+          final vault = Vault.withStorage(storage);
+          final path = await vault.todayNote(DateTime.now());
+          final template = await vault.readText(path);
+          final source =
+              '${headerless ? '' : template}\n\n${List.generate(80, (i) => 'Line $i').join('\n\n')}\n\n== Reading\n\n${List.generate(30, (i) => 'Book $i').join('\n\n')}';
+          await storage.writeText(path, source);
+          await tester.pumpWidget(
+            const MaterialApp(home: HomeScreen(startup: _emptyStartup)),
+          );
+          await tester.pumpAndSettle();
+          final dynamic home = tester.state(find.byType(HomeScreen));
+          home.workspace.vault = vault;
+          home.workspace.replaceNote(path, source);
+          home.sourceController.text = source;
+          home.richController.loadSource(source);
+          home.workspace.notifyListeners();
+          await tester.pump(const Duration(milliseconds: 300));
+          if (keyboardOpen) {
+            await tester.tap(find.byKey(const Key('rich-journal-editor')));
+            tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+            await tester.pump(const Duration(milliseconds: 300));
+          }
+          await tester.tap(find.byTooltip('Timestamped capture'));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 500));
+          await tester.pump(const Duration(milliseconds: 500));
+          final editable = tester
+              .state<EditableTextState>(find.byType(EditableText))
+              .renderEditable;
+          final caret = editable.getLocalRectForCaret(
+            home.richController.selection.extent,
+          );
+          expect(
+            home.richController.selection.baseOffset,
+            home.richController.text.indexOf('•') + 8,
+          );
+          expect(caret.top, greaterThanOrEqualTo(0));
+          expect(caret.bottom, lessThanOrEqualTo(editable.size.height));
+          await tester.pumpWidget(const SizedBox());
+        },
+      );
+    }
+  }
+
   testWidgets('timestamp capture retains the invisible daily template', (
     tester,
   ) async {

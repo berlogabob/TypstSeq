@@ -990,8 +990,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           );
       sourceController.text = workspace.source;
       if (changed) {
+        final oldText = richController.text;
+        final oldSelection = richController.selection;
         richController.foldScope = note;
         richController.loadSource(workspace.source);
+        if (oldSelection.isValid && richController.text == oldText) {
+          richController.selection = oldSelection;
+        }
       }
     }
     if (_editorNote != (vault, note)) {
@@ -1767,7 +1772,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       richController.appendTimestamp(DateTime.now());
       setState(() => primaryDestination = 0);
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _captureFocus.requestFocus();
+        if (!mounted || note != path) return;
+        _captureFocus.requestFocus();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || note != path) return;
+          final context = _captureFocus.context;
+          final editable = context
+              ?.findAncestorStateOfType<EditableTextState>()
+              ?.renderEditable;
+          final scroll = context
+              ?.findAncestorWidgetOfExactType<TextField>()
+              ?.scrollController;
+          if (editable == null || scroll == null || !scroll.hasClients) return;
+          final caret = editable.getLocalRectForCaret(
+            richController.selection.extent,
+          );
+          scroll.jumpTo(
+            (scroll.offset + caret.top - editable.size.height / 2).clamp(
+              0.0,
+              scroll.position.maxScrollExtent,
+            ),
+          );
+        });
+        WidgetsBinding.instance.ensureVisualUpdate();
       });
       return true;
     } catch (error) {

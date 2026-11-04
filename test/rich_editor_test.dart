@@ -272,6 +272,20 @@ void main() {
   );
 
   group('timestamp', () {
+    test('places caret in the timestamp before Reading', () {
+      final controller = TyLogEditingController(
+        source: 'Text\n\n== Reading\n\nBook',
+        onSourceChanged: (_) {},
+        onError: (error) => fail('$error'),
+        onProtectedTap: (_) {},
+      );
+      addTearDown(controller.dispose);
+      controller.appendTimestamp(DateTime(2026, 10, 5, 9, 38));
+      expect(
+        controller.selection.baseOffset,
+        controller.text.indexOf('09:38') + 6,
+      );
+    });
     String stamp(String body) {
       final controller = TyLogEditingController(
         source: '${_source.trimRight()}\n\n$body',
