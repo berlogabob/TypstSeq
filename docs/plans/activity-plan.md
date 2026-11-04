@@ -510,4 +510,11 @@ Issues found:
 - [ ] U1e-rest Polish Extensions: OLT sources, GitHub sign-in states, mounts, and remaining pack states and phone layouts.
 - [x] U1f Keep GitHub repository board controls and repository identity usable at 360 dp.
 - [ ] U1f-rest Polish remaining board states and flows: GitHub repo columns, OLT whiteboard cards, empty board, and add-card flows; review loading, errors, navigation, and phone layouts.
-- [ ] PERF1 Performance audit (user 2026-11-04): codex static report docs/audits/2026-11-04-performance.md (read-only) + Claude device measurements on P30 profile build (cold start TYLOG_STARTUP, index, frame jank, memory) -> ranked fix list.
+- [x] PERF1 Performance audit (user 2026-11-04): codex static report docs/audits/2026-11-04-performance.md (read-only) + Claude device measurements on P30 profile build (cold start TYLOG_STARTUP, index, frame jank, memory) -> ranked fix list.
+- [ ] PF0 (P30 measured, build 38b1a7d, 10067 notes) Every app start runs a background rescan of 31-37 s although only 2 notes parse: scan-finalize 18.1 s, index-check 10.9 s (jsonEncode(previous.tasks/problems/issues/issueLines) == jsonEncode(index...) over whole lists), load-index 3.9 s, list-stat 2.3 s, communities 2.2 s, validate 1.8-2.7 s. Cold start itself is fine (activity ~1 s, today readable 0.47 s). Fix index-check (compare per changed note / revision counters, never whole-list jsonEncode) and find what scan-finalize does at 18 s for 2 changed notes; target < 5 s total. Measure with TYLOG_STARTUP stageMillis on the P30 before/after.
+- [ ] PF1 Board ordering quadratic + eager card layout (audit #1, #13, #15)
+- [ ] PF2 Incoming work not bounded by the 7-day limit (audit #2, #7)
+- [ ] PF3 Mention matching per mention over all entities on UI isolate (audit #3, #16)
+- [ ] PF4 Journal sorts whole daily index on scroll; task rows search whole task index; source cache unbounded (audit #4, #5, #12)
+- [ ] PF5 Entity timeline computes while collapsed; merge preview reads every note (audit #6, #8)
+- [ ] PF6 Rebuild progress notifies whole workspace; startup waits for vendored package files (audit #14, #11)
