@@ -282,14 +282,18 @@ class GitHubClient {
     String repo,
     int number,
     String column,
-    List<String> labels,
-  ) async {
+    List<String> labels, {
+    String? currentColumn,
+  }) async {
     final path = '/repos/${_repo(repo)}/issues/$number';
-    final result = await _json(
-      'PATCH',
-      _uri(path),
-      body: {'state': column == 'done' ? 'closed' : 'open'},
-    );
+    final result =
+        currentColumn != null && (currentColumn == 'done') == (column == 'done')
+        ? <String, dynamic>{}
+        : await _json(
+            'PATCH',
+            _uri(path),
+            body: {'state': column == 'done' ? 'closed' : 'open'},
+          );
     if (column == 'doing' && !labels.contains('doing')) {
       await _request(
         'POST',

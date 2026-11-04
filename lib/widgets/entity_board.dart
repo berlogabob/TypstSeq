@@ -191,7 +191,18 @@ class _EntityBoardState extends State<EntityBoard> {
               issue.githubNumber!,
               column,
               labels,
+              currentColumn: current,
             );
+            final actual = await client.issue(repository, issue.githubNumber!);
+            target = _remoteColumn(actual);
+            if (target != column) {
+              await _recordConflict(
+                repository,
+                issue.githubNumber!,
+                target,
+                'attempted $column; status changed during move',
+              );
+            }
           } catch (error) {
             final actual = await client.issue(repository, issue.githubNumber!);
             target = _remoteColumn(actual);
@@ -359,7 +370,13 @@ class _EntityBoardState extends State<EntityBoard> {
             .whereType<String>()
             .toList();
         try {
-          await client.updateIssueColumn(repository, number, column, labels);
+          await client.updateIssueColumn(
+            repository,
+            number,
+            column,
+            labels,
+            currentColumn: _remoteColumn(current),
+          );
         } catch (error) {
           final actual = await client.issue(repository, number);
           await _recordConflict(

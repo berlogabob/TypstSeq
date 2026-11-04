@@ -853,8 +853,9 @@ class _FakeGitHub extends GitHubClient {
     String repo,
     int number,
     String column,
-    List<String> labels,
-  ) async {
+    List<String> labels, {
+    String? currentColumn,
+  }) async {
     if (failAfterReopen) {
       failAfterReopen = false;
       if (number == 42) {

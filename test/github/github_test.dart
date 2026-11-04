@@ -83,6 +83,33 @@ void main() {
     expect(labels, {'bug', 'concurrent'});
   });
 
+  test(
+    'moving between open columns does not reopen a concurrently closed issue',
+    () async {
+      var state =
+          'closed'; // GitHub changed after the board read an open issue.
+      final labels = <String>{};
+      server.listen((request) async {
+        final body = await utf8.decoder.bind(request).join();
+        if (request.method == 'PATCH') {
+          state = jsonDecode(body)['state'] as String;
+          request.response.write('{}');
+        } else if (request.method == 'POST') {
+          labels.addAll((jsonDecode(body)['labels'] as List).cast<String>());
+          request.response.write('[]');
+        }
+        await request.response.close();
+      });
+      await GitHubClient(
+        null,
+        http,
+        base,
+      ).updateIssueColumn('a/b', 42, 'doing', [], currentColumn: 'todo');
+      expect(state, 'closed');
+      expect(labels, contains('doing'));
+    },
+  );
+
   test('issue search encodes spaces in the query', () async {
     server.listen((request) async {
       expect(request.uri.path, '/search/issues');
