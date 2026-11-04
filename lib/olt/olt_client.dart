@@ -85,11 +85,19 @@ class OltClient {
   Future<void> refresh() async {
     final current = await session;
     if (current == null) throw StateError('Not signed in');
-    final result = await _send(
+    final response = await _request(
       'POST',
       Uri.parse('$_url/auth/v1/token?grant_type=refresh_token'),
-      {'refresh_token': current.refresh},
+      {'apikey': _anonKey, 'Content-Type': 'application/json'},
+      jsonEncode({'refresh_token': current.refresh}),
     );
+    if (response.statusCode == 400 ||
+        response.statusCode == 401 ||
+        response.statusCode == 403) {
+      await signOut();
+      throw OltSignInNeeded();
+    }
+    final result = (await _decode(response) as Map).cast<String, dynamic>();
     final user = result['user'] as Map<String, dynamic>?;
     await _saveSession(
       _sessionFrom(result, user?['email'] as String? ?? current.email),

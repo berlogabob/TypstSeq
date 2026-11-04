@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../connectors/connector.dart';
 import '../models.dart';
+import '../olt/olt_cache.dart';
 
 class ExternalEntityPage extends StatelessWidget {
   const ExternalEntityPage({
@@ -9,8 +10,12 @@ class ExternalEntityPage extends StatelessWidget {
     required this.entity,
     required this.notes,
     required this.onOpen,
+    this.offlineSince,
+    this.signedOut = false,
   });
 
+  final DateTime? offlineSince;
+  final bool signedOut;
   final ExternalEntity entity;
   final List<NoteRef> notes;
   final ValueChanged<String> onOpen;
@@ -33,6 +38,17 @@ class ExternalEntityPage extends StatelessWidget {
             title: Text('OpenLabTwin'),
             subtitle: Text('Read only'),
           ),
+          if (entity.kind == 'place' && (offlineSince != null || signedOut))
+            ListTile(
+              dense: true,
+              subtitle: Text(
+                [
+                  if (signedOut) 'Signed out',
+                  if (offlineSince != null)
+                    'offline since ${formatOltTime(offlineSince!)}',
+                ].join(' · '),
+              ),
+            ),
           const ListTile(title: Text('Children')),
           for (final child in children.where(
             (note) => !note.path.startsWith('olt:asset:'),

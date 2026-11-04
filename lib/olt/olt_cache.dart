@@ -57,7 +57,7 @@ Future<void> syncOltCache(OltClient client, Directory dir) async {
   final from = DateTime(today.year, today.month, today.day).toUtc();
   final tables = <String, String>{
     'activities':
-        'select=id,title,layer,kind,place_ids,location_text,starts_at,ends_at,status,requester_display&starts_at=gte.${Uri.encodeQueryComponent(from.toIso8601String())}&order=starts_at',
+        'select=id,title,layer,kind,place_ids,location_text,starts_at,ends_at,status,requester_display&starts_at=gte.${Uri.encodeQueryComponent(from.toIso8601String())}',
     'ideas':
         'select=id,body,status,created_at,ai_title,ai_summary&status=eq.new',
     'places': 'select=id,name,kind,code,parent_id,tier',
@@ -68,7 +68,24 @@ Future<void> syncOltCache(OltClient client, Directory dir) async {
   };
   final fetched = <String, dynamic>{};
   for (final entry in tables.entries) {
-    fetched[entry.key] = await client.get(entry.key, entry.value);
+    final order = switch (entry.key) {
+      'asset_place' => 'asset_id,place_id',
+      'stock' => 'item_id,place_id',
+      _ => 'id',
+    };
+    const limit = 1000;
+    final rows = <dynamic>[];
+    while (true) {
+      final page =
+          await client.get(
+                entry.key,
+                '${entry.value}&order=$order&limit=$limit&offset=${rows.length}',
+              )
+              as List;
+      rows.addAll(page);
+      if (page.length < limit) break;
+    }
+    fetched[entry.key] = rows;
   }
   for (final entry in fetched.entries) {
     final rows = entry.value;
@@ -93,6 +110,68 @@ Future<Map<String, List>> loadOltCache(Directory dir) async {
     if (rows is List) result[table] = rows;
   }
   return result;
+}
+
+class OltCacheMeta {
+  const OltCacheMeta({this.lastSuccess, this.failedAt, this.error});
+  final DateTime? lastSuccess;
+  final DateTime? failedAt;
+  final String? error;
+}
+
+Future<OltCacheMeta> loadOltCacheMeta(Directory dir) async {
+  final file = File('${dir.path}/meta.json');
+  if (!await file.exists()) return const OltCacheMeta();
+  try {
+    final data = jsonDecode(await file.readAsString()) as Map;
+    return OltCacheMeta(
+      lastSuccess: DateTime.tryParse('${data['lastSuccess']}'),
+      failedAt: DateTime.tryParse('${data['failedAt']}'),
+      error: data['error'] as String?,
+    );
+  } catch (_) {
+    return const OltCacheMeta();
+  }
+}
+
+Future<void> _writeOltMeta(Directory dir, OltCacheMeta meta) async {
+  await dir.create(recursive: true);
+  await File('${dir.path}/meta.json').writeAsString(
+    jsonEncode({
+      'lastSuccess': meta.lastSuccess?.toIso8601String(),
+      'failedAt': meta.failedAt?.toIso8601String(),
+      'error': meta.error,
+    }),
+  );
+}
+
+Future<({Map<String, List> cache, OltCacheMeta meta, bool signedOut})>
+refreshOltCache(OltClient client, Directory dir) async {
+  var cache = await loadOltCache(dir);
+  var meta = await loadOltCacheMeta(dir);
+  if (await client.session == null) {
+    return (cache: cache, meta: meta, signedOut: true);
+  }
+  var signedOut = false;
+  try {
+    await syncOltCache(client, dir);
+    cache = await loadOltCache(dir);
+    meta = OltCacheMeta(lastSuccess: DateTime.now());
+  } catch (error) {
+    signedOut = error is OltSignInNeeded;
+    meta = OltCacheMeta(
+      lastSuccess: meta.lastSuccess,
+      failedAt: DateTime.now(),
+      error: error.toString(),
+    );
+  }
+  await _writeOltMeta(dir, meta);
+  return (cache: cache, meta: meta, signedOut: signedOut);
+}
+
+String formatOltTime(DateTime time) {
+  final local = time.toLocal();
+  return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
 }
 
 Future<Set<String>> readDecidedOltIds(Directory dir) async {

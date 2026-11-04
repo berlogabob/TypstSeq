@@ -62,6 +62,21 @@ void main() {
     expect((await client.session)?.access, 'new');
   });
 
+  test('expired refresh token requires sign-in and clears session', () async {
+    final store = _Store()..value = _sessionJson;
+    final client = OltClient(
+      store: store,
+      request: (_, uri, _, _) async => uri.path.endsWith('/token')
+          ? const OltResponse(400, '{"error":"invalid_grant"}')
+          : const OltResponse(401, '{}'),
+    );
+    await expectLater(
+      client.get('places', 'select=*'),
+      throwsA(isA<OltSignInNeeded>()),
+    );
+    expect(await client.session, isNull);
+  });
+
   test('surfaces server error message', () async {
     final client = OltClient(
       store: _Store(),

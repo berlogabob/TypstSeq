@@ -5,6 +5,65 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/olt/olt_cache.dart';
 
 void main() {
+  test('pages every cached table until a short page', () async {
+    final dir = await Directory.systemTemp.createTemp('olt_pages');
+    addTearDown(() => dir.delete(recursive: true));
+    final client = OltClient(
+      store: _Store(),
+      request: (_, uri, _, _) async {
+        final offset = int.parse(uri.queryParameters['offset'] ?? '0');
+        final limit = int.parse(uri.queryParameters['limit'] ?? '1000');
+        expect(uri.queryParameters['order'], isNotNull);
+        return OltResponse(
+          200,
+          jsonEncode(
+            List.generate(offset == 0 ? limit : 1, (i) => {'id': offset + i}),
+          ),
+        );
+      },
+    );
+    await syncOltCache(client, dir);
+    final cache = await loadOltCache(dir);
+    expect(cache.length, 7);
+    expect(cache.values.every((rows) => rows.length == 1001), isTrue);
+  });
+
+  test('signed out loads cached rows without making requests', () async {
+    final dir = await Directory.systemTemp.createTemp('olt_signed_out');
+    addTearDown(() => dir.delete(recursive: true));
+    await File('${dir.path}/places.json').writeAsString('[{"id":1}]');
+    final client = OltClient(
+      store: _EmptyStore(),
+      request: (_, _, _, _) async => throw StateError('unexpected request'),
+    );
+    final snapshot = await refreshOltCache(client, dir);
+    expect(snapshot.cache['places'], hasLength(1));
+    expect(snapshot.signedOut, isTrue);
+  });
+
+  test(
+    'failed refresh persists error and last success while keeping rows',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('olt_error');
+      addTearDown(() => dir.delete(recursive: true));
+      var fail = false;
+      final client = OltClient(
+        store: _Store(),
+        request: (_, _, _, _) async => fail
+            ? const OltResponse(500, '{"message":"offline"}')
+            : const OltResponse(200, '[{"id":1}]'),
+      );
+      await refreshOltCache(client, dir);
+      fail = true;
+      final result = await refreshOltCache(client, dir);
+      final meta = await loadOltCacheMeta(dir);
+      expect(result.cache['places'], hasLength(1));
+      expect(meta.lastSuccess, isNotNull);
+      expect(meta.error, contains('offline'));
+      expect(meta.failedAt, isNotNull);
+    },
+  );
+
   test('403 keeps the entire previous cache', () async {
     final dir = await Directory.systemTemp.createTemp('olt_cache_test');
     addTearDown(() => dir.delete(recursive: true));
@@ -192,6 +251,15 @@ class _Store implements OltSessionStore {
   @override
   Future<String?> read() async =>
       '{"email":"a@example.com","access":"a","refresh":"r","expiresAt":"2030-01-01T00:00:00.000"}';
+  @override
+  Future<void> write(String value) async {}
+  @override
+  Future<void> delete() async {}
+}
+
+class _EmptyStore implements OltSessionStore {
+  @override
+  Future<String?> read() async => null;
   @override
   Future<void> write(String value) async {}
   @override

@@ -453,6 +453,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Set<String> _oltDecided = <String>{};
   DateTime? _oltLastSync;
   bool _oltCacheLoading = false;
+  OltCacheMeta _oltMeta = const OltCacheMeta();
+  bool _oltSignedOut = false;
 
   void _loadOltForToday() {
     if (Platform.environment.containsKey('FLUTTER_TEST')) return;
@@ -466,34 +468,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _oltCacheLoading = true;
     unawaited(() async {
       try {
-        final session = await _oltClient.session;
-        if (session == null) return;
         final dir = await oltCacheDirectory();
         final cached = await loadOltCache(dir);
         final decided = await readDecidedOltIds(dir);
+        final meta = await loadOltCacheMeta(dir);
+        final signedOut = await _oltClient.session == null;
         if (mounted) {
           setState(() {
             _oltCache = cached;
             _oltDecided = decided;
+            _oltMeta = meta;
+            _oltSignedOut = signedOut;
             _setOltEntities(cached);
           });
         }
-        try {
-          await syncOltCache(_oltClient, dir);
-          final updated = await loadOltCache(dir);
-          if (mounted) {
-            setState(() {
-              _oltCache = updated;
-              _setOltEntities(updated);
-            });
-          }
-        } on OltSignInNeeded {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('OpenLabTwin sign-in needed')),
-            );
-          }
-        } catch (_) {}
+        final result = await refreshOltCache(_oltClient, dir);
+        if (mounted) {
+          setState(() {
+            _oltCache = result.cache;
+            _oltMeta = result.meta;
+            _oltSignedOut = result.signedOut;
+            _setOltEntities(result.cache);
+          });
+        }
       } catch (_) {
       } finally {
         _oltCacheLoading = false;
@@ -1589,6 +1586,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           MaterialPageRoute<void>(
             builder: (context) => ExternalEntityPage(
               entity: external.first,
+              offlineSince: _oltMeta.failedAt == null
+                  ? null
+                  : (_oltMeta.lastSuccess ?? _oltMeta.failedAt),
+              signedOut: _oltSignedOut,
               notes: index?.notes ?? const <NoteRef>[],
               onOpen: (path) {
                 Navigator.of(context).pop();

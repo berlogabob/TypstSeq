@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../olt/olt_client.dart';
+import '../../olt/olt_cache.dart';
 import '../constants.dart';
 import 'settings_page.dart';
 
@@ -80,6 +81,7 @@ class _OltPageState extends State<OltPage> {
             }
             return Column(
               children: [
+                const ListTile(title: Text('Signed out')),
                 TextField(
                   controller: _email,
                   keyboardType: TextInputType.emailAddress,
@@ -116,6 +118,25 @@ class _OltPageState extends State<OltPage> {
             );
           },
         ),
+      ),
+      FutureBuilder<OltCacheMeta>(
+        future: oltCacheDirectory().then(loadOltCacheMeta),
+        builder: (context, snapshot) {
+          final meta = snapshot.data;
+          if (meta == null) return const SizedBox.shrink();
+          return ListTile(
+            title: Text(
+              meta.lastSuccess == null
+                  ? 'Never refreshed'
+                  : 'Last refreshed: ${formatOltTime(meta.lastSuccess!)}',
+            ),
+            subtitle: meta.error == null
+                ? null
+                : Text(
+                    'Refresh failed ${formatOltTime(meta.failedAt!)}: ${meta.error}',
+                  ),
+          );
+        },
       ),
       if (_message != null)
         Padding(
