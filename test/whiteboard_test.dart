@@ -127,10 +127,10 @@ void main() {
         ),
       ),
     );
-    for (var i = 0; i < 30 && find.text('Columns').evaluate().isEmpty; i++) {
+    for (var i = 0; i < 30 && find.text('Project').evaluate().isEmpty; i++) {
       await settleIo(tester);
     }
-    await tester.tap(find.text('Columns'));
+    await tester.tap(find.text('Project'));
     await tester.pump(const Duration(milliseconds: 400));
     for (
       var i = 0;
@@ -148,6 +148,53 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.byType(Whiteboard), findsOneWidget);
+  });
+
+  testWidgets('Library lists an entity with children without a board file', (
+    tester,
+  ) async {
+    const parent = NoteRef(
+      id: 'parent',
+      path: 'parent.typ',
+      title: 'Parent',
+      kind: 'person',
+      outgoingLinks: [],
+    );
+    const child = NoteRef(
+      id: 'child',
+      path: 'child.typ',
+      title: 'Child',
+      kind: 'person',
+      partOf: ['parent'],
+      outgoingLinks: [],
+    );
+    const index = VaultIndex(
+      notesByPath: {'parent.typ': parent, 'child.typ': child},
+      backlinksByTarget: {},
+    );
+    Board? opened;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: BoardsTab(
+            storage: storage,
+            index: index,
+            onOpenColumns: (_, board) => opened = board,
+          ),
+        ),
+      ),
+    );
+    for (var i = 0; i < 30 && find.text('Parent').evaluate().isEmpty; i++) {
+      await settleIo(tester);
+    }
+    expect(find.text('Parent'), findsOneWidget);
+    expect(find.text('0 tasks · 0 issues · 1 children'), findsOneWidget);
+    await tester.tap(find.text('Parent'));
+    expect(opened?.scopeEntity, 'parent');
+    expect(
+      await tester.runAsync(() => storage.exists(boardPath('parent'))),
+      isFalse,
+    );
   });
 
   testWidgets('back waits for a dragged card to save', (tester) async {
@@ -395,7 +442,7 @@ void main() {
             body: EntityHeader(
               note: entity,
               onOpenUrl: (_) {},
-              onOpenWhiteboard: () => openEntityWhiteboard(
+              onOpenBoard: () => openEntityWhiteboard(
                 context,
                 storage: storage,
                 index: null,
@@ -407,7 +454,7 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.text('Whiteboard'));
+    await tester.tap(find.text('Board'));
     await tester.pump();
     final created = await pollIo(
       tester,
@@ -461,7 +508,7 @@ void main() {
               body: EntityHeader(
                 note: root,
                 onOpenUrl: (_) {},
-                onOpenTree: () => openEntityWhiteboard(
+                onOpenBoard: () => openEntityWhiteboard(
                   context,
                   storage: storage,
                   index: index,
@@ -474,7 +521,7 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.text('Tree'));
+      await tester.tap(find.text('Board'));
       await tester.pump();
       for (
         var i = 0;

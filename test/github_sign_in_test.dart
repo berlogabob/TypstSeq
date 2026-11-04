@@ -23,12 +23,40 @@ class FakeAuth extends GitHubAuth {
   Future<String> pollForToken(DeviceCodeResponse code) async => value = 'token';
 }
 
+class MissingClientAuth extends FakeAuth {
+  @override
+  Future<DeviceCodeResponse> requestDeviceCode() async =>
+      throw const GitHubDeviceFlowError('GITHUB_CLIENT_ID is not configured');
+}
+
 class FakeClient extends GitHubClient {
   @override
   Future<Map<String, dynamic>> currentUser() async => {'login': 'octocat'};
 }
 
 void main() {
+  testWidgets('missing client ID has a helpful message', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GitHubSignIn(
+            auth: MissingClientAuth(),
+            resolveToken: () async => null,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.text('Sign in with GitHub'));
+    await tester.pump();
+    expect(
+      find.text(
+        'Phone sign-in is not set up in this build. Public repos work without signing in.',
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('device sign in shows code and user, then signs out', (
     tester,
   ) async {

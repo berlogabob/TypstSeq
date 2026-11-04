@@ -55,6 +55,42 @@ class _BoardsTabState extends State<BoardsTab> {
         }
       }
     }
+    final index = widget.index;
+    if (index != null) {
+      final children = childrenByParent(index.notes);
+      for (final entity in index.notes) {
+        final scoped = result
+            .where(
+              (board) =>
+                  board.scopeEntity == entity.id ||
+                  (board.id == entity.id &&
+                      board.scopeExtra['github_project'] is! Map),
+            )
+            .toList();
+        if (scoped.isEmpty && structuralNoteKinds.contains(entity.kind)) {
+          continue;
+        }
+        if (scoped.isEmpty &&
+            !hasBoardItems(entity.id, index) &&
+            (children[entity.id]?.isEmpty ?? true)) {
+          continue;
+        }
+        result.removeWhere((board) => scoped.contains(board));
+        result.add(
+          Board(
+            id:
+                scoped.where((b) => b.id == entity.id).firstOrNull?.id ??
+                scoped
+                    .where((b) => b.id != '${entity.id}-wb')
+                    .firstOrNull
+                    ?.id ??
+                entity.id,
+            title: entity.title,
+            scopeEntity: entity.id,
+          ),
+        );
+      }
+    }
     return result..sort((a, b) => a.title.compareTo(b.title));
   }
 
@@ -63,7 +99,9 @@ class _BoardsTabState extends State<BoardsTab> {
       await writeBoard(widget.storage, board);
       hashes[board.id] = await widget.storage.hash(boardPath(board.id));
     }
-    if (board.layout == 'columns') {
+    if (board.scopeEntity != null ||
+        board.scopeExtra['github_project'] is Map ||
+        board.layout == 'columns') {
       if (mounted) widget.onOpenColumns?.call(context, board);
       return;
     }
@@ -171,9 +209,22 @@ class _BoardsTabState extends State<BoardsTab> {
               children: [
                 for (final board in snapshot.data!)
                   ListTile(
+                    leading: board.scopeEntity == null
+                        ? null
+                        : Icon(
+                            iconForKind(
+                              widget.index?.notes
+                                      .where((n) => n.id == board.scopeEntity)
+                                      .firstOrNull
+                                      ?.kind ??
+                                  'note',
+                            ),
+                          ),
                     title: Text(board.title),
                     subtitle: Text(
-                      '${board.layout} · ${board.cards.length} cards',
+                      board.scopeEntity != null && widget.index != null
+                          ? '${tasksForEntity(board.scopeEntity!, widget.index!).length} tasks · ${issuesForEntity(board.scopeEntity!, widget.index!).length} issues · ${childrenByParent(widget.index!.notes)[board.scopeEntity]?.length ?? 0} children'
+                          : '${board.layout} · ${board.cards.length} cards',
                     ),
                     onTap: () => open(board),
                   ),

@@ -72,8 +72,6 @@ import 'widgets/constants.dart';
 import 'widgets/date_format.dart';
 import 'widgets/note_picker_sheet.dart';
 import 'widgets/entity_header.dart';
-import 'widgets/entity_board.dart';
-import 'widgets/whiteboard.dart';
 import 'widgets/unified_board.dart';
 import 'github/send_issue.dart';
 import 'widgets/kind_icon_picker.dart';
@@ -5605,9 +5603,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               );
           Navigator.of(context).push(
             MaterialPageRoute<void>(
-              builder: (_) => EntityBoard(
+              builder: (_) => UnifiedBoard(
                 entity: entity,
-                boardId: board.id,
+                sourceBoardId: board.id,
+                deviceId: vaultRegistry?.deviceId ?? 'unknown',
+                imageResolver: _readAsset,
+                onOpenPath: _openPath,
                 vault: v,
                 index: boardIndex,
                 setStatus: _setTaskStatus,
@@ -6084,50 +6085,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           if (isEntity)
             EntityHeader(
               note: currentNote,
-              onOpenTree: v == null
-                  ? null
-                  : () async {
-                      try {
-                        await openEntityWhiteboard(
-                          context,
-                          storage: v.storage,
-                          index: index,
-                          deviceId: vaultRegistry?.deviceId ?? 'unknown',
-                          entityId: currentNote.id,
-                          title: currentNote.title,
-                          onOpenPath: _openPath,
-                          imageResolver: _readAsset,
-                          initialTree: true,
-                        );
-                      } catch (error) {
-                        if (context.mounted) {
-                          showSnack(context, 'Could not open tree: $error');
-                        }
-                      }
-                    },
-              onOpenWhiteboard: v == null
-                  ? null
-                  : () async {
-                      try {
-                        await openEntityWhiteboard(
-                          context,
-                          storage: v.storage,
-                          index: index,
-                          deviceId: vaultRegistry?.deviceId ?? 'unknown',
-                          entityId: currentNote.id,
-                          title: currentNote.title,
-                          onOpenPath: _openPath,
-                          imageResolver: _readAsset,
-                        );
-                      } catch (error) {
-                        if (context.mounted) {
-                          showSnack(
-                            context,
-                            'Could not open whiteboard: $error',
-                          );
-                        }
-                      }
-                    },
               onGithubChanged: (value) =>
                   _setNoteProperty(currentNote, 'github', value.trim()),
               relationships: EntityRelationships(

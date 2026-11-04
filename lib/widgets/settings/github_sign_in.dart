@@ -91,7 +91,15 @@ class _GitHubSignInState extends State<GitHubSignIn> {
       await _load();
       widget.onChanged?.call();
     } catch (e) {
-      if (mounted) setState(() => error = 'GitHub sign-in failed: $e');
+      if (mounted) {
+        setState(
+          () => error =
+              e is GitHubDeviceFlowError &&
+                  e.code == 'GITHUB_CLIENT_ID is not configured'
+              ? 'Phone sign-in is not set up in this build. Public repos work without signing in.'
+              : 'GitHub sign-in failed: $e',
+        );
+      }
     } finally {
       if (mounted) setState(() => busy = false);
     }

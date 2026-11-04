@@ -17,12 +17,14 @@ class UnifiedBoard extends StatefulWidget {
     required this.setStatus,
     required this.mutateNote,
     required this.refreshIndex,
+    this.sourceBoardId,
     this.githubClient,
     this.onOpenUrl,
     this.onOpenPath,
     this.imageResolver,
     this.deviceId = 'unknown',
   });
+  final String? sourceBoardId;
   final NoteRef entity;
   final Vault vault;
   final VaultIndex index;
@@ -55,14 +57,28 @@ class _UnifiedBoardState extends State<UnifiedBoard> {
   Future<void> load() async {
     try {
       final storage = widget.vault.storage;
-      final saved =
-          await readBoard(storage, widget.entity.id) ??
-          Board(
-            id: widget.entity.id,
-            title: widget.entity.title,
-            scopeEntity: widget.entity.id,
-            schema: 2,
+      var saved = await readBoard(storage, widget.entity.id);
+      if (saved == null &&
+          widget.sourceBoardId != null &&
+          widget.sourceBoardId != widget.entity.id &&
+          widget.sourceBoardId != '${widget.entity.id}-wb') {
+        final old = await readBoard(storage, widget.sourceBoardId!);
+        if (old != null) {
+          saved = Board.fromJson({...old.toJson(), 'id': widget.entity.id});
+          await writeBoard(storage, saved);
+          widget.vault.restoreWriteMarkers(
+            boardPath(saved.id),
+            stale: false,
+            pendingSync: true,
           );
+        }
+      }
+      saved ??= Board(
+        id: widget.entity.id,
+        title: widget.entity.title,
+        scopeEntity: widget.entity.id,
+        schema: 2,
+      );
       hash = await storage.exists(boardPath(saved.id))
           ? await storage.hash(boardPath(saved.id))
           : null;
@@ -70,6 +86,15 @@ class _UnifiedBoardState extends State<UnifiedBoard> {
           ? saved.layout
           : 'columns';
       board = await canvasBoard(saved);
+      if (!identical(board, saved)) {
+        await writeBoard(storage, board!);
+        widget.vault.restoreWriteMarkers(
+          boardPath(saved.id),
+          stale: false,
+          pendingSync: true,
+        );
+        hash = await storage.hash(boardPath(saved.id));
+      }
       if (mounted) setState(() => busy = false);
     } catch (e) {
       if (mounted) {
@@ -82,7 +107,12 @@ class _UnifiedBoardState extends State<UnifiedBoard> {
   }
 
   Future<Board> canvasBoard(Board saved) async {
-    if (saved.cards.isNotEmpty) return saved;
+    if (saved.extra['legacy_canvas_migrated'] == true ||
+        saved.cards.isNotEmpty ||
+        saved.frames.isNotEmpty ||
+        saved.edges.isNotEmpty) {
+      return saved;
+    }
     final fallback = await readBoard(
       widget.vault.storage,
       '${widget.entity.id}-wb',
@@ -90,6 +120,8 @@ class _UnifiedBoardState extends State<UnifiedBoard> {
     if (fallback == null) return saved;
     return Board.fromJson({
       ...saved.toJson(),
+      'schema': 2,
+      'legacy_canvas_migrated': true,
       'cards': fallback.cards.map((c) => c.toJson()).toList(),
       'frames': fallback.frames.map((f) => f.toJson()).toList(),
       'edges': fallback.edges.map((e) => e.toJson()).toList(),

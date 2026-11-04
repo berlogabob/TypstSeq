@@ -35,8 +35,6 @@ void main() {
           body: EntityHeader(
             note: _note(id: 'tylog', title: 'TyLog', kind: 'project'),
             onOpenUrl: (_) {},
-            onOpenTree: () => opened.add('Tree'),
-            onOpenWhiteboard: () => opened.add('Whiteboard'),
             onOpenBoard: () => opened.add('Board'),
           ),
         ),
@@ -45,10 +43,15 @@ void main() {
     final title = tester.widget<Text>(find.text('TyLog'));
     expect(title.maxLines, 1);
     expect(title.overflow, TextOverflow.ellipsis);
-    for (final action in ['Tree', 'Whiteboard', 'Board']) {
-      await tester.tap(find.text(action));
-    }
-    expect(opened, ['Tree', 'Whiteboard', 'Board']);
+    expect(find.text('Board'), findsOneWidget);
+    expect(find.text('Tree'), findsNothing);
+    expect(find.text('Whiteboard'), findsNothing);
+    expect(
+      tester.getTopLeft(find.text('Board')).dy,
+      greaterThan(tester.getTopLeft(find.text('TyLog')).dy),
+    );
+    await tester.tap(find.text('Board'));
+    expect(opened, ['Board']);
     expect(tester.takeException(), isNull);
   });
 
