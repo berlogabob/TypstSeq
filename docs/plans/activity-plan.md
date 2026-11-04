@@ -504,7 +504,7 @@ Issues found:
 - [x] U1b-rest Keep malformed-markup repair visible in a pinned banner with an Open Source action; existing timestamp capture and daily More flows remain covered by focused widget tests.
 - [ ] U1b-rest-rest Manually review timestamp capture, daily More spacing, duplicate surfaces, and remaining editor states at 360 dp.
 - [x] U1c Polish entity page: keep long part_of chips compact and actionable at 360 dp; verify opening and removing a parent and opening Contains.
-- [ ] U1c-rest Finish entity page polish: header, remaining part_of and Contains states, Timeline, Board switch (Kanban/Whiteboard/Tree), and kind icon picker; check phone layouts.
+- [x] U1c-rest Finish entity page polish: header, remaining part_of and Contains states, Timeline, Board switch (Kanban/Whiteboard/Tree), and kind icon picker; check phone layouts.
 - [x] U1d Clarify which duplicate is removed and choose the survivor at 360 dp.
 - [ ] U1d-rest Finish Settings > Maintenance polish: duplicates list and merge preview, namespace convert, health report link, and remaining loading, error, and phone-layout states.
 - [x] U1e Keep pack names and update buttons usable on phones in Extensions.
