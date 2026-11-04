@@ -46,9 +46,13 @@ extension _DuplicateMerge on WorkspaceController {
         (body != null &&
             body.trim().isNotEmpty &&
             survivor.substring(0, survivor.lastIndexOf('/')) !=
-                loser.substring(0, loser.lastIndexOf('/')))) {
+                loser.substring(0, loser.lastIndexOf('/')) &&
+            !RegExp(
+              r"^[\p{L}\p{N}\s.,!?;:'’()\-]*$",
+              unicode: true,
+            ).hasMatch(body))) {
       throw StateError(
-        'Only canonical pages in the same folder without date, project, or other properties can be merged yet.',
+        'Only canonical pages without date, project, or other properties can be merged; bodies moved between folders must be plain text.',
       );
     }
     final resolver = LinkResolver(currentIndex.notes);

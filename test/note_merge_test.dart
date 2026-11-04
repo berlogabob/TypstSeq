@@ -10,6 +10,71 @@ import 'package:tylog_core/tylog_core.dart' show loadDecisions;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('merges a plain body from another folder', () async {
+    final root = await Directory.systemTemp.createTemp('merge-folders-');
+    final storage = LocalVaultStorage(root);
+    final vault = Vault.withStorage(storage);
+    await vault.ensureCreated();
+    final workspace = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      reconcileTasks: (_) async {},
+    )..vault = vault;
+    addTearDown(() async {
+      workspace.dispose();
+      await root.delete(recursive: true);
+    });
+    await storage.createDirectory('notes/other');
+    await storage.writeText(
+      'notes/a.typ',
+      replaceNoteHeader(
+        'Original.\n',
+        const NoteMetadataDraft(id: 'a', title: 'A'),
+      ),
+    );
+    await storage.writeText(
+      'notes/other/b.typ',
+      replaceNoteHeader(
+        'A useful plain paragraph.\n',
+        const NoteMetadataDraft(id: 'b', title: 'B'),
+      ),
+    );
+    workspace.index = await scanVaultStorage(storage);
+    final preview = await workspace.previewDuplicateMerge(
+      'notes/a.typ',
+      'notes/other/b.typ',
+    );
+    await storage.writeText(
+      'notes/other/b.typ',
+      replaceNoteHeader(
+        '#image("photo.png")\n',
+        const NoteMetadataDraft(id: 'b', title: 'B'),
+      ),
+    );
+    await expectLater(
+      workspace.previewDuplicateMerge('notes/a.typ', 'notes/other/b.typ'),
+      throwsStateError,
+    );
+    await storage.writeText(
+      'notes/other/b.typ',
+      replaceNoteHeader(
+        'A useful plain paragraph.\n',
+        const NoteMetadataDraft(id: 'b', title: 'B'),
+      ),
+    );
+    await workspace.mergeDuplicate(preview);
+    final text = await storage.readText('notes/a.typ');
+    expect(text, contains('A useful plain paragraph.'));
+    expect(await storage.exists('notes/other/b.typ'), isFalse);
+    expect(await loadDecisions(storage), hasLength(1));
+    final compile = Process.runSync('typst', [
+      'compile',
+      '--root',
+      root.path,
+      '${root.path}/notes/a.typ',
+      '${root.path}/out.pdf',
+    ]);
+    expect(compile.exitCode, 0, reason: '${compile.stderr}');
+  });
   test(
     'preview and merge an empty duplicate, preserving metadata and links',
     () async {
