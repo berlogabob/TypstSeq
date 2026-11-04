@@ -15,6 +15,30 @@ void main() {
   );
   const source =
       '#import "/_system/tylog.typ" as tylog\n\n= Audio\n\nFrom: #tylog.ref-note("day")[Today]\n\n== Comments\n';
+  testWidgets(
+    'sender chooser explains empty recents and search results on a phone',
+    (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: ShareFromSheet(notes: [person], recent: []),
+          ),
+        ),
+      );
+      expect(find.text('Search for a person or page'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), 'nobody');
+      await tester.pump();
+      expect(find.text('No matching people or pages'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), 'Ann');
+      await tester.pump();
+      expect(find.text('Ann [A]'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
   for (final choose in [true, false]) {
     testWidgets(
       choose

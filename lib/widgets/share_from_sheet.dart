@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:tylog_core/values.dart';
 
 import '../models.dart';
+import 'constants.dart';
 
 /// Adds a sender without replacing the existing body or its daily reference.
 String addShareSender(String source, NoteRef person) {
@@ -80,8 +81,8 @@ class _ShareFromSheetState extends State<ShareFromSheet> {
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.only(
-          left: 16,
-          right: 16,
+          left: kSpace16,
+          right: kSpace16,
           bottom: MediaQuery.viewInsetsOf(context).bottom,
         ),
         child: SizedBox(
@@ -101,7 +102,7 @@ class _ShareFromSheetState extends State<ShareFromSheet> {
               ),
               TextField(
                 decoration: const InputDecoration(
-                  labelText: 'Search people',
+                  labelText: 'Search people or pages',
                   prefixIcon: Icon(Icons.search),
                 ),
                 onChanged: (value) => setState(() => query = value),
@@ -109,6 +110,14 @@ class _ShareFromSheetState extends State<ShareFromSheet> {
               Expanded(
                 child: ListView(
                   children: [
+                    if (visible.isEmpty)
+                      ListTile(
+                        title: Text(
+                          query.trim().isEmpty
+                              ? 'Search for a person or page'
+                              : 'No matching people or pages',
+                        ),
+                      ),
                     for (final note in visible)
                       ListTile(
                         title: Text(note.title),
