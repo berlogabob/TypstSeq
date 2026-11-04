@@ -73,7 +73,11 @@ class _EntityRelationshipsState extends State<EntityRelationships> {
               final parent = _byId[parentId] ?? _byName[parentId.toLowerCase()];
               return InputChip(
                 avatar: Icon(iconForKind(parent?.kind ?? 'note'), size: 18),
-                label: Text(parent?.title ?? parentId),
+                label: Text(
+                  parent?.title ?? parentId,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 deleteIcon: const Icon(Icons.close, size: 18),
                 visualDensity: VisualDensity.compact,
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,

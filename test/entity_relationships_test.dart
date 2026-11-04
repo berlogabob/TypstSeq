@@ -110,6 +110,60 @@ void main() {
     }
   });
 
+  testWidgets('long parent names remain actionable on a 360 dp screen', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const parent = NoteRef(
+      id: 'long-parent',
+      path: 'notes/long-parent.typ',
+      title: 'A very long organization name that cannot fit on a phone chip',
+      kind: 'organization',
+      outgoingLinks: [],
+    );
+    const child = NoteRef(
+      id: 'child',
+      path: 'notes/child.typ',
+      title: 'Child',
+      outgoingLinks: [],
+      partOf: ['long-parent'],
+    );
+    final phoneIndex = VaultIndex(
+      notesByPath: {parent.path: parent, child.path: child},
+      backlinksByTarget: {},
+    );
+    String? opened;
+    String? removed;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: EntityRelationships(
+            note: child,
+            index: phoneIndex,
+            onAdd: () {},
+            onRemove: (id) => removed = id,
+            onOpen: (path) => opened = path,
+          ),
+        ),
+      ),
+    );
+    expect(tester.takeException(), isNull);
+    final parentLabel = tester.widget<Text>(find.text(parent.title));
+    expect(parentLabel.maxLines, 1);
+    expect(parentLabel.overflow, TextOverflow.ellipsis);
+    await tester.tap(find.text(parent.title));
+    expect(opened, parent.path);
+    await tester.tap(find.byIcon(Icons.close));
+    expect(removed, parent.id);
+    await tester.tap(find.text('Contains 0'));
+    await tester.pumpAndSettle();
+    expect(find.text('No children'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('legacy project parent can be removed from the saved header', (
     tester,
   ) async {

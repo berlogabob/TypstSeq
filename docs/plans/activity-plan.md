@@ -502,7 +502,8 @@ Issues found:
 - [ ] U1a-rest Finish Incoming polish: review section order and headers, chooser sheet and ignore flow, paging button, empty/loading/error states, and 360 dp fit for the other queue sections.
 - [x] U1b Daily suggestions chip: reserve space outside the editor and open the day's review at 360 dp.
 - [ ] U1b-rest Polish timestamp, broken-markup banner, More bar and duplicate surfaces; check remaining daily/editor states and 360 dp layout.
-- [ ] U1c Polish entity page: header, part_of chips, Contains, Timeline, Board switch (Kanban/Whiteboard/Tree), kind icon picker.
+- [x] U1c Polish entity page: keep long part_of chips compact and actionable at 360 dp; verify opening and removing a parent and opening Contains.
+- [ ] U1c-rest Finish entity page polish: header, remaining part_of and Contains states, Timeline, Board switch (Kanban/Whiteboard/Tree), and kind icon picker; check phone layouts.
 - [ ] U1d Polish Settings > Maintenance: Duplicates list + merge preview, namespace convert, health report link.
 - [ ] U1e Polish Extensions: packs + update button, OLT sources, GitHub sign-in states, mounts.
 - [ ] U1f Polish boards: GitHub repo columns, OLT whiteboard cards, empty board, add-card flows.
