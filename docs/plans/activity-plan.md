@@ -436,4 +436,14 @@ Issues found:
 - [ ] T4 PT pack 1.3.1: re-score all clips, redo low ones (Studio TTS)
 - [ ] T5 Mac verify P3 whiteboard + P4 OLT on scratch vault
 - [ ] P6 Telegram bot vaults: blocked by bot code freeze
+
+## Wave 22 (2026-11-04, user OK: suggestions 1-8)
+- [ ] S1 One review queue: OCR rows, OLT bookings, bot drafts land in Incoming with the same accept/reject + decision ledger
+- [ ] S2 Namespace -> structure: one-tap convert of Logseq `A/B/C` titles into parent pages + part_of
+- [ ] S3 Duplicate finder + merge (same name/alias/email; links repointed), e.g. André Sabino x2, IADE x3
+- [ ] S4 Person timeline: dailies, audio, screenshots, tasks mentioning the person, by date
+- [ ] S5 Audio -> task/agenda proposals in Incoming, linked to the From person
+- [ ] S6 GitHub issue sync per board: TyLog kanban shows repo issues, moving a card closes/reopens
+- [ ] S7 OLT rooms tree + equipment stock levels on the whiteboard
+- [ ] S8 Pack update check: weekly GitHub release check, "update available" in Extensions
 - [ ] Re-process PTT-20261104-WA0001 after the worker fix (user, Re-process)
