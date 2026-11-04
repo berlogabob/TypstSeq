@@ -13,6 +13,7 @@ import 'package:tylog_core/tylog_core.dart';
 import '../github/github_client.dart';
 import '../github/github_projects.dart';
 import 'constants.dart';
+import 'entity_tree.dart';
 import 'note_picker_sheet.dart';
 
 class BoardsTab extends StatefulWidget {
@@ -616,7 +617,9 @@ class _WhiteboardState extends State<Whiteboard> {
 
   Future<void> add(String type) async {
     try {
-      if (type == 'Note/entity') {
+      if (type == 'Add from OpenLabTwin') {
+        addOltTree();
+      } else if (type == 'Note/entity') {
         final note = await showModalBottomSheet<Object>(
           context: context,
           isScrollControlled: true,
@@ -840,8 +843,57 @@ class _WhiteboardState extends State<Whiteboard> {
     );
   }
 
-  void pinTree() {
-    final tree = treeBoard;
+  void addOltTree() {
+    final notes = (widget.index?.notes ?? <NoteRef>[])
+        .where(
+          (n) =>
+              n.path.startsWith('olt:place:') ||
+              n.path.startsWith('olt:asset:'),
+        )
+        .toList();
+    if (notes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No OpenLabTwin places or assets cached')),
+      );
+      return;
+    }
+    final roots = buildEntityTree(notes, notes.map((n) => n.path).toSet());
+    final children = childrenByParent(notes);
+    const root = 'olt:board-root';
+    children[root] = roots.map((n) => n.note).toList();
+    final layout = layoutTree(root, children);
+    final point = centre;
+    pinBoard(
+      Board(
+        id: board.id,
+        title: board.title,
+        cards: [
+          for (final e in layout.positions.entries)
+            if (e.key != root)
+              BoardCard(
+                id: e.key,
+                type: 'entity',
+                ref: e.key,
+                x: e.value.x + point.dx - 120,
+                y: e.value.y + point.dy - 240,
+              ),
+        ],
+        edges: [
+          for (var i = 0; i < layout.edges.length; i++)
+            if (layout.edges[i].from != root)
+              BoardEdge(
+                id: 'olt-$i',
+                from: layout.edges[i].from,
+                to: layout.edges[i].to,
+              ),
+        ],
+      ),
+    );
+  }
+
+  void pinTree() => pinBoard(treeBoard);
+
+  void pinBoard(Board tree) {
     final ids = <String, String>{};
     var next = board;
     final stamp = newId();
@@ -873,6 +925,10 @@ class _WhiteboardState extends State<Whiteboard> {
       }
     }
     for (final edge in tree.edges) {
+      if (next.edges.any(
+        (e) => e.from == ids[edge.from] && e.to == ids[edge.to],
+      ))
+        continue;
       next = next.addEdge(
         BoardEdge(
           id: '$stamp-${serial++}',
@@ -953,9 +1009,40 @@ class _WhiteboardState extends State<Whiteboard> {
                 ),
               ],
             ),
-            if (note.path.startsWith('olt:place:'))
-              const Text('OpenLabTwin')
-            else
+            if (note.path.startsWith('olt:')) ...[
+              const Text('OpenLabTwin'),
+              for (final row in (note.properties['stock'] as List? ?? const []))
+                if (note.path.startsWith('olt:asset:') &&
+                    row is Map &&
+                    row['qty'] != null)
+                  Builder(
+                    builder: (context) {
+                      final qty = row['qty'];
+                      final low = qty is num && qty <= 0;
+                      final colors = Theme.of(context).colorScheme;
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: low
+                              ? colors.errorContainer
+                              : colors.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(kRadiusSmall),
+                        ),
+                        child: Text(
+                          'Stock: $qty${row['unit'] == null ? '' : ' ${row['unit']}'}',
+                          style: TextStyle(
+                            color: low
+                                ? colors.onErrorContainer
+                                : colors.onSurface,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+            ] else
               FutureBuilder<String>(
                 future: noteContent(note),
                 builder: (_, s) => Text(
@@ -1023,6 +1110,7 @@ class _WhiteboardState extends State<Whiteboard> {
             onSelected: add,
             itemBuilder: (_) => [
               for (final item in [
+                'Add from OpenLabTwin',
                 'Note/entity',
                 'Task',
                 'Text',

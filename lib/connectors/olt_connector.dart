@@ -34,7 +34,12 @@ class OltConnector implements Connector {
       }
     }
     final stockByPlace = <String, List<Map<String, Object?>>>{};
+    final stockByItemPlace = <String, Map<String, Object?>>{};
     for (final stock in _cache['stock'] ?? const []) {
+      stockByItemPlace['${stock['item_id']}:${stock['place_id']}'] = {
+        'qty': stock['qty'],
+        'unit': items['${stock['item_id']}']?['unit'],
+      };
       stockByPlace.putIfAbsent('${stock['place_id']}', () => []).add({
         'name': items['${stock['item_id']}']?['name'] ?? '',
         'qty': stock['qty'],
@@ -83,6 +88,12 @@ class OltConnector implements Connector {
               'condition': row['condition'],
               'seen': row['seen_at'],
               'serial': row['serial'],
+              'stock': [
+                for (final place in assetPlaces['${row['id']}'] ?? <String>[])
+                  if (stockByItemPlace['${row['item_id']}:${place.substring('olt:place:'.length)}']
+                      case final Map<String, Object?> stock)
+                    stock,
+              ],
             },
           ),
     ];

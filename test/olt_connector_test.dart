@@ -39,6 +39,10 @@ void main() {
     );
     await connector.refresh();
     final places = connector.entities().map((e) => e.toNoteRef()).toList();
+    expect((places.last.properties['stock'] as List).single, {
+      'qty': 3,
+      'unit': 'pcs',
+    });
     final note = NoteRef(
       id: 'note',
       path: 'note.typ',

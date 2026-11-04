@@ -48,6 +48,63 @@ void main() {
   });
   tearDown(() async => dir.delete(recursive: true));
 
+  testWidgets('adds OpenLabTwin hierarchy and shows cached asset stock', (
+    tester,
+  ) async {
+    const room = NoteRef(
+      id: 'olt:place:1',
+      path: 'olt:place:1',
+      title: 'Room',
+      kind: 'place',
+      outgoingLinks: [],
+    );
+    const asset = NoteRef(
+      id: 'olt:asset:2',
+      path: 'olt:asset:2',
+      title: 'Microscope',
+      kind: 'asset',
+      outgoingLinks: [],
+      partOf: ['olt:place:1'],
+      properties: {
+        'stock': [
+          {'qty': 0, 'unit': 'pcs'},
+        ],
+      },
+    );
+    final index = VaultIndex(
+      notesByPath: {room.path: room, asset.path: asset},
+      backlinksByTarget: {},
+    );
+    await tester.runAsync(
+      () => writeBoard(
+        storage,
+        const Board(id: 'olt', title: 'Board', layout: 'free'),
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Whiteboard(
+          board: const Board(id: 'olt', title: 'Board', layout: 'free'),
+          storage: storage,
+          index: index,
+        ),
+      ),
+    );
+    await tester.tap(find.byTooltip('Add'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add from OpenLabTwin'));
+    await tester.pumpAndSettle();
+    expect(find.text('Room'), findsOneWidget);
+    expect(find.text('Microscope'), findsOneWidget);
+    expect(find.text('Stock: 0 pcs'), findsOneWidget);
+    final saved = await pollIo(tester, () async {
+      final value = parseBoard(await storage.readText(boardPath('olt')));
+      return value.cards.isEmpty ? null : value;
+    });
+    expect(saved!.cards.length, 2);
+    expect(saved.edges.length, 1);
+  });
+
   testWidgets('Library Boards lists board titles and card counts', (
     tester,
   ) async {
