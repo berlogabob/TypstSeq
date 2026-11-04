@@ -10,6 +10,75 @@ import 'package:tylog_core/tylog_core.dart' show loadDecisions;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test(
+    'preserves a canonical duplicate date and project, rejecting conflicts',
+    () async {
+      final root = await Directory.systemTemp.createTemp('merge-metadata-');
+      final storage = LocalVaultStorage(root);
+      final vault = Vault.withStorage(storage);
+      await vault.ensureCreated();
+      final workspace = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        reconcileTasks: (_) async {},
+      )..vault = vault;
+      addTearDown(() async {
+        workspace.dispose();
+        await root.delete(recursive: true);
+      });
+      await storage.writeText(
+        'notes/a.typ',
+        replaceNoteHeader(
+          'Keep.\n',
+          const NoteMetadataDraft(id: 'a', title: 'A'),
+        ),
+      );
+      await storage.writeText(
+        'notes/b.typ',
+        replaceNoteHeader(
+          'Other.\n',
+          const NoteMetadataDraft(
+            id: 'b',
+            title: 'B',
+            date: '2026-11-04',
+            project: 'project-one',
+          ),
+        ),
+      );
+      workspace.index = await scanVaultStorage(storage);
+      final preview = await workspace.previewDuplicateMerge(
+        'notes/a.typ',
+        'notes/b.typ',
+      );
+      await workspace.mergeDuplicate(preview);
+      final result = await storage.readText('notes/a.typ');
+      final merged = scanNote('notes/a.typ', result);
+      expect(merged.date, '2026-11-04');
+      expect(merged.project, 'project-one');
+      expect(result, contains('Other.'));
+      expect(await storage.exists('notes/b.typ'), isFalse);
+      final compile = Process.runSync('typst', [
+        'compile',
+        '--root',
+        root.path,
+        '${root.path}/notes/a.typ',
+        '${root.path}/out.pdf',
+      ]);
+      expect(compile.exitCode, 0, reason: '${compile.stderr}');
+      await storage.writeText(
+        'notes/c.typ',
+        replaceNoteHeader(
+          '',
+          const NoteMetadataDraft(id: 'c', title: 'C', date: '2026-11-05'),
+        ),
+      );
+      workspace.index = await scanVaultStorage(storage);
+      await expectLater(
+        workspace.previewDuplicateMerge('notes/a.typ', 'notes/c.typ'),
+        throwsStateError,
+      );
+      expect(await storage.exists('notes/c.typ'), isTrue);
+    },
+  );
   test('merges a plain body from another folder', () async {
     final root = await Directory.systemTemp.createTemp('merge-folders-');
     final storage = LocalVaultStorage(root);

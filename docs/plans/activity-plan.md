@@ -451,7 +451,8 @@ Issues found:
 - [x] S3b-rest Merge canonical pages with body text in the same folder, preserving supported metadata and repointing supported references.
 - [x] S3b-rest-rest Merge canonical pages with tags, preserving both pages’ tags.
 - [x] S3b-rest-rest-rest Merge canonical pages with plain-text bodies across folders, retaining existing metadata and reference safeguards.
-- [ ] S3b-rest-rest-rest-rest Merge noncanonical pages and preserve all metadata; handle other cross-folder bodies, repoint other link forms and references outside indexed notes, handle ambiguous names, and recover safely from partial writes.
+- [x] S3b-rest-rest-rest-rest Merge canonical pages with compatible date and project metadata, preserving both and rejecting conflicts.
+- [ ] S3b-rest-rest-rest-rest-rest Merge noncanonical pages and preserve remaining metadata (including conflicts and kinds); handle other cross-folder bodies, repoint other link forms and references outside indexed notes, handle ambiguous names, and recover safely from partial writes.
 - [x] S4 Person timeline: dailies, audio, screenshots, tasks mentioning the person, by date
 - [x] S5 Audio -> task/agenda proposals in Incoming
 - [x] S5-rest Link accepted audio tasks to the From person when present.

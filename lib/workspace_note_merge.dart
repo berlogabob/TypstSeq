@@ -39,9 +39,7 @@ extension _DuplicateMerge on WorkspaceController {
     final body = loserText.startsWith(canonical)
         ? loserText.substring(canonical.length)
         : null;
-    if (draft.date != null ||
-        draft.project != null ||
-        draft.properties.keys.any((k) => k != 'part_of') ||
+    if (draft.properties.keys.any((k) => k != 'part_of') ||
         (body == null && loserText.trim() != canonical.trim()) ||
         (body != null &&
             body.trim().isNotEmpty &&
@@ -52,7 +50,7 @@ extension _DuplicateMerge on WorkspaceController {
               unicode: true,
             ).hasMatch(body))) {
       throw StateError(
-        'Only canonical pages without date, project, or other properties can be merged; bodies moved between folders must be plain text.',
+        'Only canonical pages without other properties can be merged; bodies moved between folders must be plain text.',
       );
     }
     final resolver = LinkResolver(currentIndex.notes);
@@ -89,6 +87,14 @@ extension _DuplicateMerge on WorkspaceController {
       }
       if (n.path == survivor) {
         final metadata = scanNote(survivor, updated);
+        if ((draft.date != null &&
+                metadata.date != null &&
+                draft.date != metadata.date) ||
+            (draft.project != null &&
+                metadata.project != null &&
+                draft.project != metadata.project)) {
+          throw StateError('The pages have conflicting dates or projects.');
+        }
         final aliases = {...metadata.aliases, remove.title, ...remove.aliases}
           ..remove(metadata.title);
         if (draft.tags.isNotEmpty &&
@@ -101,6 +107,10 @@ extension _DuplicateMerge on WorkspaceController {
           throw StateError('Tagged pages require a canonical survivor header.');
         }
         updated = replaceNoteFields(updated, {
+          if (draft.date != null && metadata.date == null)
+            'date': typstString(draft.date!),
+          if (draft.project != null && metadata.project == null)
+            'project': typstString(draft.project!),
           if (draft.tags.isNotEmpty)
             'tags':
                 '(${{...metadata.tags, ...draft.tags}.map(typstString).map((s) => '$s,').join(' ')})',
