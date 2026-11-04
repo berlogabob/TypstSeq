@@ -91,7 +91,7 @@ Future<(dynamic, _MemoryStorage)> _mount(
   await tester.pumpWidget(
     const MaterialApp(home: HomeScreen(startup: _emptyStartup)),
   );
-  await tester.pumpAndSettle();
+  await _pump(tester);
   final dynamic home = tester.state(find.byType(HomeScreen));
   home.vaultRegistry = VaultRegistry(
     File('${Directory.systemTemp.path}/unused-vaults.json'),
@@ -130,15 +130,30 @@ Future<(dynamic, _MemoryStorage)> _mount(
   home.sourceController.text = _day;
   home.richController.loadSource(_day);
   home.workspace.notifyListeners();
-  await tester.pumpAndSettle();
+  await _pump(tester);
+  expect(find.byType(EnrichReview), findsNothing);
+  expect(find.byKey(const ValueKey('enrich-day-chip')), findsOneWidget);
+  await _openIncoming(tester);
   return (home, storage);
+}
+
+Future<void> _pump(WidgetTester tester) async {
+  for (var i = 0; i < 20; i++) {
+    await tester.runAsync(() async {});
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+}
+
+Future<void> _openIncoming(WidgetTester tester) async {
+  await tester.tap(find.byKey(const ValueKey('enrich-day-chip')));
+  await _pump(tester);
 }
 
 void main() {
   // flutter test reports Android unless told otherwise; desktop writes blocks.
   final desktop = TargetPlatformVariant.only(TargetPlatform.macOS);
   final phone = TargetPlatformVariant.only(TargetPlatform.android);
-  testWidgets('day note gets its block and a review strip; accept learns', (
+  testWidgets('day note gets its block and a Incoming; accept learns', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1100, 800);
@@ -164,7 +179,7 @@ void main() {
 
     expect(find.byKey(const ValueKey('enrich-tag-design')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('enrich-review-Катя')));
-    await tester.pumpAndSettle();
+    await _pump(tester);
     final ledger = await storage.readText('$enrichFeedbackDir/dev1.jsonl');
     expect(jsonDecode(ledger.trim()), containsPair('decision', 'accept'));
     expect(storage.appended['$enrichFeedbackDir/dev1.jsonl'], [ledger]);
@@ -209,7 +224,7 @@ void main() {
     expect(await storage.exists('$enrichFeedbackDir/dev1.jsonl'), isFalse);
     // A tap recomputes the view without re-logging the remaining offers.
     await tester.tap(find.byKey(const ValueKey('enrich-review-Катя')));
-    await tester.pumpAndSettle();
+    await _pump(tester);
     expect(await shown(), hasLength(3));
     final feedback = await storage.readText('$enrichFeedbackDir/dev1.jsonl');
     expect(jsonDecode(feedback.trim()), containsPair('decision', 'accept'));
@@ -217,7 +232,7 @@ void main() {
     final ledger = events.map((e) => jsonEncode(e)).join('\n');
     await tester.pumpWidget(const SizedBox());
     await _mount(tester, shown: ledger);
-    await tester.pumpAndSettle();
+    await _pump(tester);
     // This is a fresh session whose note still contains all the offers.
     final dynamic fresh = tester.state(find.byType(HomeScreen));
     final freshLedger = await (fresh.workspace.vault as Vault).storage.readText(
@@ -238,7 +253,7 @@ void main() {
         matching: find.byIcon(Icons.close),
       ),
     );
-    await tester.pumpAndSettle();
+    await _pump(tester);
     expect(home.workspace.source, isNot(contains('#tylog.tag("design")')));
     expect(home.workspace.source, contains('#tylog.ref-note("iade")[IADE]'));
     final ledger = await storage.readText('$enrichFeedbackDir/dev1.jsonl');
@@ -247,15 +262,13 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   }, variant: desktop);
 
-  testWidgets('a phone shows the strip but writes only on a tap', (
-    tester,
-  ) async {
+  testWidgets('a phone writes only on a tap', (tester) async {
     final (home, storage) = await _mount(tester);
     expect(home.workspace.source, _day);
     expect(await storage.readText(_dayPath), _day);
     expect(find.byKey(const ValueKey('enrich-review-Катя')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('enrich-review-Катя')));
-    await tester.pumpAndSettle();
+    await _pump(tester);
     expect(home.workspace.source, contains('#tylog.ref-note("kz")[Катя]'));
     expect(home.workspace.source, contains(autoEntitiesMarker));
     await tester.pumpWidget(const SizedBox());
@@ -271,7 +284,7 @@ void main() {
     expect(home.workspace.source, _day);
     expect(find.byKey(const ValueKey('enrich-review-Катя')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('enrich-review-Катя')));
-    await tester.pumpAndSettle();
+    await _pump(tester);
     expect(home.workspace.source, contains(autoEntitiesMarker));
     await tester.pumpWidget(const SizedBox());
   }, variant: desktop);
@@ -283,7 +296,7 @@ void main() {
     final chip = find.byKey(const ValueKey('enrich-marker-fx-7'));
     expect(chip, findsOneWidget);
     await tester.tap(chip);
-    await tester.pumpAndSettle();
+    await _pump(tester);
     expect(
       home.workspace.source,
       contains('#tylog.ref-note("fx")[fixit] Катя приехала'),
@@ -303,9 +316,9 @@ void main() {
   testWidgets('tapping the tag word offers removal too', (tester) async {
     final (home, storage) = await _mount(tester);
     await tester.tap(find.byKey(const ValueKey('enrich-tag-design')));
-    await tester.pumpAndSettle();
+    await _pump(tester);
     await tester.tap(find.byKey(const ValueKey('enrich-tag-remove')));
-    await tester.pumpAndSettle();
+    await _pump(tester);
     expect(home.workspace.source, isNot(contains('#tylog.tag("design")')));
     expect(
       await storage.readText('$enrichFeedbackDir/dev1.jsonl'),
@@ -321,7 +334,7 @@ void main() {
     final chip = find.byKey(const ValueKey('enrich-review-Катя'));
     await tester.tap(chip);
     await tester.tap(chip, warnIfMissed: false);
-    await tester.pumpAndSettle();
+    await _pump(tester);
     final ledger = await storage.readText('$enrichFeedbackDir/dev1.jsonl');
     expect(
       ledger.trim().split('\n').where((l) => l.contains('"kz"')),
@@ -330,21 +343,68 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   }, variant: desktop);
 
-  testWidgets('on a phone-width screen the strip stays a fifth of the height', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(400, 800);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets('day chip opens Incoming filtered to that day', (tester) async {
     await _mount(tester);
+    expect(find.text('Incoming'), findsOneWidget);
+    expect(find.text('2026-10-22'), findsWidgets);
     expect(find.byType(EnrichReview), findsOneWidget);
-    expect(
-      tester.getSize(find.byType(EnrichReview)).height,
-      lessThanOrEqualTo(160),
-    );
     await tester.pumpWidget(const SizedBox());
   }, variant: desktop);
+
+  testWidgets(
+    'Incoming groups all days newest first and acts on the selected day',
+    (tester) async {
+      final (home, storage) = await _mount(tester);
+      const older = 'daily/2026/10/2026-10-21.typ';
+      await tester.runAsync(() async {
+        await storage.writeText(older, _day);
+        final data =
+            jsonDecode(await storage.readText(enrichMentionsPath(_dayPath)))
+                as Map;
+        data['note'] = older;
+        await storage.writeText(enrichMentionsPath(older), jsonEncode(data));
+      });
+      final oldIndex = home.workspace.index as VaultIndex;
+      home.workspace.index = VaultIndex(
+        notesByPath: {
+          ...oldIndex.notesByPath,
+          older: _note('2026-10-21', older, '2026-10-21', 'daily'),
+        },
+        backlinksByTarget: const {},
+      );
+      // The chip's sheet stays filtered even if another day has suggestions.
+      Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
+      await _pump(tester);
+      await _openIncoming(tester);
+      expect(find.text('2026-10-21'), findsNothing);
+      Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
+      await _pump(tester);
+      await tester.tap(find.textContaining('More').first);
+      await _pump(tester);
+      await tester.tap(find.byKey(const ValueKey('incoming-open')));
+      await _pump(tester);
+      final newest = tester.getTopLeft(find.text('2026-10-22').last).dy;
+      final oldest = tester.getTopLeft(find.text('2026-10-21')).dy;
+      expect(newest, lessThan(oldest));
+      final reviews = find.byKey(const ValueKey('enrich-review-Катя'));
+      expect(reviews, findsNWidgets(2));
+      await tester.ensureVisible(reviews.last);
+      await tester.tap(reviews.last);
+      await _pump(tester);
+      final olderSource = await tester.runAsync(() => storage.readText(older));
+      expect(olderSource, contains('#tylog.ref-note("kz")[Катя]'));
+      expect(
+        home.workspace.source,
+        isNot(contains('#tylog.ref-note("kz")[Катя] приехала')),
+      );
+      final ledger = await tester.runAsync(
+        () => storage.readText('$enrichFeedbackDir/dev1.jsonl'),
+      );
+      expect(jsonDecode(ledger!.trim()), containsPair('note', older));
+      await tester.pumpWidget(const SizedBox());
+    },
+    variant: desktop,
+  );
 
   testWidgets('a note edited since extraction is left alone', (tester) async {
     final (home, storage) = await _mount(tester);
@@ -353,7 +413,7 @@ void main() {
     await storage.writeText(_dayPath, edited);
     home.workspace.replaceNote(_dayPath, edited);
     home.workspace.notifyListeners();
-    await tester.pumpAndSettle();
+    await _pump(tester);
     expect(home.workspace.source, edited);
     await tester.pumpWidget(const SizedBox());
   }, variant: desktop);

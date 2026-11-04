@@ -69,7 +69,6 @@ extension _EnrichFlow on _HomeScreenState {
       );
       if (!mounted || vault != v || note != path) return;
       _rebuild(() => _enrichDecisions = path == null ? null : (path, view));
-      if (path != null) unawaited(_recordEnrichShown(v, path, view, memory));
     } catch (error) {
       // Enrichment is advisory: never break opening a note.
       _enrichTrace('$path error $error');
@@ -139,7 +138,7 @@ extension _EnrichFlow on _HomeScreenState {
         ? workspace.source
         : await v.storage.readText(path);
     // Index revisions arrive every sync poll; most change nothing here.
-    final memoKey = (path, source, mentions.contentSha, memory);
+    final memoKey = (path, source, mentions.contentSha, memory, write);
     if (_enrichMemo case (final key, final result) when key == memoKey) {
       return result;
     }
@@ -180,13 +179,13 @@ extension _EnrichFlow on _HomeScreenState {
   Future<void> _recordEnrichFeedback(
     EnrichMention mention,
     String entity, {
+    required String path,
     required bool accepted,
   }) async {
     final v = vault;
     final device = vaultRegistry?.deviceId;
-    final path = note;
     final currentIndex = index;
-    if (v == null || device == null || path == null || currentIndex == null) {
+    if (v == null || device == null || currentIndex == null) {
       return;
     }
     final ref = currentIndex.notesByPath[path];
@@ -263,15 +262,32 @@ extension _EnrichFlow on _HomeScreenState {
     });
   }
 
-  Future<void> _acceptEnrich(EnrichMention mention, NoteRef target) async {
+  Future<void> _refreshEnrichDay(String path) async {
+    if (path == note) {
+      await _refreshEnrichment(userAction: true);
+    } else if (vault != null && index != null) {
+      await _applyEnrichment(
+        path,
+        await _enrichMemory(vault!, index!),
+        write: true,
+      );
+    }
+  }
+
+  Future<void> _acceptEnrich(
+    String path,
+    EnrichMention mention,
+    NoteRef target,
+  ) async {
     final v = vault;
-    final path = note;
-    if (v == null || path == null) return;
+    if (v == null) return;
     // The new or renamed page must be in the memory for the next pass.
     _enrichMemoryCache = null;
-    await _recordEnrichFeedback(mention, target.id, accepted: true);
+    await _recordEnrichFeedback(mention, target.id, path: path, accepted: true);
     final mentions = await _readMentions(v, path);
-    final source = workspace.source;
+    final source = path == note
+        ? workspace.source
+        : await v.storage.readText(path);
     if (mentions != null && enrichContentSha(source) == mentions.contentSha) {
       final linked = linkMentionInline(source, mention, target);
       // Only over the text we linked: anything typed since wins.
@@ -280,7 +296,7 @@ extension _EnrichFlow on _HomeScreenState {
             path,
             (current) => current == source ? linked : current,
           ) &&
-          workspace.source == linked) {
+          (path != note || workspace.source == linked)) {
         // Same lines, new text: move the mentions file along so the worker
         // does not pay a model call to rediscover what the user just did.
         final file = enrichMentionsPath(path);
@@ -315,37 +331,49 @@ extension _EnrichFlow on _HomeScreenState {
         );
       });
     }
-    await _refreshEnrichment(userAction: true);
+    await _refreshEnrichDay(path);
     unawaited(workspace.refreshIndex(always: true));
   }
 
-  Future<void> _rejectEnrich(EnrichMention mention, NoteRef target) async {
-    await _recordEnrichFeedback(mention, target.id, accepted: false);
-    await _refreshEnrichment(userAction: true);
+  Future<void> _rejectEnrich(
+    String path,
+    EnrichMention mention,
+    NoteRef target,
+  ) async {
+    await _recordEnrichFeedback(
+      mention,
+      target.id,
+      path: path,
+      accepted: false,
+    );
+    await _refreshEnrichDay(path);
   }
 
-  Future<void> _rejectEnrichTag(String tag) async {
+  Future<void> _rejectEnrichTag(String path, String tag) async {
     await _recordEnrichFeedback(
       EnrichMention(surface: tag, type: 'topic', line: 0),
       enrichTagEntity(tag),
+      path: path,
       accepted: false,
     );
-    await _refreshEnrichment(userAction: true);
+    await _refreshEnrichDay(path);
   }
 
   /// Files the line under the marker page (the user's own convention, e.g.
   /// fixit) and remembers it; the line text goes to the ledger so the worker
   /// can learn from it.
-  Future<void> _acceptEnrichMarker(EnrichMarkerOffer offer) async {
+  Future<void> _acceptEnrichMarker(String path, EnrichMarkerOffer offer) async {
     final v = vault;
-    final path = note;
-    if (v == null || path == null) return;
+    if (v == null) return;
     await _recordEnrichFeedback(
       EnrichMention(surface: offer.text, type: 'topic', line: offer.line),
       enrichMarkerEntity(offer.marker.id),
+      path: path,
       accepted: true,
     );
-    final source = workspace.source;
+    final source = path == note
+        ? workspace.source
+        : await v.storage.readText(path);
     final mentions = await _readMentions(v, path);
     final marked = markLine(source, offer.line, offer.marker);
     if (marked != source &&
@@ -353,7 +381,7 @@ extension _EnrichFlow on _HomeScreenState {
           path,
           (current) => current == source ? marked : current,
         ) &&
-        workspace.source == marked &&
+        (path != note || workspace.source == marked) &&
         mentions != null &&
         enrichContentSha(source) == mentions.contentSha) {
       // Same lines: keep the worker from re-reading what the user just filed.
@@ -363,16 +391,17 @@ extension _EnrichFlow on _HomeScreenState {
       json['content_sha'] = enrichContentSha(marked);
       await v.storage.writeText(file, '${jsonEncode(json)}\n');
     }
-    await _refreshEnrichment(userAction: true);
+    await _refreshEnrichDay(path);
   }
 
-  Future<void> _rejectEnrichMarker(EnrichMarkerOffer offer) async {
+  Future<void> _rejectEnrichMarker(String path, EnrichMarkerOffer offer) async {
     await _recordEnrichFeedback(
       EnrichMention(surface: offer.text, type: 'topic', line: offer.line),
       enrichMarkerEntity(offer.marker.id),
+      path: path,
       accepted: false,
     );
-    await _refreshEnrichment(userAction: true);
+    await _refreshEnrichDay(path);
   }
 
   /// One decision at a time: a second tap while the first is still writing
@@ -387,11 +416,135 @@ extension _EnrichFlow on _HomeScreenState {
     }
   }
 
-  Future<void> _createFromEnrich(EnrichMention mention) async {
+  Future<void> _createFromEnrich(String path, EnrichMention mention) async {
     final created = await _createEntity(
       initialName: mention.surface,
       initialKind: mention.type,
     );
-    if (created != null) await _acceptEnrich(mention, created);
+    if (created != null) await _acceptEnrich(path, mention, created);
+  }
+}
+
+extension _EnrichIncoming on _HomeScreenState {
+  Future<void> _showEnrichIncoming({String? day}) async {
+    final v = vault;
+    final currentIndex = index;
+    if (v == null || currentIndex == null) return;
+    Future<Map<String, _EnrichView>> load() async {
+      final memory = await _enrichMemory(v, currentIndex);
+      if (!await v.storage.exists(enrichMentionsDir)) return {};
+      final files = await v.storage.list(
+        path: enrichMentionsDir,
+        recursive: true,
+      );
+      final paths =
+          files
+              .where((f) => !f.isDirectory && f.path.endsWith('.json'))
+              .map(
+                (f) =>
+                    '${f.path.substring(enrichMentionsDir.length + 1, f.path.length - 5)}.typ',
+              )
+              .where((p) => p.startsWith('daily/') && (day == null || day == p))
+              .toList()
+            ..sort((a, b) => b.compareTo(a));
+      final views = <String, _EnrichView>{};
+      for (final path in paths) {
+        if (!currentIndex.notesByPath.containsKey(path)) continue;
+        try {
+          final view = await _applyEnrichment(path, memory, write: false);
+          if (view.decisions.isEmpty &&
+              view.tags.isEmpty &&
+              view.markers.isEmpty) {
+            continue;
+          }
+          views[path] = view;
+          await _recordEnrichShown(v, path, view, memory);
+        } catch (error) {
+          _enrichTrace('$path error $error');
+        }
+      }
+      return views;
+    }
+
+    var future = load();
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          void decide(Future<void> Function() action) {
+            unawaited(
+              _enrichOnce(() async {
+                await action();
+                if (context.mounted) {
+                  setSheetState(() {
+                    future = load();
+                  });
+                }
+              }),
+            );
+          }
+
+          return SafeArea(
+            child: SizedBox(
+              height: MediaQuery.sizeOf(context).height * .75,
+              child: FutureBuilder<Map<String, _EnrichView>>(
+                future: future,
+                builder: (context, snapshot) {
+                  final views = snapshot.data;
+                  return ListView(
+                    children: [
+                      const ListTile(title: Text('Incoming')),
+                      if (snapshot.hasError)
+                        const ListTile(
+                          title: Text('Could not load suggestions'),
+                        )
+                      else if (views == null)
+                        const Center(child: CircularProgressIndicator())
+                      else if (views.isEmpty)
+                        const ListTile(title: Text('No suggestions'))
+                      else
+                        for (final entry in views.entries) ...[
+                          ListTile(
+                            title: Text(
+                              entry.key
+                                  .split('/')
+                                  .last
+                                  .replaceFirst('.typ', ''),
+                            ),
+                          ),
+                          EnrichReview(
+                            decisions: entry.value.decisions,
+                            tags: entry.value.tags,
+                            markers: entry.value.markers,
+                            onAcceptMarker: (offer) => decide(
+                              () => _acceptEnrichMarker(entry.key, offer),
+                            ),
+                            onRejectMarker: (offer) => decide(
+                              () => _rejectEnrichMarker(entry.key, offer),
+                            ),
+                            onRejectTag: (tag) =>
+                                decide(() => _rejectEnrichTag(entry.key, tag)),
+                            onAccept: (mention, target) => decide(
+                              () => _acceptEnrich(entry.key, mention, target),
+                            ),
+                            onReject: (mention, target) => decide(
+                              () => _rejectEnrich(entry.key, mention, target),
+                            ),
+                            onCreate: (mention) => decide(
+                              () => _createFromEnrich(entry.key, mention),
+                            ),
+                          ),
+                        ],
+                    ],
+                  );
+                },
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 }

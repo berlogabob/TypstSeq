@@ -6172,38 +6172,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
     }
     final enrichDay = _enrichDecisions;
-    if (mode == 'normal' &&
-        enrichDay != null &&
-        enrichDay.$1 == current &&
-        (enrichDay.$2.decisions.isNotEmpty ||
-            enrichDay.$2.tags.isNotEmpty ||
-            enrichDay.$2.markers.isNotEmpty)) {
-      documentContent = Column(
-        children: [
-          Expanded(child: documentContent),
-          if (keyboardUp)
-            const SizedBox.shrink()
-          else
-            EnrichReview(
-              decisions: enrichDay.$2.decisions,
-              tags: enrichDay.$2.tags,
-              markers: enrichDay.$2.markers,
-              onAcceptMarker: (offer) =>
-                  unawaited(_enrichOnce(() => _acceptEnrichMarker(offer))),
-              onRejectMarker: (offer) =>
-                  unawaited(_enrichOnce(() => _rejectEnrichMarker(offer))),
-              onRejectTag: (tag) =>
-                  unawaited(_enrichOnce(() => _rejectEnrichTag(tag))),
-              onAccept: (mention, target) =>
-                  unawaited(_enrichOnce(() => _acceptEnrich(mention, target))),
-              onReject: (mention, target) =>
-                  unawaited(_enrichOnce(() => _rejectEnrich(mention, target))),
-              onCreate: (mention) =>
-                  unawaited(_enrichOnce(() => _createFromEnrich(mention))),
-            ),
-        ],
-      );
-    }
+    final enrichView = mode == 'normal' && enrichDay?.$1 == current
+        ? enrichDay?.$2
+        : null;
+    final suggestionCount = enrichView == null
+        ? 0
+        : enrichView.decisions.length +
+              enrichView.tags.length +
+              enrichView.markers.length;
     if (documentModes.contains(mode) &&
         currentNote != null &&
         currentNote.kind == 'idea' &&
@@ -6270,8 +6246,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (day == isoDay(DateTime.now())) {
         external.addAll(githubConflictNotes(workspace.githubConflicts));
       }
-      final incomingCount = incomingOnDay(index, day).length + external.length;
+      final incomingCount =
+          incomingOnDay(index, day).length + external.length + suggestionCount;
       final referenceCount = dailyMore.isEmpty ? 0 : backlinks.length;
+      dailyMore.insert(
+        0,
+        ListTile(
+          key: const ValueKey('incoming-open'),
+          title: const Text('Incoming suggestions'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _showEnrichIncoming(),
+        ),
+      );
       dailyMore.insert(
         0,
         ScreenshotStrip(
@@ -6284,12 +6270,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           onDecide: (note, action) => unawaited(_decideIncoming(note, action)),
         ),
       );
+      if (suggestionCount > 0 && !keyboardUp) {
+        documentContent = Stack(
+          children: [
+            Positioned.fill(child: documentContent),
+            Positioned(
+              right: 12,
+              bottom: 8,
+              child: ActionChip(
+                key: const ValueKey('enrich-day-chip'),
+                label: Text('$suggestionCount suggestions'),
+                onPressed: () => _showEnrichIncoming(day: current),
+              ),
+            ),
+          ],
+        );
+      }
       final dailyEditor = documentContent;
       documentContent = LayoutBuilder(
         builder: (context, constraints) => Column(
           children: [
             Expanded(child: dailyEditor),
-            if (keyboardUp || (incomingCount == 0 && referenceCount == 0))
+            if (keyboardUp)
               const SizedBox.shrink()
             else
               ConstrainedBox(

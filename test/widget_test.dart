@@ -1844,7 +1844,6 @@ void main() {
         'Extensions',
         'Maintenance',
         'About',
-        'OpenLabTwin',
       ],
     );
 
