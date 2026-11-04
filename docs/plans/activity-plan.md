@@ -439,8 +439,8 @@ Issues found:
 - [x] T1 Share audio from WhatsApp/Telegram: "From" person picker (codex, spec 2026-11-04-wave21/t1)
 - [x] T2 Flaky tests: workspace_controller issues + whiteboard Tree (codex, t2)
 - [x] T3 P5 form-OCR module, new repo tylog-form-ocr, synthetic templates (codex, t3) — 9173948 in tylog-form-ocr; real templates + photos needed next
-- [ ] T4 PT pack 1.3.1: re-score all clips, redo low ones (Studio TTS)
-- [ ] T5 Mac verify P3 whiteboard + P4 OLT on scratch vault
+- [x] (dup of M5) T4 PT pack 1.3.1: re-score all clips, redo low ones (Studio TTS)
+- [x] (dup of H3) T5 Mac verify P3 whiteboard + P4 OLT on scratch vault
 - [x] (moved to M6) P6 Telegram bot vaults
 
 ## Wave 22 (2026-11-04, user OK: suggestions 1-8)
@@ -490,7 +490,7 @@ Issues found:
 - [ ] K2-rest Restore automatic confident inline links and header tags after the note is no longer open for editing, with stale-content and navigation-race protection. Until then, confident links can be accepted in Incoming.
 - [x] K3 Timestamp button (clock+ icon) inserts the time but the editor does not scroll to the new line/caret; scroll it into view (keyboard open and closed). Preserve the caret when a headerless daily is repaired on save.
 - [x] H1 Manual vault health report: `dart run packages/tylog_core/bin/tylog.dart vault-health <vault>` checks indexed note roots for missing headers, unreadable files and auto-entities markers, prints findings and writes `_system/health/<date>.json`; never changes notes.
-- [ ] H1-rest Schedule the report nightly with a Mac LaunchAgent; cover other .typ locations and distinguish managed Typst files from notes; validate headers beyond the current heuristic and check Typst compile errors in low-priority batches; show findings in Incoming with Open/Source actions.
+- [x] (done by Claude: org.tylog.health LaunchAgent) H1-rest Schedule the report nightly with a Mac LaunchAgent; cover other .typ locations and distinguish managed Typst files from notes; validate headers beyond the current heuristic and check Typst compile errors in low-priority batches; show findings in Incoming with Open/Source actions.
 - [ ] H2 After K1 lands: the Mac app and the P30 run old code with the same overwrite risk; they get the final build at plan end (build policy M7), Mac via /verify build.
 - [ ] H3 Claude: T5 Mac verify (whiteboard + OLT) on a scratch vault, at the end.
 - [x] U1 Share "From whom?" chooser: explain empty recents and unmatched searches, clarify searchable pages, and use spacing tokens.
@@ -512,9 +512,9 @@ Issues found:
 - [ ] U1f-rest Polish remaining board states and flows: GitHub repo columns, OLT whiteboard cards, empty board, and add-card flows; review loading, errors, navigation, and phone layouts.
 - [x] PERF1 Performance audit (user 2026-11-04): codex static report docs/audits/2026-11-04-performance.md (read-only) + Claude device measurements on P30 profile build (cold start TYLOG_STARTUP, index, frame jank, memory) -> ranked fix list.
 - [x] PF0 Reduce index-check cost by comparing reused entries by identity and rebuilt entries individually. P30, 10067 notes, 2026-11-04: index-check 6.0 s → 0.23 s and scan 39.9 s → 28.0 s, with two notes parsed in both runs (TYLOG_STARTUP stageMillis).
-- [ ] PF0-rest Instrument and reduce scan-finalize (18.5 s after PF0), load-index, listing, validation and communities as needed to reach < 5 s total background rescan on the P30; measure before/after with TYLOG_STARTUP stageMillis.
+- [x] (done: c40a6a8 scan-finalize 1.9 s) PF0-rest Instrument and reduce scan-finalize (18.5 s after PF0), load-index, listing, validation and communities as needed to reach < 5 s total background rescan on the P30; measure before/after with TYLOG_STARTUP stageMillis.
 - [x] PF1 GitHub project columns group cards once and build them lazily (audit #15).
-- [ ] PF1-rest Fix entity board quadratic ordering, repeated hierarchy scans, and eager card layout with position-aware drop targets (audit #1, #13); measure both board types on device at 100, 1,000, and 5,000 cards, including drag and frame timings.
+- [x] (done: PF1b 5977272) PF1-rest Fix entity board quadratic ordering, repeated hierarchy scans, and eager card layout with position-aware drop targets (audit #1, #13); measure both board types on device at 100, 1,000, and 5,000 cards, including drag and frame timings.
 - [x] PF2 Bound Incoming mention examination to seven sidecar days per page, retain results and refresh only the decided day (audit #2).
 - [ ] PF2-rest Add an incrementally invalidated actionable-sidecar summary; avoid repeated full ledger reads, paginate audio and OCR inputs and build queue rows lazily (audit #2, #7). Measure storage operations, readiness, heap and frames on device for sparse and dense queues, including decisions and Show older.
 - [x] PF3 Index normalized names and words once per enrichment memory, preserving matching precedence; skip marker lookup when there are no markers (audit #3).
@@ -526,7 +526,7 @@ Issues found:
 - [x] PF6 Route manual rebuild progress through the narrow notifier and throttle updates (audit #14).
 - [ ] PF6-rest Load vendored packages after the editor is usable while preserving compile readiness and vault-switch cancellation (audit #11); measure startup and rebuild notifications, frames, and resource use on device (audit #11, #14).
 - [x] PF0b Skip issue-marker discovery when markers are configured, and skip issue matching when none exist. P30 profile cold starts, 2026-11-04, 10,067 notes and two parsed: scan 30.9 → 27.8 s; scan-finalize 19.7 → 18.0 s (single runs; timing varies).
-- [ ] PF0b-rest Make issue matching and other scan-finalize work proportional to changed notes, with correct invalidation for marker settings, discovery, project names and aliases; reduce load-index, listing and communities as needed. Measure on the P30 using TYLOG_STARTUP stageMillis; target total background scan < 8 s.
+- [x] (done: c40a6a8) PF0b-rest Make issue matching and other scan-finalize work proportional to changed notes, with correct invalidation for marker settings, discovery, project names and aliases; reduce load-index, listing and communities as needed. Measure on the P30 using TYLOG_STARTUP stageMillis; target total background scan < 8 s.
 - [x] PF1b Entity board: use linear task ordering and lazily build column cards with position-aware drop targets (audit #1).
 - [x] PF1b-rest Measure entity board build/layout CPU and frame percentiles on device with 100, 1,000, and 5,000 tasks, including drag and release (audit #1; also tracked by PF1-rest).
 - [ ] PF7 Remaining startup scan on the P30 (15 s from launch, off the UI isolate): list-stat 4.5 s (SAF listing of 10k files), validate 1.7 s, communities 1.4 s, sync 2-7 s. Next candidates: cached listing with directory mtimes, communities only when the graph is opened.
