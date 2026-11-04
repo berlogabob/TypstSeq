@@ -38,6 +38,19 @@ import 'package:tylog/widgets/journal_feed.dart';
 
 const _pathProviderChannel = MethodChannel('plugins.flutter.io/path_provider');
 
+class _CountingIndex extends VaultIndex {
+  _CountingIndex(Map<String, NoteRef> notes)
+    : super(notesByPath: notes, backlinksByTarget: const {});
+
+  int reads = 0;
+
+  @override
+  List<NoteRef> get notes {
+    reads++;
+    return super.notes;
+  }
+}
+
 class _FakeNotificationsPlatform extends FlutterLocalNotificationsPlatform
     with MockPlatformInterfaceMixin {
   @override
@@ -156,6 +169,39 @@ Future<void> openJournal(WidgetTester tester) async {
 void main() {
   LiveTestWidgetsFlutterBinding.ensureInitialized();
   FlutterLocalNotificationsPlatform.instance = _FakeNotificationsPlatform();
+
+  testWidgets('journal reuses sorted days until the index changes', (
+    tester,
+  ) async {
+    final root = await Directory.systemTemp.createTemp('journal_index_cache_');
+    addTearDown(() => root.delete(recursive: true));
+    final vault = Vault(root);
+    const path = 'daily/2026-10-08.typ';
+    await vault.storage.writeText(path, longJournalBody());
+    const note = NoteRef(
+      id: '2026-10-08',
+      path: path,
+      title: '2026-10-08',
+      date: '2026-10-08',
+      kind: 'daily',
+      outgoingLinks: [],
+    );
+    final first = _CountingIndex({path: note});
+    Widget app(VaultIndex index) => MaterialApp(
+      home: JournalFeed(vault: vault, index: index, onOpenPath: (_) {}),
+    );
+    await tester.pumpWidget(app(first));
+    await pumpUntilFound(tester, find.byType(TyLogReadView));
+    await tester.pumpWidget(app(first));
+    await tester.pump();
+    expect(first.reads, 1);
+
+    final second = _CountingIndex({path: note});
+    await tester.pumpWidget(app(second));
+    await tester.pump();
+    expect(second.reads, 1);
+    expect(find.text(humanDate(DateTime(2026, 10, 8))), findsOneWidget);
+  });
 
   testWidgets('journal read failure offers Retry and reloads the day', (
     tester,

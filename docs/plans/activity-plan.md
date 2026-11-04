@@ -519,6 +519,7 @@ Issues found:
 - [ ] PF2-rest Add an incrementally invalidated actionable-sidecar summary; avoid repeated full ledger reads, paginate audio and OCR inputs and build queue rows lazily (audit #2, #7). Measure storage operations, readiness, heap and frames on device for sparse and dense queues, including decisions and Show older.
 - [x] PF3 Index normalized names and words once per enrichment memory, preserving matching precedence; skip marker lookup when there are no markers (audit #3).
 - [ ] PF3-rest Move enrichment memory construction and remaining large computations off the UI isolate, incrementally update feedback, cache marker IDs with correct index invalidation, and measure root CPU, frames, heap and TYLOG_ENRICH for 1/20/100 mentions across 1k/10k pages on device (audit #3, #16).
-- [ ] PF4 Journal sorts whole daily index on scroll; task rows search whole task index; source cache unbounded (audit #4, #5, #12)
+- [x] PF4 Cache the sorted journal days per index to avoid sorting on every scroll and rebuild (audit #4).
+- [ ] PF4-rest Index task rows by note and task ID, bound and invalidate the journal source cache without losing visible edits (audit #5, #12), and measure journal scrolling, task rendering, and memory on device (audit #4, #5, #12).
 - [ ] PF5 Entity timeline computes while collapsed; merge preview reads every note (audit #6, #8)
 - [ ] PF6 Rebuild progress notifies whole workspace; startup waits for vendored package files (audit #14, #11)

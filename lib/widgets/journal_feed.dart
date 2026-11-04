@@ -54,6 +54,8 @@ class _JournalFeedState extends State<JournalFeed> {
     }
   }
 
+  VaultIndex? _daysIndex;
+  List<NoteRef>? _cachedDays;
   final sources = <String, Future<String>>{};
   final _loadedPaths = <String>{};
   final _scroll = ScrollController();
@@ -103,10 +105,14 @@ class _JournalFeedState extends State<JournalFeed> {
   /// loads one day at a time. The scanner now derives the day from the path,
   /// and this fallback keeps a stray null from ever outranking a real day.
   List<NoteRef> _days() {
+    if (identical(_daysIndex, widget.index) && _cachedDays != null) {
+      return _cachedDays!;
+    }
+    _daysIndex = widget.index;
     final days = (widget.index?.notes ?? const <NoteRef>[])
         .where((note) => note.kind == 'daily')
         .toList();
-    return days..sort((a, b) => _dayKey(b).compareTo(_dayKey(a)));
+    return _cachedDays = days..sort((a, b) => _dayKey(b).compareTo(_dayKey(a)));
   }
 
   List<CalendarItem> _eventsOn(String day) =>
