@@ -50,6 +50,9 @@ class _EntityBoardState extends State<EntityBoard> {
   bool loading = true;
   bool busy = false;
   bool loadFailed = false;
+  List<Map<String, dynamic>> remoteIssues = [];
+
+  String? get repo => board.extra['github_repo'] as String?;
 
   @override
   void initState() {
@@ -201,16 +204,87 @@ class _EntityBoardState extends State<EntityBoard> {
     }
   }
 
+  Future<void> _configureRepo() async {
+    var input = repo ?? '';
+    final value = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('GitHub repository'),
+        content: TextFormField(
+          initialValue: input,
+          onChanged: (value) => input = value,
+          decoration: const InputDecoration(labelText: 'owner/name'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, input.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (value == null || !mounted) return;
+    if (value.isNotEmpty &&
+        !RegExp(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$').hasMatch(value)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a repository as owner/name')),
+      );
+      return;
+    }
+    try {
+      if (loadFailed) throw StateError('Board file could not be read');
+      final current = await readBoard(widget.vault.storage, id) ?? board;
+      final next = Board.fromJson({
+        ...current.toJson(),
+        'github_repo': value.isEmpty ? null : value,
+      });
+      await writeBoard(widget.vault.storage, next);
+      widget.vault.restoreWriteMarkers(
+        boardPath(id),
+        stale: false,
+        pendingSync: true,
+      );
+      if (!mounted) return;
+      setState(() {
+        board = next;
+        remoteIssues = [];
+      });
+      await _sync();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not save repository: $e')),
+        );
+      }
+    }
+  }
+
+  String _remoteColumn(Map<String, dynamic> issue) {
+    if (issue['state'] == 'closed') return 'done';
+    final labels = issue['labels'] as List? ?? [];
+    return labels.any((label) => label is Map && label['name'] == 'doing')
+        ? 'doing'
+        : 'todo';
+  }
+
   Future<void> _sync() async {
     if (busy || widget.githubClient == null) return;
     final issues = issuesForEntity(
       widget.entity.id,
       index,
     ).where((i) => i.githubNumber != null && _repo(i) != null).toList();
-    if (issues.isEmpty) return;
+    if (issues.isEmpty && repo == null) return;
     setState(() => busy = true);
     try {
       final client = await widget.githubClient!();
+      if (repo != null) {
+        final rows = await client.repositoryIssues(repo!);
+        if (mounted) setState(() => remoteIssues = rows);
+      }
       for (final issue in issues) {
         final repo = _repo(issue)!;
         final remote = await client.issue(repo, issue.githubNumber!);
@@ -252,6 +326,12 @@ class _EntityBoardState extends State<EntityBoard> {
       appBar: AppBar(
         title: Text('${widget.entity.title} Board'),
         actions: [
+          if (widget.githubClient != null)
+            IconButton(
+              tooltip: 'GitHub repository',
+              onPressed: busy || loading ? null : _configureRepo,
+              icon: const Icon(Icons.settings),
+            ),
           if (widget.githubClient != null)
             TextButton(
               onPressed: busy ? null : _sync,
@@ -472,6 +552,37 @@ class _EntityBoardState extends State<EntityBoard> {
                                                           ],
                                                         ),
                                                       ),
+                                                    ),
+                                                  ),
+                                                for (final remote in remoteIssues.where(
+                                                  (remote) =>
+                                                      _remoteColumn(remote) ==
+                                                          column &&
+                                                      !issues.any(
+                                                        (local) =>
+                                                            local.githubNumber ==
+                                                                remote['number'] &&
+                                                            _repo(
+                                                                  local,
+                                                                )?.toLowerCase() ==
+                                                                repo?.toLowerCase(),
+                                                      ),
+                                                ))
+                                                  Card(
+                                                    child: ListTile(
+                                                      title: Text(
+                                                        remote['title']
+                                                                as String? ??
+                                                            '',
+                                                      ),
+                                                      subtitle: Text(
+                                                        'GitHub #${remote['number']}',
+                                                      ),
+                                                      onTap: () => widget
+                                                          .onOpenUrl
+                                                          ?.call(
+                                                            'https://github.com/$repo/issues/${remote['number']}',
+                                                          ),
                                                     ),
                                                   ),
                                                 Expanded(

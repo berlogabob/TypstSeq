@@ -250,6 +250,32 @@ class GitHubClient {
     return (data['items'] as List).cast<Map<String, dynamic>>();
   }
 
+  Future<List<Map<String, dynamic>>> repositoryIssues(String repo) async {
+    final issues = <Map<String, dynamic>>[];
+    for (var page = 1; ; page++) {
+      final rows =
+          jsonDecode(
+                utf8.decode(
+                  await _request(
+                    'GET',
+                    _uri('/repos/${_repo(repo)}/issues', {
+                      'state': 'all',
+                      'per_page': '100',
+                      'page': '$page',
+                    }),
+                  ),
+                ),
+              )
+              as List;
+      issues.addAll(
+        rows.cast<Map<String, dynamic>>().where(
+          (row) => !row.containsKey('pull_request'),
+        ),
+      );
+      if (rows.length < 100) return issues;
+    }
+  }
+
   Future<Map<String, dynamic>> issue(String repo, int number) =>
       _json('GET', _uri('/repos/${_repo(repo)}/issues/$number'));
   Future<Map<String, dynamic>> closeIssue(String repo, int number) => _json(

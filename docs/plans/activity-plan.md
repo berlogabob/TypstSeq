@@ -444,7 +444,8 @@ Issues found:
 - [ ] S3 Duplicate finder + merge (same name/alias/email; links repointed), e.g. André Sabino x2, IADE x3
 - [x] S4 Person timeline: dailies, audio, screenshots, tasks mentioning the person, by date
 - [ ] S5 Audio -> task/agenda proposals in Incoming, linked to the From person
-- [ ] S6 GitHub issue sync per board: TyLog kanban shows repo issues, moving a card closes/reopens
+- [x] S6 GitHub issue sync per board: configure a repo and view its issues in kanban with pull on open and manual refresh
+- [ ] S6-rest Move GitHub issue cards between columns (including close/reopen and doing label); resolve conflicts with GitHub winning and record them in the decision ledger.
 - [x] S7 OLT rooms tree + equipment stock levels on the whiteboard
 - [x] S8 Pack update check: weekly GitHub release check, "update available" in Extensions
 - [ ] Re-process PTT-20261104-WA0001 after the worker fix (user, Re-process)

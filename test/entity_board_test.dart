@@ -9,6 +9,77 @@ import 'package:tylog/widgets/entity_board.dart';
 import 'package:tylog/widgets/unified_board.dart';
 
 void main() {
+  testWidgets(
+    'repository setting persists and displays refreshed GitHub issues',
+    (tester) async {
+      final dir = await tester.runAsync(
+        () => Directory.systemTemp.createTemp('repo-board'),
+      );
+      if (dir == null) throw StateError('No temp directory');
+      addTearDown(() => dir.delete(recursive: true));
+      final vault = Vault(dir);
+      final client = _FakeGitHub();
+      const entity = NoteRef(
+        id: 'p',
+        path: 'p.typ',
+        title: 'P',
+        outgoingLinks: [],
+      );
+      const index = VaultIndex(
+        notesByPath: {'p.typ': entity},
+        backlinksByTarget: {},
+      );
+      Widget view() => MaterialApp(
+        home: EntityBoard(
+          entity: entity,
+          vault: vault,
+          index: index,
+          setStatus: (_, _) async {},
+          mutateNote: (_, _) async => false,
+          refreshIndex: () async => index,
+          githubClient: () async => client,
+        ),
+      );
+      Future<void> io() async {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 80)),
+        );
+        await tester.pump();
+      }
+
+      await tester.pumpWidget(view());
+      await io();
+      await tester.tap(find.byTooltip('GitHub repository'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextFormField), 'owner/repo');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+      for (
+        var i = 0;
+        i < 20 && find.text('Remote issue').evaluate().isEmpty;
+        i++
+      ) {
+        await io();
+      }
+      expect(find.text('Remote issue'), findsOneWidget);
+      expect(client.repo, 'owner/repo');
+      client.remoteTitle = 'Refreshed issue';
+      await tester.tap(find.text('Sync with GitHub'));
+      await io();
+      expect(find.text('Refreshed issue'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(view());
+      for (
+        var i = 0;
+        i < 20 && find.text('Refreshed issue').evaluate().isEmpty;
+        i++
+      ) {
+        await io();
+      }
+      expect(find.text('Refreshed issue'), findsOneWidget);
+    },
+  );
+
   testWidgets('dragging a card to done writes the task status', (tester) async {
     final dir = await tester.runAsync(
       () => Directory.systemTemp.createTemp('entity-board'),
@@ -328,6 +399,16 @@ void main() {
 }
 
 class _FakeGitHub extends GitHubClient {
+  String? repo;
+  String remoteTitle = 'Remote issue';
+  @override
+  Future<List<Map<String, dynamic>>> repositoryIssues(String repo) async {
+    this.repo = repo;
+    return [
+      {'number': 42, 'title': remoteTitle, 'state': 'open', 'labels': []},
+    ];
+  }
+
   String state = 'open';
   int? closed;
   List<String>? labels;

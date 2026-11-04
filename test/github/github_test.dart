@@ -27,6 +27,30 @@ void main() {
     return server.close(force: true);
   });
 
+  test(
+    'repository issues include all pages and exclude pull requests',
+    () async {
+      server.listen((request) async {
+        expect(request.uri.path, '/repos/a/b/issues');
+        expect(request.uri.queryParameters['state'], 'all');
+        final page = request.uri.queryParameters['page'];
+        final rows = page == '1'
+            ? List.generate(100, (i) => {'number': i + 1, 'title': 'Issue $i'})
+            : [
+                {'number': 101, 'pull_request': {}},
+              ];
+        request.response.write(jsonEncode(rows));
+        await request.response.close();
+      });
+      final issues = await GitHubClient(
+        null,
+        http,
+        base,
+      ).repositoryIssues('a/b');
+      expect(issues, hasLength(100));
+    },
+  );
+
   test('issue search encodes spaces in the query', () async {
     server.listen((request) async {
       expect(request.uri.path, '/search/issues');
