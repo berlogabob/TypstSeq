@@ -65,6 +65,39 @@ void main() {
     line: 3,
   );
 
+  test('note pages, case forms and Cyrillic spelling find existing people', () {
+    final nastya = entity(
+      'nastya',
+      'Васильченко Анастасия',
+      kind: 'note',
+      aliases: ['Настя'],
+    );
+    final pamela = entity('pamela', 'PamelaTeubig', kind: 'note');
+    final rita = entity('rita', 'RitaMalaquias', kind: 'note');
+    final sabino = entity('sabino', 'André Sabino', kind: 'note');
+    final iadeOrg = entity('iade-org', 'IADE', kind: 'organization');
+    final iadeNote = entity('iade-note', 'IADE', kind: 'note');
+    final memory = EnrichMemory.build(
+      indexOf([nastya, pamela, rita, sabino, iadeOrg, iadeNote]),
+    );
+    EnrichDecision resolve(String surface) => resolveMentions(
+      mentionsOf([EnrichMention(surface: surface, type: 'person', line: 1)]),
+      day('2026-11-03'),
+      memory,
+    ).single;
+    expect(resolve('Pamela Teubig').status, EnrichStatus.linked);
+    for (final form in ['Настей', 'Насте']) {
+      expect(resolve(form).status, EnrichStatus.review, reason: form);
+      expect(resolve(form).target?.id, 'nastya', reason: form);
+    }
+    expect(resolve('Рита').target?.id, 'rita');
+    expect(resolve('Сабино').target?.id, 'sabino');
+    expect(resolve('Маша').status, EnrichStatus.propose);
+    // A stray note with the same title does not unsettle the real entity.
+    expect(resolve('IADE').status, EnrichStatus.linked);
+    expect(resolve('IADE').target?.id, 'iade-org');
+  });
+
   test('first name alone is ambiguous: review, not link', () {
     final [decision] = resolveMentions(
       mentionsOf([andre]),

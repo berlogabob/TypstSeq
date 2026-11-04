@@ -30,7 +30,10 @@ String enrichTagEntity(String tag) => 'tag:$tag';
 const _pageTypes = {'person', 'place', 'organization', 'project', 'event'};
 
 /// Kinds a mention may resolve to.
-bool isEnrichTarget(NoteRef note) => entityNoteKinds.contains(note.kind);
+/// Plain `note` pages count: people imported from Logseq or created by hand
+/// are often kind `note`, and proposing a new page for them is the noise.
+bool isEnrichTarget(NoteRef note) =>
+    note.kind == 'note' || entityNoteKinds.contains(note.kind);
 
 /// `_system/enrich/mentions/<note path without .typ>.json`.
 String enrichMentionsPath(String notePath) =>
@@ -395,35 +398,113 @@ Set<String> _keys(EnrichMention mention) => {
 
 /// Entity notes a mention could mean, with whether the name matches exactly.
 List<(NoteRef, bool)> _candidates(EnrichMention mention, EnrichMemory memory) {
-  final keys = _keys(mention);
-  final found = <String, (NoteRef, bool)>{};
-  for (final entity in memory.entities.values) {
-    final names = {
-      for (final name in [entity.title, entity.id, ...entity.aliases])
-        enrichKey(name),
-    }..remove('');
-    // Exact only on the user's own words: hints are the model's guesses
-    // ("Катя" came back hinted with the surname of a known Катя), so they
-    // may find a candidate but never prove one.
-    final exact = names.contains(enrichKey(mention.surface));
-    // "Катя" for "Катя Жаворонкова", "Katia" for "katiazhavoronkova".
-    final prefix =
-        names.any(keys.contains) ||
-        names.any(
-          (name) => keys.any((key) => key.length >= 4 && name.startsWith(key)),
-        );
-    if (prefix || memory.acceptedCount(mention.surface, entity.id) > 0) {
-      found[entity.id] = (entity, exact);
-    }
+  final keys = {..._keys(mention), for (final k in _keys(mention)) _latin(k)};
+  List<(NoteRef, bool)> match(Iterable<NoteRef> pool) => [
+    for (final entity in pool)
+      if (_match(entity, mention, keys, memory) case final exact?)
+        (entity, exact),
+  ];
+  // Plain `note` pages only when no typed entity matches: "IADE" has an
+  // organization page and two stray notes, and must still link.
+  var found = match(memory.entities.values.where((e) => e.kind != 'note'));
+  if (found.isEmpty) {
+    found = match(memory.entities.values.where((e) => e.kind == 'note'));
   }
   // The model's own guess counts only when no name matched at all.
   if (found.isEmpty) {
     if (memory.entities[mention.entity] case final entity?) {
-      found[entity.id] = (entity, false);
+      found = [(entity, false)];
     }
   }
-  return found.values.toList();
+  return found;
 }
+
+/// Null: no match. Otherwise whether the name matches exactly.
+bool? _match(
+  NoteRef entity,
+  EnrichMention mention,
+  Set<String> keys,
+  EnrichMemory memory,
+) {
+  final names = {
+    for (final name in [entity.title, entity.id, ...entity.aliases])
+      enrichKey(name),
+  }..remove('');
+  // Exact only on the user's own words: hints are the model's guesses
+  // ("Катя" came back hinted with the surname of a known Катя), so they
+  // may find a candidate but never prove one.
+  final exact = names.contains(enrichKey(mention.surface));
+  // Single words of a name ("Sabino" in "André Sabino") find, never prove.
+  final words = {
+    for (final name in [entity.title, ...entity.aliases])
+      for (final word in name.split(RegExp(r'[\s,]+')))
+        if (enrichKey(word) case final key when key.length >= 4) key,
+  };
+  // "Катя" for "Катя Жаворонкова", "Katia" for "katiazhavoronkova".
+  final prefix =
+      names.any(keys.contains) ||
+      words.any(keys.contains) ||
+      names.any(
+        (name) => keys.any(
+          (key) =>
+              (key.length >= 4 && name.startsWith(key)) || _sameStem(name, key),
+        ),
+      );
+  return prefix || memory.acceptedCount(mention.surface, entity.id) > 0
+      ? exact
+      : null;
+}
+
+/// Russian case forms of one name: "Настей", "Насте" ~ "Настя". Only finds
+/// a candidate (review), never proves one.
+// ponytail: last-two-letters heuristic, real stemmer if false matches show up.
+bool _sameStem(String a, String b) {
+  if (a.length < 4 || b.length < 4) return false;
+  var i = 0;
+  while (i < a.length && i < b.length && a[i] == b[i]) {
+    i++;
+  }
+  return i >= 3 && a.length - i <= 2 && b.length - i <= 2;
+}
+
+const _cyrLatin = {
+  'а': 'a',
+  'б': 'b',
+  'в': 'v',
+  'г': 'g',
+  'д': 'd',
+  'е': 'e',
+  'ё': 'e',
+  'ж': 'zh',
+  'з': 'z',
+  'и': 'i',
+  'й': 'i',
+  'к': 'k',
+  'л': 'l',
+  'м': 'm',
+  'н': 'n',
+  'о': 'o',
+  'п': 'p',
+  'р': 'r',
+  'с': 's',
+  'т': 't',
+  'у': 'u',
+  'ф': 'f',
+  'х': 'kh',
+  'ц': 'ts',
+  'ч': 'ch',
+  'ш': 'sh',
+  'щ': 'shch',
+  'ъ': '',
+  'ы': 'y',
+  'ь': '',
+  'э': 'e',
+  'ю': 'iu',
+  'я': 'ia',
+};
+
+/// "рита" -> "rita", so a Cyrillic mention finds a Latin-titled page.
+String _latin(String key) => key.split('').map((c) => _cyrLatin[c] ?? c).join();
 
 EnrichDecision _decide(
   EnrichMention mention,
