@@ -446,7 +446,7 @@ Issues found:
 - [ ] S3b-rest Merge nonempty or noncanonical pages while preserving body and all metadata; repoint all other link forms and references outside indexed notes, handle ambiguous names and recover safely from partial writes.
 - [x] S4 Person timeline: dailies, audio, screenshots, tasks mentioning the person, by date
 - [x] S5 Audio -> task/agenda proposals in Incoming
-- [ ] S5-rest Link accepted audio tasks to the From person when present.
+- [x] S5-rest Link accepted audio tasks to the From person when present.
 - [x] S6 GitHub issue sync per board: configure a repo and view its issues in kanban with pull on open and manual refresh
 - [ ] S6-rest Move GitHub issue cards between columns (including close/reopen and doing label); resolve conflicts with GitHub winning and record them in the decision ledger.
 - [x] S7 OLT rooms tree + equipment stock levels on the whiteboard

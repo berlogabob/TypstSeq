@@ -451,7 +451,7 @@ void main() {
     final (home, storage) = await _mount(tester);
     const path = 'notes/audio.typ';
     const source =
-        '#import "/_system/tylog.typ" as tylog\n#show: tylog.note.with(id: "audio-id", title: "Recording", kind: "audio")\n\n= Recording\n\nFrom: #tylog.ref-note("kz")[Katia]\n';
+        '#import "/_system/tylog.typ" as tylog\n#show: tylog.note.with(id: "audio-id", title: "Recording", kind: "audio")\n\n= Recording\n\nFrom: #tylog.ref-note("2026-10-22")[Today]\nFrom: #tylog.ref-note("kz")[Katia]\n';
     await tester.runAsync(() async {
       await storage.writeText(path, source);
       await storage.writeText(
@@ -491,6 +491,22 @@ void main() {
     expect(saved, startsWith(source));
     expect(saved, contains('text: "Send notes"'));
     expect(saved, contains('due: "2026-11-06"'));
+    expect(saved, contains('assignees: ("kz",)'));
+    await tester.runAsync(() async {
+      final dir = await Directory.systemTemp.createTemp('audio_proposal_');
+      addTearDown(() => dir.delete(recursive: true));
+      await Directory('${dir.path}/_system').create();
+      await File('typst/tylog/lib.typ').copy('${dir.path}/_system/tylog.typ');
+      await File('${dir.path}/audio.typ').writeAsString(saved!);
+      final result = await Process.run('typst', [
+        'compile',
+        '--root',
+        dir.path,
+        '${dir.path}/audio.typ',
+        '${dir.path}/audio.pdf',
+      ]);
+      expect(result.exitCode, 0, reason: result.stderr.toString());
+    });
     final reject = find.byTooltip('Reject audio proposal');
     await tester.ensureVisible(reject);
     await tester.tap(reject);

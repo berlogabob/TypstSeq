@@ -614,12 +614,14 @@ String taskSnippet({
   required String text,
   String? due,
   String? project,
+  String? assignee,
 }) =>
     '#tylog.task(\n'
     '  id: ${typstString(id)},\n'
     '  text: ${typstString(text)},\n'
     '  due: ${due == null ? 'none' : typstString(due)},\n'
     '  project: ${project == null ? 'none' : typstString(project)},\n'
+    '${assignee == null ? '' : '  assignees: (${typstString(assignee)},),\n'}'
     ')';
 
 String _tableSnippet(int rows, int columns) {

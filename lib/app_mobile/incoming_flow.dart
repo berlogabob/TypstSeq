@@ -16,7 +16,20 @@ extension _IncomingFlow on _HomeScreenState {
         final offset = marker < 0 ? source.length : marker;
         final before = source.substring(0, offset);
         final separator = before.isEmpty || before.endsWith('\n') ? '' : '\n';
-        return '$before$separator${taskSnippet(id: id, text: proposal.text, due: proposal.date)}\n${source.substring(offset)}';
+        String? sender;
+        final fromLinks = RegExp(
+          r'^From:[ \t]*#tylog\.ref-note\([ \t]*("(?:\\["\\/bfnrt]|\\u[0-9a-fA-F]{4}|[^"\\\r\n])*")[ \t]*\)',
+          multiLine: true,
+        ).allMatches(before);
+        for (final match in fromLinks) {
+          final id = jsonDecode(match[1]!) as String;
+          final person = index?.notes.where(
+            (note) =>
+                note.id == id && (note.kind == 'person' || note.kind == 'note'),
+          );
+          if (person != null && person.isNotEmpty) sender = id;
+        }
+        return '$before$separator${taskSnippet(id: id, text: proposal.text, due: proposal.date, assignee: sender)}\n${source.substring(offset)}';
       });
     }
     await _appendIncomingDecision(
