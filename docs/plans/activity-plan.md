@@ -412,8 +412,10 @@ Issues found:
 - [x] Profile APK 34c2271 via Nextcloud TyLog-test-builds/ (A24 not on USB)
 - [x] A24 user test 01:17: entity header unusable on narrow phone (title wraps per letter, actions in title row) -> actions row/overflow
 - [x] A24: real fixit lines are plain text ('fixit TyLog ...', 'TyLog@fixit ...') so 0 issues indexed -> detect plain-text project title/alias + marker/@marker
-- [ ] A24: user opened a kanban with 'all in one place' (personal+project) linked to TyLog, cannot find it again -> asked user which screen
+- [x] UNIFY U1: unified_board.dart Kanban|Whiteboard|Tree, one file, -wb read fallback, no deletion
+- [ ] UNIFY U2 (user 11-04): one Board per entity with Kanban | Whiteboard | Tree switch; one header button; Library > Boards lists every entity board (even without a saved file) + standalone whiteboards; migrate <id>-wb.board.json into the entity board file
+- [x] A24: user opened a kanban with 'all in one place' (personal+project) linked to TyLog, cannot find it again -> asked user which screen
 - [x] Screenshots not processed: org.tylog.screenshots watcher agent was not loaded (plist rewritten 11-03 14:49, cause unknown); re-bootstrapped 01:2x, processing
 - [ ] A24 01:24: 'Sign in with GitHub' -> 'GITHUB_CLIENT_ID is not configured' (build had no --dart-define; GitDoIt id also rejects device flow). Need: user enables Device Flow / sends OAuth client id; build passes --dart-define=GITHUB_CLIENT_ID; friendlier message when missing
-- [ ] FLAKY under load: whiteboard_test 'entity Tree opens and pins nodes and edges' (2/2 pass alone)
+- [ ] FLAKY under load (pre-release stabilization pass): workspace_controller_test 'scanned issues survive index publication' + whiteboard_test 'entity Tree opens and pins nodes and edges' (2/2 pass alone)
 - [ ] (old) Profile APK on A24 (user tests P3 whiteboard, P4 OLT/GitHub boards, P1/P2 basics) with checklist

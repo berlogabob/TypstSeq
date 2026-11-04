@@ -238,7 +238,13 @@ class Whiteboard extends StatefulWidget {
     this.initialTree = false,
     this.initialHash,
     this.deviceId = 'unknown',
+    this.embedded = false,
+    this.registerFlush,
+    this.onPinTree,
   });
+  final VoidCallback? onPinTree;
+  final bool embedded;
+  final void Function(Future<void> Function())? registerFlush;
   final String? initialHash;
   final String deviceId;
   final bool initialTree;
@@ -328,6 +334,11 @@ class _WhiteboardState extends State<Whiteboard> {
   @override
   void initState() {
     super.initState();
+    widget.registerFlush?.call(() async {
+      if (timer != null) save();
+      await writes;
+      if (saveFailed) throw StateError('Whiteboard could not be saved');
+    });
     hashReady = () async {
       savedHash = widget.initialHash;
       if (savedHash == null &&
@@ -825,6 +836,7 @@ class _WhiteboardState extends State<Whiteboard> {
     });
     if (freeViewport != null) transform.value = freeViewport!;
     save();
+    widget.onPinTree?.call();
   }
 
   Widget content(BoardCard card) {
@@ -921,20 +933,23 @@ class _WhiteboardState extends State<Whiteboard> {
   }
 
   @override
-  Widget build(BuildContext context) => PopScope(
-    canPop: false,
-    onPopInvokedWithResult: (didPop, _) {
-      if (!didPop) leave();
-    },
-    child: buildCanvas(),
-  );
+  Widget build(BuildContext context) => widget.embedded
+      ? buildCanvas()
+      : PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, _) {
+            if (!didPop) leave();
+          },
+          child: buildCanvas(),
+        );
 
   Widget buildCanvas() => Scaffold(
     appBar: AppBar(
-      leading: BackButton(onPressed: leave),
+      automaticallyImplyLeading: !widget.embedded,
+      leading: widget.embedded ? null : BackButton(onPressed: leave),
       title: Text(board.title),
       actions: [
-        if (board.scopeEntity != null)
+        if (board.scopeEntity != null && !widget.embedded)
           TextButton(
             onPressed: toggleTree,
             child: Text(treeMode ? 'Whiteboard' : 'Tree'),

@@ -6,6 +6,7 @@ import 'package:tylog_core/tylog_core.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/github/github_client.dart';
 import 'package:tylog/widgets/entity_board.dart';
+import 'package:tylog/widgets/unified_board.dart';
 
 void main() {
   testWidgets('dragging a card to done writes the task status', (tester) async {
@@ -48,7 +49,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        home: EntityBoard(
+        home: UnifiedBoard(
           entity: entity,
           vault: vault,
           index: makeIndex(),
@@ -65,7 +66,9 @@ void main() {
         ),
       ),
     );
-    await settleIo();
+    for (var i = 0; i < 50 && find.text('A task').evaluate().isEmpty; i++) {
+      await settleIo();
+    }
     expect(find.text('A task'), findsOneWidget);
     final gesture = await tester.startGesture(
       tester.getCenter(find.text('A task')),

@@ -126,16 +126,12 @@ class _EntityBoardState extends State<EntityBoard> {
         ordered.removeAt(old);
         if (old < position) position--;
         ordered.insert(position.clamp(0, ordered.length), task.id);
-        final next = Board(
-          id: board.id,
-          title: board.title,
-          layout: board.layout,
-          scopeEntity: board.scopeEntity,
-          scopeExtra: board.scopeExtra,
-          columns: board.columns,
-          order: {...board.order, column: ordered},
-          extra: board.extra,
-        );
+        final current = await readBoard(widget.vault.storage, id) ?? board;
+        final next = Board.fromJson({
+          ...current.toJson(),
+          'schema': 2,
+          'order': {...current.order, column: ordered},
+        });
         await writeBoard(widget.vault.storage, next);
         widget.vault.restoreWriteMarkers(
           boardPath(id),

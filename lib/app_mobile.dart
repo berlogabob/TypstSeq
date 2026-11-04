@@ -74,8 +74,8 @@ import 'widgets/note_picker_sheet.dart';
 import 'widgets/entity_header.dart';
 import 'widgets/entity_board.dart';
 import 'widgets/whiteboard.dart';
+import 'widgets/unified_board.dart';
 import 'github/send_issue.dart';
-import 'package:tylog_core/tylog_core.dart' show hasBoardItems;
 import 'widgets/kind_icon_picker.dart';
 import 'widgets/enrich_review.dart';
 import 'widgets/linked_references.dart';
@@ -6137,14 +6137,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 onRemove: (id) => _updatePartOf(id, remove: true),
                 onOpen: _openPath,
               ),
-              onOpenBoard:
-                  v != null &&
-                      index != null &&
-                      hasBoardItems(currentNote.id, index!)
+              onOpenBoard: v != null && index != null
                   ? () => Navigator.of(context).push(
                       MaterialPageRoute<void>(
-                        builder: (_) => EntityBoard(
+                        builder: (_) => UnifiedBoard(
                           entity: currentNote,
+                          onOpenPath: _openPath,
+                          imageResolver: _readAsset,
+                          deviceId: vaultRegistry?.deviceId ?? 'unknown',
                           githubClient: workspace.githubClient,
                           onOpenUrl: _openUrl,
                           vault: v,
