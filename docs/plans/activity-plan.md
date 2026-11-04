@@ -432,7 +432,7 @@ Issues found:
 - [ ] A24 "add vault" screen after freeze: unconfirmed cause, recheck on 5863f60
 - [x] T1 Share audio from WhatsApp/Telegram: "From" person picker (codex, spec 2026-11-04-wave21/t1)
 - [x] T2 Flaky tests: workspace_controller issues + whiteboard Tree (codex, t2)
-- [ ] T3 P5 form-OCR module, new repo tylog-form-ocr, synthetic templates (codex, t3)
+- [x] T3 P5 form-OCR module, new repo tylog-form-ocr, synthetic templates (codex, t3) — 9173948 in tylog-form-ocr; real templates + photos needed next
 - [ ] T4 PT pack 1.3.1: re-score all clips, redo low ones (Studio TTS)
 - [ ] T5 Mac verify P3 whiteboard + P4 OLT on scratch vault
 - [ ] P6 Telegram bot vaults: blocked by bot code freeze
