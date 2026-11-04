@@ -520,7 +520,8 @@ Issues found:
 - [x] PF3 Index normalized names and words once per enrichment memory, preserving matching precedence; skip marker lookup when there are no markers (audit #3).
 - [ ] PF3-rest Move enrichment memory construction and remaining large computations off the UI isolate, incrementally update feedback, cache marker IDs with correct index invalidation, and measure root CPU, frames, heap and TYLOG_ENRICH for 1/20/100 mentions across 1k/10k pages on device (audit #3, #16).
 - [x] PF4 Cache the sorted journal days per index to avoid sorting on every scroll and rebuild (audit #4).
-- [ ] PF4-rest Index task rows by note and task ID, bound and invalidate the journal source cache without losing visible edits (audit #5, #12), and measure journal scrolling, task rendering, and memory on device (audit #4, #5, #12).
+- [x] PF4-rest Index journal task rows by note and task ID (audit #5).
+- [ ] PF4-rest-rest Bound and invalidate the journal source cache without losing visible edits (audit #12), and measure journal scrolling, task rendering, and memory on device (audit #4, #5, #12).
 - [x] PF5 Cache entity timeline entries per index and defer rebuilding them while collapsed (audit #6).
 - [ ] PF5-rest Reuse the workspace resolver and index task references by entity; make merge preview verification scalable while preserving unsupported-reference and concurrent-change checks (audit #6, #8). Measure timeline CPU and frames, and merge preview reads, bytes, time, CPU and heap on app-local and SAF fixtures.
 - [x] PF6 Route manual rebuild progress through the narrow notifier and throttle updates (audit #14).

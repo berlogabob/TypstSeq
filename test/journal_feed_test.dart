@@ -21,6 +21,7 @@
 // below purely to keep that unrelated, pre-existing gap from crashing these
 // tests (production code is unchanged; this is test-only scaffolding).
 // ignore_for_file: depend_on_referenced_packages
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 
@@ -49,6 +50,25 @@ class _CountingIndex extends VaultIndex {
     reads++;
     return super.notes;
   }
+}
+
+class _CountingTasks extends ListBase<TaskRef> {
+  _CountingTasks(this.items);
+  final List<TaskRef> items;
+  int reads = 0;
+  @override
+  int get length => items.length;
+  @override
+  set length(int value) => throw UnsupportedError('immutable');
+  @override
+  TaskRef operator [](int index) {
+    reads++;
+    return items[index];
+  }
+
+  @override
+  void operator []=(int index, TaskRef value) =>
+      throw UnsupportedError('immutable');
 }
 
 class _FakeNotificationsPlatform extends FlutterLocalNotificationsPlatform
@@ -202,6 +222,58 @@ void main() {
     expect(second.reads, 1);
     expect(find.text(humanDate(DateTime(2026, 10, 8))), findsOneWidget);
   });
+
+  testWidgets(
+    'journal indexes task rows once per index and preserves note identity',
+    (tester) async {
+      final root = await Directory.systemTemp.createTemp('journal_tasks_');
+      addTearDown(() => root.delete(recursive: true));
+      final vault = Vault(root);
+      const path = 'daily/2026-10-08.typ';
+      await vault.storage.writeText(
+        path,
+        '#tylog.task(id: "a", text: "Source A")\n\n#tylog.task(id: "b", text: "Source B")',
+      );
+      const note = NoteRef(
+        id: 'day',
+        path: path,
+        title: 'Day',
+        date: '2026-10-08',
+        kind: 'daily',
+        outgoingLinks: [],
+      );
+      final tasks = _CountingTasks(const [
+        TaskRef(id: 'a', notePath: 'other.typ', text: 'Wrong note'),
+        TaskRef(id: 'a', notePath: path, text: 'Indexed A'),
+        TaskRef(id: 'b', notePath: path, text: 'Indexed B'),
+      ]);
+      final index = VaultIndex(
+        notesByPath: const {path: note},
+        backlinksByTarget: const {},
+        tasks: tasks,
+      );
+      Widget app(VaultIndex value) => MaterialApp(
+        home: JournalFeed(vault: vault, index: value, onOpenPath: (_) {}),
+      );
+      await tester.pumpWidget(app(index));
+      await pumpUntilFound(tester, find.text('Indexed B'));
+      expect(find.text('Indexed A'), findsOneWidget);
+      expect(find.text('Wrong note'), findsNothing);
+      final reads = tasks.reads;
+      await tester.pumpWidget(app(index));
+      await tester.pump();
+      expect(tasks.reads, reads);
+      final replacement = VaultIndex(
+        notesByPath: const {path: note},
+        backlinksByTarget: const {},
+        tasks: const [TaskRef(id: 'a', notePath: path, text: 'Updated A')],
+      );
+      await tester.pumpWidget(app(replacement));
+      await tester.pump();
+      expect(find.text('Updated A'), findsOneWidget);
+      expect(find.text('Source B'), findsOneWidget);
+    },
+  );
 
   testWidgets('journal read failure offers Retry and reloads the day', (
     tester,

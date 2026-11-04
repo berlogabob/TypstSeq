@@ -56,6 +56,7 @@ class _JournalFeedState extends State<JournalFeed> {
 
   VaultIndex? _daysIndex;
   List<NoteRef>? _cachedDays;
+  final _tasksByNote = <String, Map<String, TaskRef>>{};
   final sources = <String, Future<String>>{};
   final _loadedPaths = <String>{};
   final _scroll = ScrollController();
@@ -109,6 +110,10 @@ class _JournalFeedState extends State<JournalFeed> {
       return _cachedDays!;
     }
     _daysIndex = widget.index;
+    _tasksByNote.clear();
+    for (final task in widget.index?.tasks ?? const <TaskRef>[]) {
+      (_tasksByNote[task.notePath] ??= {}).putIfAbsent(task.id, () => task);
+    }
     final days = (widget.index?.notes ?? const <NoteRef>[])
         .where((note) => note.kind == 'daily')
         .toList();
@@ -297,14 +302,7 @@ class _JournalFeedState extends State<JournalFeed> {
                             notePath: day.path,
                           );
                           final task =
-                              widget.index?.tasks
-                                  .where(
-                                    (t) =>
-                                        t.id == parsed.id &&
-                                        t.notePath == day.path,
-                                  )
-                                  .firstOrNull ??
-                              parsed;
+                              _tasksByNote[day.path]?[parsed.id] ?? parsed;
                           return TaskRow(
                             task: task,
                             onOpenPath: widget.onOpenPath,
