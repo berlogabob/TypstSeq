@@ -463,7 +463,7 @@ Issues found:
 - [ ] Re-process PTT-20261104-WA0001 after the worker fix (user, Re-process)
 
 ## Wave 23 (2026-11-04, A24 findings)
-- [ ] M1 Drop the `// tylog:auto-entities` Mentions block (user: doubles Incoming, no help). Accepted mention = inline link on the name in the text (exists); auto tags -> header `tags:`; unsure stays in Incoming. Migration of existing dailies (~19): remove block, add missing inline links, move tags to header; preview list to user before any vault write.
+- [ ] M1 (codex: code + dry-run report only, NO vault writes) Drop the `// tylog:auto-entities` Mentions block (user: doubles Incoming, no help). Accepted mention = inline link on the name in the text (exists); auto tags -> header `tags:`; unsure stays in Incoming. Migration of existing dailies (~19): remove block, add missing inline links, move tags to header; preview list to user before any vault write.
 - [ ] M2 People cleanup: person pages created as kind `note` with CamelCase titles (AlexandrePereira, AndreSabino, AngelaSilvestre, BrunoAlmeida, CarlosRosa, ÉlmanoRicarte, EulersonRodrigues, FernandoMarson, HéliaPereira, JoséGraça, JoshGambrell, PamelaTeubig, PauloAndrade, RitaMalaquias) -> kind person + spaced title via rename (links repointed, old title kept as alias). Non-people CamelCase pages (ArtStation, GameObject, MetaMask, ...) untouched. User confirms the list first.
 - [ ] M3 Root cause of M2: find the flow that creates CamelCase kind-note pages (mention "+" create / contact import?) and make it create kind person with the spoken name as title.
 - [ ] M4 Merge AndreSabino + "André Sabino" (Settings > Duplicates once M2 runs); Анжела Хавьер is a different person, not a duplicate.
