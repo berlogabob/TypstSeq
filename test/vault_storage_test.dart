@@ -11,6 +11,45 @@ import 'package:tylog/vault_storage.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  test(
+    'revision JSON cannot replace a daily note through local or SAF storage',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('tylog_guard_');
+      addTearDown(() => dir.delete(recursive: true));
+      final local = LocalVaultStorage(dir);
+      const path = 'daily/2026/11/2026-11-02.typ';
+      const note = '#import "/_system/tylog.typ" as tylog\n\nExisting note';
+      const revision =
+          '{"revision":{"id":"note-1"},"history":[],"node":{"content":"Existing note"}}';
+      await local.writeText(path, note);
+      await expectLater(local.writeText(path, revision), throwsFormatException);
+      expect(await local.readText(path), note);
+      await local.writeText('_system/revisions/note-1.json', revision);
+
+      final calls = <MethodCall>[];
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(AndroidTreeVaultStorage.channel, (
+        call,
+      ) async {
+        calls.add(call);
+        return null;
+      });
+      addTearDown(
+        () => messenger.setMockMethodCallHandler(
+          AndroidTreeVaultStorage.channel,
+          null,
+        ),
+      );
+      final saf = AndroidTreeVaultStorage(
+        uri: 'content://test/tree',
+        name: 'Test',
+      );
+      await expectLater(saf.writeText(path, revision), throwsFormatException);
+      expect(calls, isEmpty);
+    },
+  );
+
   test('vault paths reject aliases and control characters', () {
     for (final path in ['assets/./a.bin', 'assets/../a.bin', 'assets/a\nbin']) {
       expect(() => validateVaultPath(path), throwsArgumentError);

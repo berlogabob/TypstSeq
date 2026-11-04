@@ -21,6 +21,27 @@ Future<void> writeFileAtomic(File file, List<int> bytes) async {
   await temporary.rename(file.path);
 }
 
+/// Reject revision envelopes at note paths before touching the destination.
+void guardNoteWrite(String path, List<int> bytes) {
+  if (!path.endsWith('.typ') ||
+      path.startsWith('_system/') ||
+      path.startsWith('_index/') ||
+      path.startsWith('.tylog/'))
+    return;
+  Object? value;
+  try {
+    final text = utf8.decode(bytes);
+    if (!text.trimLeft().startsWith('{')) return;
+    value = jsonDecode(text);
+  } on FormatException {
+    return;
+  }
+  if (value is Map && value['revision'] is Map && value['node'] is Map) {
+    stderr.writeln('Refusing revision envelope at note path: $path');
+    throw FormatException('Refusing revision envelope at note path: $path');
+  }
+}
+
 class VaultStorageEntry {
   const VaultStorageEntry({
     required this.path,
@@ -212,6 +233,7 @@ class LocalVaultStorage extends VaultStorage {
 
   @override
   Future<void> writeBytes(String path, List<int> bytes) async {
+    guardNoteWrite(path, bytes);
     final marker = await markIndexDirty(path);
     await writeFileAtomic(File(_path(path)), bytes);
     await commitIndexWrite(marker, path);
