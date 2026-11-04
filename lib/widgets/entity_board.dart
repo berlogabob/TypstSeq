@@ -271,6 +271,67 @@ class _EntityBoardState extends State<EntityBoard> {
         : 'todo';
   }
 
+  Future<void> _dropRemote(Map<String, dynamic> shown, String column) async {
+    final repository = repo;
+    if (busy ||
+        repository == null ||
+        widget.githubClient == null ||
+        !['todo', 'doing', 'done'].contains(column) ||
+        _remoteColumn(shown) == column) {
+      return;
+    }
+    setState(() => busy = true);
+    try {
+      final client = await widget.githubClient!();
+      final number = (shown['number'] as num).toInt();
+      final current = await client.issue(repository, number);
+      if (_remoteColumn(current) != _remoteColumn(shown)) {
+        await widget.vault.storage.createDirectory(decisionsDir);
+        await widget.vault.storage.appendBytes(
+          '$decisionsDir/github.jsonl',
+          utf8.encode(
+            encodeDecisions([
+              Decision(
+                at: DateTime.now().toIso8601String(),
+                device: 'github',
+                item: '$repository#$number',
+                source: 'issue',
+                action: 'seen',
+                target: _remoteColumn(current),
+                context:
+                    'GitHub conflict: attempted $column from ${_remoteColumn(shown)}; GitHub won',
+              ),
+            ]),
+          ),
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Issue changed on GitHub; GitHub version kept'),
+            ),
+          );
+        }
+      } else {
+        final labels = (current['labels'] as List? ?? [])
+            .whereType<Map>()
+            .map((label) => label['name'])
+            .whereType<String>()
+            .toList();
+        await client.updateIssueColumn(repository, number, column, labels);
+      }
+      final rows = await client.repositoryIssues(repository);
+      if (mounted && repo == repository) setState(() => remoteIssues = rows);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not update GitHub issue: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
   Future<void> _sync() async {
     if (busy || widget.githubClient == null) return;
     final issues = issuesForEntity(
@@ -369,6 +430,8 @@ class _EntityBoardState extends State<EntityBoard> {
                                   _drop(item, column, position, cards);
                                 } else if (item is IssueRef) {
                                   _dropIssue(item, column);
+                                } else if (item is Map<String, dynamic>) {
+                                  _dropRemote(item, column);
                                 }
                               },
                               builder: (context, candidates, rejected) =>
@@ -568,21 +631,40 @@ class _EntityBoardState extends State<EntityBoard> {
                                                                 repo?.toLowerCase(),
                                                       ),
                                                 ))
-                                                  Card(
-                                                    child: ListTile(
-                                                      title: Text(
-                                                        remote['title']
-                                                                as String? ??
-                                                            '',
-                                                      ),
-                                                      subtitle: Text(
-                                                        'GitHub #${remote['number']}',
-                                                      ),
-                                                      onTap: () => widget
-                                                          .onOpenUrl
-                                                          ?.call(
-                                                            'https://github.com/$repo/issues/${remote['number']}',
+                                                  LongPressDraggable<Object>(
+                                                    data: remote,
+                                                    feedback: Material(
+                                                      child: SizedBox(
+                                                        width: 240,
+                                                        child: ListTile(
+                                                          title: Text(
+                                                            remote['title']
+                                                                    as String? ??
+                                                                '',
                                                           ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    childWhenDragging:
+                                                        const SizedBox(
+                                                          height: 48,
+                                                        ),
+                                                    child: Card(
+                                                      child: ListTile(
+                                                        title: Text(
+                                                          remote['title']
+                                                                  as String? ??
+                                                              '',
+                                                        ),
+                                                        subtitle: Text(
+                                                          'GitHub #${remote['number']}',
+                                                        ),
+                                                        onTap: () => widget
+                                                            .onOpenUrl
+                                                            ?.call(
+                                                              'https://github.com/$repo/issues/${remote['number']}',
+                                                            ),
+                                                      ),
                                                     ),
                                                   ),
                                                 Expanded(

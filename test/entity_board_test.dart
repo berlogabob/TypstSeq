@@ -80,6 +80,105 @@ void main() {
     },
   );
 
+  testWidgets('GitHub cards move between columns and stale moves lose', (
+    tester,
+  ) async {
+    final dir = await tester.runAsync(
+      () => Directory.systemTemp.createTemp('remote-board'),
+    );
+    if (dir == null) throw StateError('No temp directory');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    await tester.runAsync(
+      () => writeBoard(
+        vault.storage,
+        Board.fromJson({
+          'id': 'board',
+          'title': 'P',
+          'scopeEntity': 'p',
+          'github_repo': 'owner/repo',
+        }),
+      ),
+    );
+    const entity = NoteRef(
+      id: 'p',
+      path: 'p.typ',
+      title: 'P',
+      outgoingLinks: [],
+    );
+    const index = VaultIndex(
+      notesByPath: {'p.typ': entity},
+      backlinksByTarget: {},
+    );
+    final client = _FakeGitHub();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EntityBoard(
+          boardId: 'board',
+          entity: entity,
+          vault: vault,
+          index: index,
+          setStatus: (_, _) async {},
+          mutateNote: (_, _) async => false,
+          refreshIndex: () async => index,
+          githubClient: () async => client,
+        ),
+      ),
+    );
+    Future<void> io() async {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 80)),
+      );
+      await tester.pump();
+    }
+
+    for (
+      var i = 0;
+      i < 20 && find.text('Remote issue').evaluate().isEmpty;
+      i++
+    ) {
+      await io();
+    }
+    Future<void> move(String column) async {
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('Remote issue')),
+      );
+      await tester.pump(const Duration(milliseconds: 600));
+      await gesture.moveTo(
+        tester.getBottomLeft(find.byKey(ValueKey('board-column-$column'))) +
+            const Offset(100, -30),
+      );
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+      await io();
+    }
+
+    await move('doing');
+    expect(client.remoteStatus, 'doing');
+    await move('done');
+    expect(client.remoteStatus, 'done');
+    await move('todo');
+    expect(client.remoteStatus, 'todo');
+    client.remoteStatus = 'doing';
+    await move('done');
+    expect(client.remoteStatus, 'doing');
+    for (var i = 0; i < 20; i++) {
+      await io();
+      if (await tester.runAsync(
+            () => vault.storage.exists('_system/decisions/github.jsonl'),
+          ) ==
+          true) {
+        break;
+      }
+    }
+    final log = await tester.runAsync(
+      () => vault.storage.readText('_system/decisions/github.jsonl'),
+    );
+    expect(log, contains('owner/repo#42'));
+    expect(log, contains('conflict'));
+  });
+
   testWidgets('dragging a card to done writes the task status', (tester) async {
     final dir = await tester.runAsync(
       () => Directory.systemTemp.createTemp('entity-board'),
@@ -401,17 +500,36 @@ void main() {
 class _FakeGitHub extends GitHubClient {
   String? repo;
   String remoteTitle = 'Remote issue';
+  String remoteStatus = 'todo';
   @override
   Future<List<Map<String, dynamic>>> repositoryIssues(String repo) async {
     this.repo = repo;
     return [
-      {'number': 42, 'title': remoteTitle, 'state': 'open', 'labels': []},
+      {
+        'number': 42,
+        'title': remoteTitle,
+        'state': remoteStatus == 'done' ? 'closed' : 'open',
+        'labels': [
+          if (remoteStatus == 'doing') {'name': 'doing'},
+        ],
+      },
     ];
   }
 
   String state = 'open';
   int? closed;
   List<String>? labels;
+  @override
+  Future<Map<String, dynamic>> updateIssueColumn(
+    String repo,
+    int number,
+    String column,
+    List<String> labels,
+  ) async {
+    remoteStatus = column;
+    return {};
+  }
+
   @override
   Future<List<Map<String, dynamic>>> searchIssues(String repo, String marker) =>
       Future.error(StateError('Search unavailable'));
@@ -428,9 +546,15 @@ class _FakeGitHub extends GitHubClient {
   }
 
   @override
-  Future<Map<String, dynamic>> issue(String repo, int number) async => {
-    'state': state,
-  };
+  Future<Map<String, dynamic>> issue(String repo, int number) async =>
+      number == 42
+      ? {
+          'state': remoteStatus == 'done' ? 'closed' : 'open',
+          'labels': [
+            if (remoteStatus == 'doing') {'name': 'doing'},
+          ],
+        }
+      : {'state': state};
   @override
   Future<Map<String, dynamic>> closeIssue(String repo, int number) async {
     closed = number;

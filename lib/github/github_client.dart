@@ -278,6 +278,23 @@ class GitHubClient {
 
   Future<Map<String, dynamic>> issue(String repo, int number) =>
       _json('GET', _uri('/repos/${_repo(repo)}/issues/$number'));
+  Future<Map<String, dynamic>> updateIssueColumn(
+    String repo,
+    int number,
+    String column,
+    List<String> labels,
+  ) => _json(
+    'PATCH',
+    _uri('/repos/${_repo(repo)}/issues/$number'),
+    body: {
+      'state': column == 'done' ? 'closed' : 'open',
+      'labels': [
+        for (final label in labels)
+          if (label != 'doing') label,
+        if (column == 'doing') 'doing',
+      ],
+    },
+  );
   Future<Map<String, dynamic>> closeIssue(String repo, int number) => _json(
     'PATCH',
     _uri('/repos/${_repo(repo)}/issues/$number'),

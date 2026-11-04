@@ -51,6 +51,38 @@ void main() {
     },
   );
 
+  test('moving an issue changes state and only the doing label', () async {
+    final bodies = <Map<String, dynamic>>[];
+    server.listen((request) async {
+      expect(request.method, 'PATCH');
+      expect(request.uri.path, '/repos/a/b/issues/42');
+      bodies.add(
+        jsonDecode(await utf8.decoder.bind(request).join())
+            as Map<String, dynamic>,
+      );
+      request.response.write('{}');
+      await request.response.close();
+    });
+    final client = GitHubClient(null, http, base);
+    await client.updateIssueColumn('a/b', 42, 'doing', ['bug']);
+    await client.updateIssueColumn('a/b', 42, 'done', ['bug', 'doing']);
+    await client.updateIssueColumn('a/b', 42, 'todo', ['bug']);
+    expect(bodies, [
+      {
+        'state': 'open',
+        'labels': ['bug', 'doing'],
+      },
+      {
+        'state': 'closed',
+        'labels': ['bug'],
+      },
+      {
+        'state': 'open',
+        'labels': ['bug'],
+      },
+    ]);
+  });
+
   test('issue search encodes spaces in the query', () async {
     server.listen((request) async {
       expect(request.uri.path, '/search/issues');
