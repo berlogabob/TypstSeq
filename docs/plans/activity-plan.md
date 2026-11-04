@@ -422,7 +422,7 @@ Issues found:
 
 ## Wave 20 (2026-11-04): one decision surface + OLT under Extensions (user OK)
 - [x] Enrich pending suggestions only in Incoming (grouped per day, accept/reject markers/tags/mentions, decisions logged as before); daily page: no EnrichReview section, small 'N suggestions' chip -> Incoming filtered to that day
-- [ ] DEFERRED: Auto-entities block (// tylog:auto-entities, 19 dailies) stays in files; editor renders it as one folded line (codex declined: needs read-only block preserving offsets; base it on TyLogBlockStyle.protected, careful editor task) 'Auto: IADE · #tag' (byte-exact round-trip, no file rewrite)
+- [x] (superseded by M1) DEFERRED: Auto-entities block (// tylog:auto-entities, 19 dailies) stays in files; editor renders it as one folded line (codex declined: needs read-only block preserving offsets; base it on TyLogBlockStyle.protected, careful editor task) 'Auto: IADE · #tag' (byte-exact round-trip, no file rewrite)
 - [x] OpenLabTwin moved into Settings > Extensions (sign-in, status, refresh, last error); old OpenLabTwin settings entry removed; Extensions = folders, GitHub, OpenLabTwin
 
 ## Wave 21 (2026-11-04, A24 feedback)
@@ -440,7 +440,7 @@ Issues found:
 - [x] T3 P5 form-OCR module, new repo tylog-form-ocr, synthetic templates (codex, t3) — 9173948 in tylog-form-ocr; real templates + photos needed next
 - [ ] T4 PT pack 1.3.1: re-score all clips, redo low ones (Studio TTS)
 - [ ] T5 Mac verify P3 whiteboard + P4 OLT on scratch vault
-- [ ] P6 Telegram bot vaults: blocked by bot code freeze
+- [x] (moved to M6) P6 Telegram bot vaults
 
 ## Wave 22 (2026-11-04, user OK: suggestions 1-8)
 - [x] S1 One review queue: OCR rows, OLT bookings, bot drafts land in Incoming with the same accept/reject + decision ledger
@@ -477,4 +477,4 @@ Issues found:
 - [x] M4 (done 2026-11-04: 1 link repointed, aliases kept, kind person, empty page removed; backup scratchpad m4bak) Merge AndreSabino + "André Sabino" (Settings > Duplicates once M2 runs); Анжела Хавьер is a different person, not a duplicate.
 - [ ] M5 PT pack 1.3.1 blocked: Studio GPU full even with Ornith unloaded (Chatterbox 400); user: nvidia-smi on Studio or allow CPU TTS.
 - [ ] M6 P6 bot vaults: no freeze; design doc first (bot <-> TyLog folder contract, 5 open questions), user approves before code.
-- [ ] M7 Build policy: one APK at plan end (user 2026-11-04); exception only for blocking bugs.
+- [x] M7 Build policy: one APK at plan end (user 2026-11-04); exception only for blocking bugs.
