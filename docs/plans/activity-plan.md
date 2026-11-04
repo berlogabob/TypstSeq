@@ -543,3 +543,8 @@ Issues found:
 - [x] PF7-rest Derive requested communities beside the worker-owned index so the UI isolate does not serialize the full index. P30 profile, 2026-11-04, 10,067 notes: cold startup scan done 20.278 s (list-stat 7.064 s, validate 0.378 s), sync done 20.920 s; opening Library triggered a scan done at 36.678 s (list-stat 6.545 s).
 - [ ] PF7-rest-rest Reduce and measure P30 SAF list-stat and startup-sync time; measure community view-opening latency and frames on the real vault, including cold and repeated opens.
 - [ ] K4 Self-heal legacy `// tylog:auto-entities` blocks: on every note save the app removes the marker + `== Mentions` heading (keeps link items as plain lines, moves #tylog.tag(...) lines into header tags), so a stale device copy (A24 23:25 re-uploaded today's page with the marker after Claude removed it at 17:00) can never bring the block back; editor must not rewrite or reload the open note because of the block. Test: save of a note with a legacy block yields no marker and compiles.
+
+## Wave 25 (overnight 2026-11-04/05): P2P sync options (user OK)
+- [ ] P2P1 Options report (spec docs/plans/2026-11-05-p2p/README.md)
+- [ ] P2P2 In-app iroh harness (debug-only, scratch vault, .profiletest builds only)
+- [ ] P2P3 Go/no-go decision written into the plan
