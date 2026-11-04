@@ -33,12 +33,87 @@ Future<int> runTylog(List<String> arguments) async {
     'index' => _index(args),
     'eval-links' => _evalLinks(args),
     'doctor' => _doctor(args),
+    'vault-health' => _vaultHealth(args),
     'dedupe' => _dedupe(args),
     'migrate-mentions' => _migrateMentions(args),
     'export' => _export(args),
     'pack-validate' => _packValidate(args),
     _ => throw _UsageException('Unknown command: $command'),
   };
+}
+
+Future<int> _vaultHealth(List<String> args) async {
+  if (args.length != 1 || args.single.startsWith('--')) {
+    throw _UsageException('vault-health requires <vault>');
+  }
+  final root = Directory(args.single).absolute;
+  if ((await inspectVaultStorage(LocalVaultStorage(root))).kind !=
+      VaultStorageKind.validVault) {
+    throw StateError('TyLog vault marker is missing or invalid');
+  }
+  final issues = <Map<String, String>>[];
+  var scanned = 0;
+  // Match the indexer's note roots; managed Typst packages are not notes.
+  for (final name in [
+    'daily',
+    'notes',
+    'projects',
+    'articles',
+    'screenshots',
+    'ext',
+  ]) {
+    final directory = Directory('${root.path}/$name');
+    if (!await directory.exists()) continue;
+    await for (final entry in directory.list(
+      recursive: true,
+      followLinks: false,
+    )) {
+      if (entry is! File || !entry.path.endsWith('.typ')) continue;
+      final path = entry.path
+          .substring(root.path.length + 1)
+          .replaceAll(Platform.pathSeparator, '/');
+      scanned++;
+      String source;
+      try {
+        source = await entry.readAsString();
+      } on FileSystemException {
+        issues.add({'path': path, 'code': 'unreadable'});
+        continue;
+      } on FormatException {
+        issues.add({'path': path, 'code': 'unreadable'});
+        continue;
+      }
+      if (!RegExp(r'#show\s*:\s*tylog\.note\.with\s*\(').hasMatch(source)) {
+        issues.add({'path': path, 'code': 'missing-note-header'});
+      }
+      if (source.contains('// tylog:auto-entities')) {
+        issues.add({'path': path, 'code': 'auto-entities'});
+      }
+    }
+  }
+  issues.sort(
+    (a, b) =>
+        '${a['path']}/${a['code']}'.compareTo('${b['path']}/${b['code']}'),
+  );
+  final now = DateTime.now();
+  final date =
+      '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+  final directory = Directory('${root.path}/_system/health');
+  await directory.create(recursive: true);
+  final report = File('${directory.path}/$date.json');
+  final temporary = File('${report.path}.tmp');
+  await temporary.writeAsString(
+    '${const JsonEncoder.withIndent('  ').convert({'date': date, 'scanned': scanned, 'issues': issues})}\n',
+    flush: true,
+  );
+  await temporary.rename(report.path);
+  stdout.writeln(
+    'Scanned $scanned notes; ${issues.length} findings: ${report.path}',
+  );
+  for (final issue in issues) {
+    stdout.writeln('${issue['code']}: ${issue['path']}');
+  }
+  return 0;
 }
 
 Future<int> _migrateMentions(List<String> args) async {
@@ -781,6 +856,7 @@ Usage:
   tylog import-contacts --vault <dir> --file <contacts.vcf|contacts.csv> [--write]
   tylog index [vault=.] [--force]
   tylog doctor [vault=.]
+  tylog vault-health <vault>
   tylog dedupe <vault> [--apply]
   tylog migrate-mentions <vault> [--apply]
   tylog export <file.typ> [output.pdf]
