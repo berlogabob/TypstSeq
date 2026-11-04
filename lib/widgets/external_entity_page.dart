@@ -21,7 +21,9 @@ class ExternalEntityPage extends StatelessWidget {
     final assets = children.where((note) => note.path.startsWith('olt:asset:'));
     final stock = entity.properties['stock'] as List? ?? const [];
     final references = notes.where(
-      (note) => note.outgoingLinks.contains(entity.id),
+      (note) => note.outgoingLinks.any(
+        (link) => link == entity.id || entity.aliases.contains(link),
+      ),
     );
     return Scaffold(
       appBar: AppBar(title: Text(entity.title)),

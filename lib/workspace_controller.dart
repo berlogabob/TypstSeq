@@ -297,8 +297,15 @@ class WorkspaceController extends ChangeNotifier {
   VaultIndex? index;
   List<ExternalEntity> externalEntities = const [];
 
+  VaultIndex? _mergedIndex;
+  VaultIndex? _mergedSource;
+  int _mergedRevision = -1;
+
   void setExternalEntities(List<ExternalEntity> entities) {
     externalEntities = List.unmodifiable(entities);
+    _mergedSource = null;
+    final merged = entityIndex;
+    linkResolver = merged == null ? null : LinkResolver(merged.notes);
     searchRevision++;
     notifyListeners();
   }
@@ -306,6 +313,16 @@ class WorkspaceController extends ChangeNotifier {
   VaultIndex? get entityIndex {
     final current = index;
     if (current == null || externalEntities.isEmpty) return current;
+    if (identical(_mergedSource, current) && _mergedRevision == indexRevision) {
+      return _mergedIndex;
+    }
+    _mergedSource = current;
+    _mergedRevision = indexRevision;
+    return _mergedIndex = _mergeExternal(current);
+  }
+
+  VaultIndex _mergeExternal(VaultIndex current) {
+    if (externalEntities.isEmpty) return current;
     return VaultIndex(
       version: current.version,
       queryVersion: current.queryVersion,
@@ -813,7 +830,9 @@ class WorkspaceController extends ChangeNotifier {
       // index does: this is the fast path, so the editor starts rendering
       // mention chips well before the first scan finishes, and until now
       // linkResolver stayed null for all of that window.
-      linkResolver = loaded == null ? null : LinkResolver(loaded.notes);
+      linkResolver = entityIndex == null
+          ? null
+          : LinkResolver(entityIndex!.notes);
       _publishCalendar(loaded);
       validation = null;
       searchIndex = PkmsSearchIndex.empty();
@@ -3406,7 +3425,8 @@ class WorkspaceController extends ChangeNotifier {
     // index exists. That matters because the callers that need it run inside
     // build: without a retained resolver they each construct a whole-vault one
     // per link (O(vault) per mention chip per repaint).
-    linkResolver = LinkResolver(next.notes);
+    final merged = _mergeExternal(next);
+    linkResolver = LinkResolver(merged.notes);
     // From `next`, never `index`: the retain path below mutates the *existing*
     // object in place, so reading `index` here would derive from pre-update
     // contents.
@@ -3415,8 +3435,14 @@ class WorkspaceController extends ChangeNotifier {
     if (current == null ||
         identical(current, next) ||
         current.version != next.version) {
+      _mergedSource = next;
+      _mergedRevision = indexRevision;
+      _mergedIndex = merged;
       return next;
     }
+    _mergedSource = current;
+    _mergedRevision = indexRevision;
+    _mergedIndex = merged;
     current.notesByPath
       ..clear()
       ..addAll(next.notesByPath);

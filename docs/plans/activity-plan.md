@@ -402,4 +402,6 @@ Issues found:
 - [x] P4-A Connector interface + OLT places tree as read-only place entities (parent_id -> part_of, code as alias)
 - [x] P4-B OLT items/assets/stock as read-only entities under their place (asset_place view), shown on place pages (fake-client tested; live OLT check pending: needs OLT sign-in on device)
 - [x] P4-C GitHub Projects v2 / repo issues as board cards (read + status move) using GitDoIt GraphQL queries
-- [ ] P4 review + suite + device checks
+- [ ] P4 review (docs/plans/2026-11-03-connectors/review-p4.md): 9 findings. A1 #2 stable ids,#3 link resolver,#8,#9 perf | B #1 own projects only,#7 decision log append | A2 #4 OLT pagination,#5 cache after sign-out,#6 refresh error status
+- [ ] KNOWN (app-wide): decision ledger writers read-rewrite; concurrent decisions can drop a record. Needs an append op in VaultStorage (incl. Android SAF). Not P4-specific
+- [ ] P4 device checks (OLT live sign-in, GitHub project board live): need user

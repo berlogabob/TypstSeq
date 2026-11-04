@@ -10,6 +10,8 @@ import 'package:tylog_core/tylog_core.dart';
 class FakeGraphQL extends GitHubClient {
   final calls = <Map<String, dynamic>>[];
   bool fail = false;
+  String viewer = 'a';
+  bool canUpdate = false;
   @override
   Future<Map<String, dynamic>> graphQL(
     String query,
@@ -22,9 +24,11 @@ class FakeGraphQL extends GitHubClient {
     }
     final second = variables['after'] != null;
     return {
+      'viewer': {'login': viewer},
       'repositoryOwner': {
         'projectV2': {
           'id': 'project',
+          'viewerCanUpdate': canUpdate,
           'fields': {
             'nodes': [
               {
@@ -83,6 +87,64 @@ void main() {
       contains('updateProjectV2ItemFieldValue'),
     );
   });
+  test(
+    'project is writable only for its owner or an authorized viewer',
+    () async {
+      final client = FakeGraphQL()..viewer = 'other';
+      final projects = GitHubProjects(client);
+      expect(
+        (await projects.fetchProjectBoardFromGitHub('a', 1)).canMove,
+        false,
+      );
+      client.canUpdate = true;
+      expect(
+        (await projects.fetchProjectBoardFromGitHub('a', 1)).canMove,
+        true,
+      );
+      client.canUpdate = false;
+      client.viewer = 'A';
+      expect(
+        (await projects.fetchProjectBoardFromGitHub('a', 1)).canMove,
+        true,
+      );
+    },
+  );
+
+  testWidgets('read-only project shows a lock and cannot be dragged', (
+    tester,
+  ) async {
+    final dir = await tester.runAsync(
+      () => Directory.systemTemp.createTemp('github-board'),
+    );
+    addTearDown(() => dir!.delete(recursive: true));
+    final client = FakeGraphQL()..viewer = 'other';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GitHubProjectBoard(
+          board: const Board(
+            id: 'b',
+            title: 'Board',
+            scopeExtra: {
+              'github_project': {'owner': 'a', 'number': 1},
+            },
+          ),
+          storage: Vault(dir!).storage,
+          client: () async => client,
+          deviceId: 'test',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Read-only'), findsOneWidget);
+    expect(find.byType(LongPressDraggable<ProjectItem>), findsNothing);
+    expect(
+      client.calls.where(
+        (call) => (call['query'] as String).contains('mutation'),
+      ),
+      isEmpty,
+    );
+  });
+
   testWidgets('failed move reverts and reports error', (tester) async {
     final dir = await tester.runAsync(
       () => Directory.systemTemp.createTemp('github-board'),

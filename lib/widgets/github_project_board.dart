@@ -35,7 +35,7 @@ class _GitHubProjectBoardState extends State<GitHubProjectBoard> {
     ProjectItem item,
     ProjectColumn column,
   ) async {
-    if (busy || item.status == column.id) return;
+    if (!board.canMove || busy || item.status == column.id) return;
     final previous = item.status;
     setState(() {
       busy = true;
@@ -108,79 +108,112 @@ class _GitHubProjectBoardState extends State<GitHubProjectBoard> {
           return const Center(child: CircularProgressIndicator());
         }
         final board = snapshot.data!;
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (final column in board.columns)
-                SizedBox(
-                  width: 260,
-                  child: Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(
-                          column.name,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        Expanded(
-                          child: DragTarget<ProjectItem>(
-                            onWillAcceptWithDetails: (_) => !busy,
-                            onAcceptWithDetails: (details) =>
-                                move(board, details.data, column),
-                            builder: (context, candidates, rejected) =>
-                                Container(
-                                  key: ValueKey('project-column-${column.id}'),
-                                  color: candidates.isEmpty
-                                      ? null
-                                      : Theme.of(
-                                          context,
-                                        ).colorScheme.primaryContainer,
-                                  child: ListView(
-                                    children: [
-                                      for (final item in board.items.where(
-                                        (item) => item.status == column.id,
-                                      ))
-                                        LongPressDraggable<ProjectItem>(
-                                          data: item,
-                                          feedback: Material(
-                                            child: SizedBox(
-                                              width: 240,
-                                              child: ListTile(
-                                                title: Text(item.title),
-                                              ),
-                                            ),
-                                          ),
-                                          childWhenDragging: const SizedBox(
-                                            height: 48,
-                                          ),
-                                          child: Card(
-                                            child: ListTile(
-                                              title: Text(item.title),
-                                              subtitle: Text(
-                                                [
-                                                  if (item.number != null)
-                                                    '#${item.number}',
-                                                  if (item.repo != null)
-                                                    item.repo!,
-                                                ].join(' · '),
-                                              ),
-                                            ),
-                                          ),
+        return Column(
+          children: [
+            if (!board.canMove)
+              const ListTile(
+                leading: Icon(Icons.lock),
+                title: Text('Read-only: no permission to move cards'),
+              ),
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final column in board.columns)
+                      SizedBox(
+                        width: 260,
+                        child: Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(
+                                column.name,
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              Expanded(
+                                child: DragTarget<ProjectItem>(
+                                  onWillAcceptWithDetails: (_) =>
+                                      board.canMove && !busy,
+                                  onAcceptWithDetails: (details) =>
+                                      move(board, details.data, column),
+                                  builder: (context, candidates, rejected) =>
+                                      Container(
+                                        key: ValueKey(
+                                          'project-column-${column.id}',
                                         ),
-                                    ],
-                                  ),
+                                        color: candidates.isEmpty
+                                            ? null
+                                            : Theme.of(
+                                                context,
+                                              ).colorScheme.primaryContainer,
+                                        child: ListView(
+                                          children: [
+                                            for (final item
+                                                in board.items.where(
+                                                  (item) =>
+                                                      item.status == column.id,
+                                                ))
+                                              if (board.canMove)
+                                                LongPressDraggable<ProjectItem>(
+                                                  data: item,
+                                                  feedback: Material(
+                                                    child: SizedBox(
+                                                      width: 240,
+                                                      child: ListTile(
+                                                        title: Text(item.title),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  childWhenDragging:
+                                                      const SizedBox(
+                                                        height: 48,
+                                                      ),
+                                                  child: Card(
+                                                    child: ListTile(
+                                                      title: Text(item.title),
+                                                      subtitle: Text(
+                                                        [
+                                                          if (item.number !=
+                                                              null)
+                                                            '#${item.number}',
+                                                          if (item.repo != null)
+                                                            item.repo!,
+                                                        ].join(' · '),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                )
+                                              else
+                                                Card(
+                                                  child: ListTile(
+                                                    title: Text(item.title),
+                                                    subtitle: Text(
+                                                      [
+                                                        if (item.number != null)
+                                                          '#${item.number}',
+                                                        if (item.repo != null)
+                                                          item.repo!,
+                                                      ].join(' · '),
+                                                    ),
+                                                  ),
+                                                ),
+                                          ],
+                                        ),
+                                      ),
                                 ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
-                    ),
-                  ),
+                      ),
+                  ],
                 ),
-            ],
-          ),
+              ),
+            ),
+          ],
         );
       },
     ),

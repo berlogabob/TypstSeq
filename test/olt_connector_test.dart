@@ -1,3 +1,5 @@
+import 'dart:collection';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/connectors/connector.dart';
@@ -46,13 +48,53 @@ void main() {
     );
     final all = [...places, note];
     final tree = buildEntityTree(all, all.map((n) => n.path).toSet());
-    expect(tree.single.note.id, 'olt:place:B');
+    expect(tree.single.note.id, 'olt:place:1');
     final room = tree.single.children.single;
-    expect(room.note.id, 'olt:place:R15');
+    expect(room.note.id, 'olt:place:2');
     expect(
       room.children.map((n) => n.note.id),
-      containsAll(['olt:place:3', 'olt:asset:A7', 'note']),
+      containsAll(['olt:place:3', 'olt:asset:7', 'note']),
     );
+  });
+
+  test('stable IDs retain legacy code and tag aliases', () async {
+    final connector = OltConnector(
+      () async => {
+        'places': [
+          {'id': 1, 'name': 'Room', 'code': 'R'},
+        ],
+        'assets': [
+          {'id': 7, 'tag': 'A7'},
+        ],
+      },
+    );
+    await connector.refresh();
+    final entities = connector.entities();
+    expect(entities[0].id, 'olt:place:1');
+    expect(entities[0].aliases, contains('olt:place:R'));
+    expect(entities[1].id, 'olt:asset:7');
+    expect(entities[1].aliases, contains('olt:asset:A7'));
+  });
+
+  test('stock rows are traversed once for multiple places', () async {
+    final stock = _CountingList([
+      {'item_id': 5, 'place_id': 1, 'qty': 2},
+      {'item_id': 5, 'place_id': 2, 'qty': 3},
+    ]);
+    final connector = OltConnector(
+      () async => {
+        'places': [
+          {'id': 1, 'name': 'One'},
+          {'id': 2, 'name': 'Two'},
+        ],
+        'stock': stock,
+      },
+    );
+    await connector.refresh();
+    final entities = connector.entities();
+    expect(stock.iterations, 1);
+    expect((entities[0].properties['stock'] as List).single['qty'], 2);
+    expect((entities[1].properties['stock'] as List).single['qty'], 3);
   });
 
   testWidgets('place displays cached assets and stock', (tester) async {
@@ -136,4 +178,24 @@ void main() {
     expect(find.text('Reference'), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
   });
+}
+
+class _CountingList extends ListBase<dynamic> {
+  _CountingList(this.items);
+  final List<dynamic> items;
+  int iterations = 0;
+  @override
+  Iterator<dynamic> get iterator {
+    iterations++;
+    return items.iterator;
+  }
+
+  @override
+  int get length => items.length;
+  @override
+  set length(int value) => items.length = value;
+  @override
+  dynamic operator [](int index) => items[index];
+  @override
+  void operator []=(int index, dynamic value) => items[index] = value;
 }

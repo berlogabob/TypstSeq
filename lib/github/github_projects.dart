@@ -21,7 +21,14 @@ class ProjectItem {
 }
 
 class ProjectBoard {
-  const ProjectBoard(this.id, this.fieldId, this.columns, this.items);
+  const ProjectBoard(
+    this.id,
+    this.fieldId,
+    this.columns,
+    this.items,
+    this.canMove,
+  );
+  final bool canMove;
   final String id, fieldId;
   final List<ProjectColumn> columns;
   final List<ProjectItem> items;
@@ -91,16 +98,18 @@ class GitHubProjects {
   ) async {
     const query =
         r'''query ProjectBoard($owner: String!, $number: Int!, $after: String) {
+      viewer { login }
       repositoryOwner(login: $owner) {
         ... on User { projectV2(number: $number) { ...Board } }
         ... on Organization { projectV2(number: $number) { ...Board } }
       }
     }
     fragment Board on ProjectV2 {
-      id fields(first: 100) { nodes { __typename ... on ProjectV2SingleSelectField { id name options { id name } } } }
+      id viewerCanUpdate fields(first: 100) { nodes { __typename ... on ProjectV2SingleSelectField { id name options { id name } } } }
       items(first: 100, after: $after) { nodes { id fieldValues(first: 100) { nodes { ... on ProjectV2ItemFieldSingleSelectValue { optionId field { ... on ProjectV2FieldCommon { id } } } } } content { __typename ... on Issue { title number repository { nameWithOwner } } ... on PullRequest { title number repository { nameWithOwner } } ... on DraftIssue { title } } } pageInfo { hasNextPage endCursor } }
     }''';
     String? cursor, projectId, fieldId;
+    var canMove = false;
     final columns = <ProjectColumn>[];
     final items = <ProjectItem>[];
     do {
@@ -112,6 +121,10 @@ class GitHubProjects {
       final node = (data['repositoryOwner'] as Map?)?['projectV2'];
       if (node == null) throw StateError('Project not found');
       projectId = node['id'] as String;
+      final login = (data['viewer'] as Map?)?['login'] as String?;
+      canMove =
+          (login != null && login.toLowerCase() == owner.toLowerCase()) ||
+          node['viewerCanUpdate'] == true;
       if (fieldId == null) {
         for (final field in (node['fields'] as Map)['nodes'] as List) {
           if (field != null &&
@@ -153,7 +166,7 @@ class GitHubProjects {
       }
       cursor = _next(connection);
     } while (cursor != null);
-    return ProjectBoard(projectId, fieldId, columns, items);
+    return ProjectBoard(projectId, fieldId, columns, items, canMove);
   }
 
   Future<void> setProjectItemStatus(

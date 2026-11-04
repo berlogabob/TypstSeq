@@ -21,6 +21,8 @@ import 'package:tylog/vault_lock.dart';
 import 'package:tylog/vault_registry.dart';
 import 'package:tylog/vault_storage.dart';
 import 'package:tylog/workspace_controller.dart';
+import 'package:tylog/connectors/connector.dart';
+import 'package:tylog/models.dart';
 import 'package:tylog/kind_registry.dart';
 import 'package:tylog/widgets/constants.dart';
 import 'package:tylog/vault.dart' show Vault, emptyDailyTemplate;
@@ -43,6 +45,47 @@ const _labUrl = 'https://example.org/lab.ics';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('external refresh updates resolver and removes stale aliases', () {
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    controller.index = VaultIndex(notesByPath: {}, backlinksByTarget: {});
+    controller.setExternalEntities([
+      const ExternalEntity(
+        id: 'olt:place:1',
+        kind: 'place',
+        title: 'Room',
+        aliases: ['olt:place:R'],
+      ),
+    ]);
+    expect(controller.linkResolver!.resolve('olt:place:R').path, 'olt:place:1');
+    controller.setExternalEntities([]);
+    expect(
+      controller.linkResolver!.resolve('olt:place:R').status,
+      LinkResolutionStatus.unresolved,
+    );
+  });
+
+  test('merged index is reused until external entities change', () {
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    controller.index = VaultIndex(notesByPath: {}, backlinksByTarget: {});
+    controller.setExternalEntities([
+      const ExternalEntity(id: 'olt:place:1', kind: 'place', title: 'Room'),
+    ]);
+    final first = controller.entityIndex;
+    expect(identical(first, controller.entityIndex), isTrue);
+    controller.setExternalEntities([
+      const ExternalEntity(id: 'olt:place:2', kind: 'place', title: 'Other'),
+    ]);
+    expect(identical(first, controller.entityIndex), isFalse);
+  });
+
   test('GitHub paths isolate vaults and repository refs', () async {
     final root = await Directory.systemTemp.createTemp('mount-paths');
     addTearDown(() => root.delete(recursive: true));

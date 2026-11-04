@@ -21,9 +21,7 @@ class OltConnector implements Connector {
     final places = _cache['places'] ?? const [];
     final ids = <String, String>{};
     for (final row in places) {
-      final code = row['code']?.toString().trim();
-      ids['${row['id']}'] =
-          'olt:place:${code == null || code.isEmpty ? row['id'] : code}';
+      ids['${row['id']}'] = 'olt:place:${row['id']}';
     }
     final items = {
       for (final row in _cache['items'] ?? const []) '${row['id']}': row,
@@ -35,6 +33,14 @@ class OltConnector implements Connector {
         assetPlaces.putIfAbsent('${row['asset_id']}', () => []).add(place);
       }
     }
+    final stockByPlace = <String, List<Map<String, Object?>>>{};
+    for (final stock in _cache['stock'] ?? const []) {
+      stockByPlace.putIfAbsent('${stock['place_id']}', () => []).add({
+        'name': items['${stock['item_id']}']?['name'] ?? '',
+        'qty': stock['qty'],
+        'unit': items['${stock['item_id']}']?['unit'],
+      });
+    }
     return [
       for (final row in places)
         ExternalEntity(
@@ -42,8 +48,10 @@ class OltConnector implements Connector {
           kind: 'place',
           title: '${row['name'] ?? ''}',
           aliases: [
-            if (row['code'] != null && '${row['code']}'.trim().isNotEmpty)
+            if (row['code'] != null && '${row['code']}'.trim().isNotEmpty) ...[
               '${row['code']}',
+              'olt:place:${'${row['code']}'.trim()}',
+            ],
           ],
           partOf: [
             if (ids['${row['parent_id']}'] case final String parent) parent,
@@ -52,24 +60,18 @@ class OltConnector implements Connector {
             'source': 'openlabtwin',
             if (row['kind'] != null) 'kind': row['kind'],
             if (row['tier'] != null) 'tier': row['tier'],
-            'stock': [
-              for (final stock in _cache['stock'] ?? const [])
-                if ('${stock['place_id']}' == '${row['id']}')
-                  {
-                    'name': items['${stock['item_id']}']?['name'] ?? '',
-                    'qty': stock['qty'],
-                    'unit': items['${stock['item_id']}']?['unit'],
-                  },
-            ],
+            'stock': stockByPlace['${row['id']}'] ?? const [],
           },
         ),
       for (final row in _cache['assets'] ?? const [])
         if (row['tag'] != null && '${row['tag']}'.isNotEmpty)
           ExternalEntity(
-            id: 'olt:asset:${row['tag']}',
+            id: 'olt:asset:${row['id']}',
             kind: 'asset',
             title: '${row['tag']}',
             aliases: [
+              '${row['tag']}',
+              'olt:asset:${row['tag']}',
               if (row['serial'] != null) '${row['serial']}',
               if (items['${row['item_id']}']?['name'] != null)
                 '${items['${row['item_id']}']['name']}',
