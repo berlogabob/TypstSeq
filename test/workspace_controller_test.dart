@@ -1424,6 +1424,43 @@ void main() {
   });
 
   test(
+    'editor opens before packages and old vault cannot publish them',
+    () async {
+      final slow = _PackageGatedStorage();
+      final other = _MemoryStorage();
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+      addTearDown(() {
+        if (!slow.release.isCompleted) slow.release.complete();
+      });
+      const first = VaultEntry(id: 'first', name: 'First', path: '/first');
+      const second = VaultEntry(id: 'second', name: 'Second', path: '/second');
+      await controller.openVault(first, storage: slow);
+      expect(controller.status, isNot(startsWith('Open failed')));
+      await slow.writeBytes('_system/packages/foo/1/lib.typ', [1, 2, 3]);
+      controller.close('closed');
+      slow.armed = true;
+      final opening = controller.openVault(first, storage: slow);
+      await slow.reached.future.timeout(const Duration(seconds: 2));
+      expect(controller.note, isNotNull);
+      expect(controller.entry?.id, 'first');
+      await controller.openVault(second, storage: other);
+      slow.release.complete();
+      await opening;
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(controller.entry?.id, 'second');
+      expect(
+        controller.typstPackageFiles,
+        isNot(contains('_system/packages/foo/1/lib.typ')),
+      );
+    },
+  );
+
+  test(
     'openVault loads user-vendored packages from _system/packages',
     () async {
       final storage = _MemoryStorage();
@@ -1453,6 +1490,7 @@ void main() {
         () => controller.index != null && !controller.rebuilding,
       );
 
+      await _waitUntil(() => controller.typstPackagesReady);
       expect(
         controller.typstPackageFiles['_system/packages/foo/1.0.0/lib.typ'],
         bytes,
@@ -5495,4 +5533,22 @@ class _GatedGitHub extends GitHubClient {
           Archive()..addFile(ArchiveFile.string('root/note.typ', 'remote')),
         ),
       );
+}
+
+class _PackageGatedStorage extends _MemoryStorage {
+  final reached = Completer<void>();
+  final release = Completer<void>();
+  bool armed = false;
+
+  @override
+  Future<List<VaultStorageEntry>> list({
+    String path = '',
+    bool recursive = false,
+  }) async {
+    if (armed && path == '_system/packages') {
+      if (!reached.isCompleted) reached.complete();
+      await release.future;
+    }
+    return super.list(path: path, recursive: recursive);
+  }
 }

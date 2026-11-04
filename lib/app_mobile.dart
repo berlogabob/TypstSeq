@@ -4917,6 +4917,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _magicFeedback('Open a note first');
       return;
     }
+    if (!workspace.typstPackagesReady) {
+      _magicFeedback('Loading packages…');
+      return;
+    }
     // A dirty buffer would otherwise share the last-saved bytes.
     if (dirty && !await _save(syncAfter: false)) return;
     if (!mounted || vault != exportVault || note != exportPath) return;
@@ -5845,6 +5849,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         }),
         communities: communities,
       ),
+      'preview' when !workspace.typstPackagesReady => const Center(
+        child: LoadingIndicator(),
+      ),
       'preview' => LayoutBuilder(
         builder: (context, constraints) => TypstDocumentViewer(
           source: _debouncedPreview(
@@ -5901,19 +5908,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             else
               const VerticalDivider(width: 1),
             Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) => TypstDocumentViewer(
-                  source: _debouncedPreview(
-                    (constraints.maxWidth / _previewPixelsPerPt)
-                        .toStringAsFixed(1),
-                  ),
-                  inputs: {'tylog-page-width': _debouncedPreviewWidth!},
-                  pixelsPerPt: _previewPixelsPerPt,
-                  pageSpacing: 0,
-                  pageElevation: 0,
-                  files: _typstFiles(),
-                ),
-              ),
+              child: !workspace.typstPackagesReady
+                  ? const Center(child: LoadingIndicator())
+                  : LayoutBuilder(
+                      builder: (context, constraints) => TypstDocumentViewer(
+                        source: _debouncedPreview(
+                          (constraints.maxWidth / _previewPixelsPerPt)
+                              .toStringAsFixed(1),
+                        ),
+                        inputs: {'tylog-page-width': _debouncedPreviewWidth!},
+                        pixelsPerPt: _previewPixelsPerPt,
+                        pageSpacing: 0,
+                        pageElevation: 0,
+                        files: _typstFiles(),
+                      ),
+                    ),
             ),
           ],
         );

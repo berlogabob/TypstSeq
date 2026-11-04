@@ -404,6 +404,7 @@ class WorkspaceController extends ChangeNotifier {
   DateTime? lastEditAt;
   String helperSource = '';
   Map<String, Uint8List> typstPackageFiles = const {};
+  bool typstPackagesReady = true;
   String bibliographySource = '';
   String zoteroBibSource = '';
 
@@ -702,6 +703,7 @@ class WorkspaceController extends ChangeNotifier {
     searchRevision = 0;
     helperSource = '';
     typstPackageFiles = const {};
+    typstPackagesReady = false;
     bibliographySource = '';
     zoteroBibSource = '';
     mergedReading = const [];
@@ -749,6 +751,8 @@ class WorkspaceController extends ChangeNotifier {
   }) async {
     startupMark('open-start', {'trigger': trigger});
     final generation = ++_vaultGeneration;
+    typstPackagesReady = false;
+    typstPackageFiles = const {};
     _mountFetcher = null;
     _feedFlight = null;
     _eventCreates.clear();
@@ -787,41 +791,6 @@ class WorkspaceController extends ChangeNotifier {
       final today = await opened.todayNote(todayInstant);
       if (_disposed || generation != _vaultGeneration) return;
       final loadedFiles = <String, Uint8List>{};
-      // Load user-vendored Typst packages (e.g. @preview/<name>:<ver> dropped
-      // into _system/packages/<name>/<ver>/...) so notes can import them.
-      // Managed tylog files are loaded afterward and take precedence on any
-      // key collision. Walked one directory level at a time (never
-      // `recursive: true`) so this stays part of the fast path: a full
-      // recursive scan is the slow operation on SAF vaults that the fast
-      // path/background-index split exists to avoid.
-      if (await opened.storage.exists('_system/packages')) {
-        if (_disposed || generation != _vaultGeneration) return;
-        final directories = <String>['_system/packages'];
-        while (directories.isNotEmpty) {
-          final dir = directories.removeLast();
-          List<VaultStorageEntry> entries;
-          try {
-            entries = await opened.storage.list(path: dir);
-            if (_disposed || generation != _vaultGeneration) return;
-          } catch (_) {
-            continue;
-          }
-          for (final entry in entries) {
-            if (entry.isDirectory) {
-              directories.add(entry.path);
-              continue;
-            }
-            try {
-              final bytes = await opened.storage.readBytes(entry.path);
-              if (_disposed || generation != _vaultGeneration) return;
-              loadedFiles[entry.path] = bytes;
-              loadedFiles['/${entry.path}'] = bytes;
-            } catch (_) {
-              // Skip unreadable vendored package files; don't abort open.
-            }
-          }
-        }
-      }
       for (final asset
           in (await TylogAssets.load()).managedVaultFiles.entries) {
         if (_disposed || generation != _vaultGeneration) return;
@@ -898,6 +867,7 @@ class WorkspaceController extends ChangeNotifier {
       status = _mountWarning ?? 'Vault opened — indexing…';
       notifyListeners();
       startupMark('fast-path-done');
+      unawaited(_loadVendoredPackages(opened, generation, loadedFiles));
       moduleUpdates.clear();
       if (!Platform.environment.containsKey('FLUTTER_TEST')) {
         unawaited(checkModuleUpdates(automatic: true));
@@ -987,6 +957,57 @@ class WorkspaceController extends ChangeNotifier {
         close('Open failed: $error', nextCloud: next.cloud);
       }
     }
+  }
+
+  Future<void> _loadVendoredPackages(
+    Vault opened,
+    int generation,
+    Map<String, Uint8List> managedFiles,
+  ) async {
+    final loadedFiles = <String, Uint8List>{};
+    // Load user-vendored Typst packages (e.g. @preview/<name>:<ver> dropped
+    // into _system/packages/<name>/<ver>/...) so notes can import them.
+    // Managed tylog files are loaded afterward and take precedence on any
+    // key collision. Walk one directory level at a time for SAF vaults.
+    var hasPackages = false;
+    try {
+      hasPackages = await opened.storage.exists('_system/packages');
+    } catch (_) {
+      // Treat an unreadable package directory like unreadable package files.
+    }
+    if (hasPackages) {
+      if (_disposed || generation != _vaultGeneration) return;
+      final directories = <String>['_system/packages'];
+      while (directories.isNotEmpty) {
+        final dir = directories.removeLast();
+        List<VaultStorageEntry> entries;
+        try {
+          entries = await opened.storage.list(path: dir);
+          if (_disposed || generation != _vaultGeneration) return;
+        } catch (_) {
+          continue;
+        }
+        for (final entry in entries) {
+          if (entry.isDirectory) {
+            directories.add(entry.path);
+            continue;
+          }
+          try {
+            final bytes = await opened.storage.readBytes(entry.path);
+            if (_disposed || generation != _vaultGeneration) return;
+            loadedFiles[entry.path] = bytes;
+            loadedFiles['/${entry.path}'] = bytes;
+          } catch (_) {
+            // Skip unreadable vendored package files; don't abort open.
+          }
+        }
+      }
+    }
+    if (!_owns(opened, generation)) return;
+    loadedFiles.addAll(managedFiles);
+    typstPackageFiles = loadedFiles;
+    typstPackagesReady = true;
+    notifyListeners();
   }
 
   void edit(String value) {

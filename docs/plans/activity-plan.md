@@ -526,7 +526,8 @@ Issues found:
 - [x] PF5-rest Reuse the workspace resolver when opening entity timelines, and refresh entries if the resolver changes.
 - [ ] PF5-rest-rest Index task references by entity; make merge preview verification scalable while preserving unsupported-reference and concurrent-change checks (audit #6, #8). Measure timeline CPU and frames, and merge preview reads, bytes, time, CPU and heap on app-local and SAF fixtures.
 - [x] PF6 Route manual rebuild progress through the narrow notifier and throttle updates (audit #14).
-- [ ] PF6-rest Load vendored packages after the editor is usable while preserving compile readiness and vault-switch cancellation (audit #11); measure startup and rebuild notifications, frames, and resource use on device (audit #11, #14).
+- [x] PF6-rest Load vendored packages after the editor is usable while preserving compile readiness and vault-switch cancellation (audit #11).
+- [ ] PF6-rest-rest Measure cold startup with 0/100/1,000 vendored files and rebuild notifications, Flutter frames, channel operations, CPU and memory on device (audit #11, #14).
 - [x] PF0b Skip issue-marker discovery when markers are configured, and skip issue matching when none exist. P30 profile cold starts, 2026-11-04, 10,067 notes and two parsed: scan 30.9 → 27.8 s; scan-finalize 19.7 → 18.0 s (single runs; timing varies).
 - [x] (done: c40a6a8) PF0b-rest Make issue matching and other scan-finalize work proportional to changed notes, with correct invalidation for marker settings, discovery, project names and aliases; reduce load-index, listing and communities as needed. Measure on the P30 using TYLOG_STARTUP stageMillis; target total background scan < 8 s.
 - [x] PF1b Entity board: use linear task ordering and lazily build column cards with position-aware drop targets (audit #1).
