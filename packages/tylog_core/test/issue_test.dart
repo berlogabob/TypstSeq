@@ -49,6 +49,28 @@ void main() {
     expect(lines.traversals, 1);
   });
 
+  test('articles and screenshots are not scanned for issues', () async {
+    final dir = await Directory.systemTemp.createTemp('issue-paths');
+    addTearDown(() => dir.delete(recursive: true));
+    final storage = LocalVaultStorage(dir);
+    await storage.writeText(
+      '_system/settings/ai.json',
+      '{"tasks":{"enrich":{"markers":["fixit"]}}}',
+    );
+    await storage.writeText(
+      'notes/project.typ',
+      '#show: tylog.note.with(id: "project", title: "Project", kind: "project")',
+    );
+    await storage.writeText('articles/a.typ', '- fixit Project bug');
+    await storage.writeText('screenshots/s.typ', '- fixit Project bug');
+    await storage.writeText('daily/2026-01-01.typ', '- fixit Project bug');
+    final index = await scanVaultStorage(storage);
+    expect(index.issues.map((issue) => issue.notePath), [
+      'daily/2026-01-01.typ',
+    ]);
+    expect(index.issueLines['articles/a.typ'] ?? const [], isEmpty);
+  });
+
   test('status is inserted before a comment', () {
     const text = '- issue // #metadata(("tylog-issue-status": "done"))';
     const issue = IssueRef(

@@ -88,6 +88,17 @@ String _setIssueMetadata(
   return lines.join('\n');
 }
 
+/// Issues are lines the user wrote: imported articles and screenshot OCR
+/// (7.7k of 10k notes on the real vault) never hold one, and scanning their
+/// lines cost ~18 s per startup on the P30.
+bool _issuePath(String path) => const [
+  'daily/',
+  'notes/',
+  'projects/',
+  'ideas/',
+  'events/',
+].any(path.startsWith);
+
 List<String> _issueCandidateLines(String source) {
   final lines = source.split('\n');
   return [
@@ -184,8 +195,23 @@ Future<List<IssueRef>> _scanIssues(
           if (name.trim().isNotEmpty) wordPattern(name),
       ],
   };
+  // Cheap substring test before the Unicode word-boundary regexes.
+  final markerWords = {
+    for (final entry in markerPatterns.entries)
+      entry.key: [
+        for (final name in [
+          entry.key,
+          if (byName[entry.key] != null) ...[
+            byName[entry.key]!.title,
+            ...byName[entry.key]!.aliases,
+          ],
+        ])
+          if (name.trim().isNotEmpty) name.toLowerCase(),
+      ],
+  };
   final issues = <IssueRef>[];
   for (final entry in sources.entries) {
+    if (!_issuePath(entry.key)) continue;
     for (final candidate in entry.value) {
       final separator = candidate.indexOf(':');
       final lineNumber = int.parse(candidate.substring(0, separator));
@@ -196,8 +222,10 @@ Future<List<IssueRef>> _scanIssues(
         final id = byName[link[1]]?.id ?? link[1]!;
         if (markers.contains(id)) found.add(id);
       }
+      final lower = text.toLowerCase();
       for (final marker in markerPatterns.entries) {
-        if (marker.value.any((pattern) => pattern.hasMatch(text))) {
+        if (markerWords[marker.key]!.any(lower.contains) &&
+            marker.value.any((pattern) => pattern.hasMatch(text))) {
           found.add(marker.key);
         }
       }

@@ -618,7 +618,9 @@ Future<VaultIndex> scanVaultStorage(
       // stale. Reading the file is the whole cost; falls through to a full
       // inspection if the entry turns out to have nothing to re-derive from.
       final rederiveSource = utf8.decode(await storage.readBytes(relative));
-      issueLines[relative] = _issueCandidateLines(rederiveSource);
+      issueLines[relative] = _issuePath(relative)
+          ? _issueCandidateLines(rederiveSource)
+          : const [];
       final rederived = rederiveNote(
         cached!,
         rederiveSource,
@@ -660,9 +662,12 @@ Future<VaultIndex> scanVaultStorage(
               p.subject == relative && p.code.startsWith('invalid-metadata-'),
         ),
       );
-      issueLines[relative] =
-          cachedIndex.issueLines[relative] ??
-          _issueCandidateLines(utf8.decode(await storage.readBytes(relative)));
+      issueLines[relative] = !_issuePath(relative)
+          ? const []
+          : cachedIndex.issueLines[relative] ??
+                _issueCandidateLines(
+                  utf8.decode(await storage.readBytes(relative)),
+                );
       final trustFacts = cachedIndex.queryVersion == kVaultQueryVersion;
       notes[relative] = cached!.fingerprint == fingerprint && trustFacts
           ? cached
@@ -689,7 +694,9 @@ Future<VaultIndex> scanVaultStorage(
     onParsed?.call();
     final bytes = await storage.readBytes(relative);
     final source = utf8.decode(bytes);
-    issueLines[relative] = _issueCandidateLines(source);
+    issueLines[relative] = _issuePath(relative)
+        ? _issueCandidateLines(source)
+        : const [];
     // Always from *these* bytes, never the earlier probe hash. Reaching here
     // means that probe did not match, so it describes a version of the file we
     // are not about to index — and two SAF round trips is plenty of room for
