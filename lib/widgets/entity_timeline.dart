@@ -24,15 +24,19 @@ class EntityTimeline extends StatefulWidget {
 class _EntityTimelineState extends State<EntityTimeline> {
   int _limit = 20;
   bool _expanded = true;
+  List<({String day, String title, String path, String kind})>? _entries;
 
   @override
   void didUpdateWidget(EntityTimeline oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.entity.path != widget.entity.path) _limit = 20;
+    if (oldWidget.entity.path != widget.entity.path ||
+        !identical(oldWidget.index, widget.index)) {
+      _entries = null;
+    }
   }
 
-  @override
-  Widget build(BuildContext context) {
+  List<({String day, String title, String path, String kind})> _buildEntries() {
     final index = widget.index;
     final resolver = LinkResolver(index.notesByPath.values);
     final entries = <({String day, String title, String path, String kind})>[];
@@ -91,7 +95,13 @@ class _EntityTimelineState extends State<EntityTimeline> {
       final byDay = b.day.compareTo(a.day);
       return byDay != 0 ? byDay : a.title.compareTo(b.title);
     });
-    final count = math.min(_limit, entries.length);
+    return entries;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final entries = _expanded ? (_entries ??= _buildEntries()) : _entries;
+    final count = math.min(_limit, entries?.length ?? 0);
     return Material(
       color: Theme.of(context).colorScheme.surfaceContainerLow,
       child: Column(
@@ -100,11 +110,13 @@ class _EntityTimelineState extends State<EntityTimeline> {
           const Divider(height: 1),
           ListTile(
             dense: true,
-            title: Text('Timeline (${entries.length})'),
+            title: Text(
+              entries == null ? 'Timeline' : 'Timeline (${entries.length})',
+            ),
             trailing: Icon(_expanded ? Icons.expand_more : Icons.chevron_right),
             onTap: () => setState(() => _expanded = !_expanded),
           ),
-          if (_expanded)
+          if (_expanded && entries != null)
             ConstrainedBox(
               constraints: BoxConstraints(
                 maxHeight: MediaQuery.sizeOf(context).height * 0.35,
