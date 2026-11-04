@@ -158,9 +158,44 @@ class _EntityBoardState extends State<EntityBoard> {
     if (busy || issue.status == column) return;
     setState(() => busy = true);
     try {
+      var target = column;
+      final repository = _repo(issue);
+      if (issue.githubNumber != null) {
+        if (repository == null ||
+            widget.githubClient == null ||
+            !['todo', 'doing', 'done'].contains(column)) {
+          throw StateError(
+            'GitHub issue requires a connection and a supported column',
+          );
+        }
+        final client = await widget.githubClient!();
+        final remote = await client.issue(repository, issue.githubNumber!);
+        final current = _remoteColumn(remote);
+        if (current != issue.status) {
+          target = current;
+          await _recordConflict(
+            repository,
+            issue.githubNumber!,
+            current,
+            'attempted $column from ${issue.status}',
+          );
+        } else {
+          final labels = (remote['labels'] as List? ?? [])
+              .whereType<Map>()
+              .map((label) => label['name'])
+              .whereType<String>()
+              .toList();
+          await client.updateIssueColumn(
+            repository,
+            issue.githubNumber!,
+            column,
+            labels,
+          );
+        }
+      }
       if (!await widget.mutateNote(
         issue.notePath,
-        (source) => setIssueStatus(source, issue, column),
+        (source) => setIssueStatus(source, issue, target),
       )) {
         throw StateError('Issue could not be saved');
       }

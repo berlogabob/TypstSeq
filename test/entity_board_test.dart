@@ -399,6 +399,105 @@ void main() {
     expect(result, contains('#metadata(("tylog-issue-status": "done"))'));
     expect(result, contains('unsaved edit'));
   });
+  testWidgets('linked issue moves push and stale remote status wins', (
+    tester,
+  ) async {
+    final dir = await tester.runAsync(
+      () => Directory.systemTemp.createTemp('linked-move'),
+    );
+    if (dir == null) throw StateError('No temp directory');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    final client = _FakeGitHub();
+    const project = NoteRef(
+      id: 'p',
+      path: 'p.typ',
+      title: 'P',
+      kind: 'project',
+      outgoingLinks: [],
+      properties: {'github': 'owner/repo'},
+    );
+    var source =
+        '- #tylog.ref-note("p")[P] fixit broken #metadata(("tylog-issue-gh": 123))\nunsaved edit';
+    VaultIndex makeIndex() => VaultIndex(
+      notesByPath: const {'p.typ': project},
+      backlinksByTarget: const {},
+      issues: [
+        IssueRef(
+          notePath: 'log.typ',
+          line: 1,
+          text: source.split('\n').first,
+          projectId: 'p',
+          marker: 'fixit',
+          status: source.contains('"done"')
+              ? 'done'
+              : source.contains('"doing"')
+              ? 'doing'
+              : 'todo',
+          githubNumber: 123,
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EntityBoard(
+          entity: project,
+          vault: vault,
+          index: makeIndex(),
+          setStatus: (_, _) async {},
+          mutateNote: (_, edit) async {
+            source = edit(source);
+            return true;
+          },
+          refreshIndex: () async => makeIndex(),
+          githubClient: () async => client,
+        ),
+      ),
+    );
+    Future<void> io() async {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 80)),
+      );
+      await tester.pump();
+    }
+
+    await io();
+    Future<void> move(String column) async {
+      final gesture = await tester.startGesture(
+        tester.getCenter(
+          find.ancestor(
+            of: find.text('#123'),
+            matching: find.byType(LongPressDraggable<Object>),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 600));
+      await gesture.moveTo(
+        tester.getCenter(find.byKey(ValueKey('board-$column-0'))),
+      );
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+      await io();
+    }
+
+    await move('doing');
+    expect(client.linkedDoing, isTrue);
+    expect(source, contains('"tylog-issue-status": "doing"'));
+    expect(source, contains('unsaved edit'));
+    client.state = 'closed';
+    await move('todo');
+    for (var i = 0; i < 30 && !source.contains('\"done\"'); i++) {
+      await io();
+    }
+    expect(client.state, 'closed');
+    expect(source, contains('"tylog-issue-status": "done"'));
+    final log = await tester.runAsync(
+      () => vault.storage.readText('_system/decisions/github.jsonl'),
+    );
+    expect(log, contains('GitHub conflict'));
+  });
+
   testWidgets('sends and syncs linked issues using a fake client', (
     tester,
   ) async {
@@ -537,7 +636,12 @@ class _FakeGitHub extends GitHubClient {
     String column,
     List<String> labels,
   ) async {
-    remoteStatus = column;
+    if (number == 42) {
+      remoteStatus = column;
+    } else {
+      state = column == 'done' ? 'closed' : 'open';
+      linkedDoing = column == 'doing';
+    }
     return {};
   }
 
