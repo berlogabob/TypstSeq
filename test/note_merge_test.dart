@@ -79,6 +79,53 @@ void main() {
       expect(await storage.exists('notes/c.typ'), isTrue);
     },
   );
+  test('merges headings and lists from another folder', () async {
+    final root = await Directory.systemTemp.createTemp('merge-list-');
+    final storage = LocalVaultStorage(root);
+    final vault = Vault.withStorage(storage);
+    await vault.ensureCreated();
+    final workspace = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      reconcileTasks: (_) async {},
+    )..vault = vault;
+    addTearDown(() async {
+      workspace.dispose();
+      await root.delete(recursive: true);
+    });
+    await storage.createDirectory('notes/other');
+    await storage.writeText(
+      'notes/a.typ',
+      replaceNoteHeader(
+        'Original.\n',
+        const NoteMetadataDraft(id: 'a', title: 'A'),
+      ),
+    );
+    await storage.writeText(
+      'notes/other/b.typ',
+      replaceNoteHeader(
+        '= Details\n\n- First item\n- *Second* item\n',
+        const NoteMetadataDraft(id: 'b', title: 'B'),
+      ),
+    );
+    workspace.index = await scanVaultStorage(storage);
+    final preview = await workspace.previewDuplicateMerge(
+      'notes/a.typ',
+      'notes/other/b.typ',
+    );
+    await workspace.mergeDuplicate(preview);
+    final text = await storage.readText('notes/a.typ');
+    expect(text, contains('= Details\n\n- First item\n- *Second* item'));
+    expect(await storage.exists('notes/other/b.typ'), isFalse);
+    expect(await loadDecisions(storage), hasLength(1));
+    final compile = Process.runSync('typst', [
+      'compile',
+      '--root',
+      root.path,
+      '${root.path}/notes/a.typ',
+      '${root.path}/out.pdf',
+    ]);
+    expect(compile.exitCode, 0, reason: '${compile.stderr}');
+  });
   test('merges emphasized text from another folder', () async {
     final root = await Directory.systemTemp.createTemp('merge-emphasis-');
     final storage = LocalVaultStorage(root);
