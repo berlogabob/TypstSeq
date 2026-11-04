@@ -221,6 +221,43 @@ void main() {
     );
     expect(home.sourceController.text, contains('Other text!'));
   });
+  testWidgets('unclosed task offers Source and editing resumes after repair', (
+    tester,
+  ) async {
+    const source = '= Day\n\n#tylog.task(\n  id: "1",\n  text: "Call"';
+    await tester.pumpWidget(
+      const MaterialApp(home: HomeScreen(startup: _emptyStartup)),
+    );
+    await _openEditorVault(tester);
+    final dynamic home = tester.state(find.byType(HomeScreen));
+    home.workspace.replaceNote('notes/test.typ', source);
+    home.sourceController.text = source;
+    home.richController.loadSource(source);
+    home.mode = 'normal';
+    home.primaryDestination = 0;
+    home.workspace.notifyListeners();
+    await tester.pump();
+    final text = home.richController.text as String;
+    home.richController.value = TextEditingValue(
+      text: '$text!',
+      selection: TextSelection.collapsed(offset: text.length + 1),
+    );
+    await tester.pump();
+    expect(find.textContaining('Syntax error at line 3'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Open Source'));
+    await tester.pumpAndSettle();
+    expect(home.mode, 'source');
+    expect(home.sourceController.text, source);
+    home.sourceController.text = '$source\n)';
+    await setViewMode(tester, 'Edit');
+    final repairedText = home.richController.text as String;
+    home.richController.value = TextEditingValue(
+      text: '$repairedText!',
+      selection: TextSelection.collapsed(offset: repairedText.length + 1),
+    );
+    expect(home.sourceController.text, contains('!'));
+  });
   testWidgets('extension note is locked and shows its mount name', (
     tester,
   ) async {

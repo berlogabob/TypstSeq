@@ -8,15 +8,22 @@ class RichEditorSyntaxError implements Exception {
   String toString() => 'Syntax error at line $line';
 }
 
-int? _brokenTaskLinkLine(String source) {
-  // Detect the historical mention-link corruption, not arbitrary Typst errors.
+int? _richSyntaxErrorLine(String source) {
+  // Detect known task corruption and unclosed task calls.
   final pattern = RegExp(
     r'text\s*:\s*"(?:\\.|[^"\\])*#tylog\.ref-note\s*\(\s*"',
   );
   for (final block in parseControlledTypst(source).blocks) {
     if (block.kind != ControlledBlockKind.task) continue;
     final match = pattern.firstMatch(block.source);
-    if (match == null) continue;
+    if (match == null) {
+      final start = block.source.indexOf('#tylog.task(');
+      if (start >= 0 && inlineCallEnd(block.source, start) == null) {
+        final offset = block.start + start;
+        return '\n'.allMatches(source.substring(0, offset)).length + 1;
+      }
+      continue;
+    }
     final offset =
         block.start + match.start + match.group(0)!.indexOf('#tylog.ref-note');
     return '\n'.allMatches(source.substring(0, offset)).length + 1;
@@ -63,7 +70,7 @@ class TyLogEditingController extends TextEditingController {
     this.nextTaskId,
     this.beforeTaskDoing,
     this.foldScope,
-  ) : _syntaxErrorLine = _brokenTaskLinkLine(
+  ) : _syntaxErrorLine = _richSyntaxErrorLine(
         document.toSource(validate: false),
       ),
       super(text: document.visibleText) {
@@ -142,7 +149,7 @@ class TyLogEditingController extends TextEditingController {
     _rebaseTaskIme = null;
     searchReveal = null; // offsets belong to the previous note
     document = TyLogDocument.parse(source);
-    _syntaxErrorLine = _brokenTaskLinkLine(source);
+    _syntaxErrorLine = _richSyntaxErrorLine(source);
     value = TextEditingValue(
       text: document.visibleText,
       selection: TextSelection.collapsed(offset: document.visibleText.length),

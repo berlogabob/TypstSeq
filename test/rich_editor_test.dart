@@ -55,6 +55,27 @@ void main() {
     expect(saved, isEmpty);
     expect(errors.single.toString(), contains('Syntax error at line 5'));
   });
+  test('unclosed task on initial load reports its original source line', () {
+    const source =
+        '#import "/_system/tylog.typ" as tylog\n\n'
+        '= Day\n\n#tylog.task(\n  id: "1",\n  text: "Call"';
+    final errors = <Object>[];
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: source,
+      onSourceChanged: saved.add,
+      onError: errors.add,
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    final text = controller.text;
+    controller.value = TextEditingValue(
+      text: '$text!',
+      selection: TextSelection.collapsed(offset: text.length + 1),
+    );
+    expect(saved, isEmpty);
+    expect(errors.single.toString(), 'Syntax error at line 5');
+  });
   test('doing task with blank lines remains editable and round-trips', () {
     const source =
         '#tylog.task(id: "t1", text: "First", status: "todo")\n\n'

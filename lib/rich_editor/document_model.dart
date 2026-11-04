@@ -281,6 +281,18 @@ class TyLogDocument {
     final blocks = <TyLogBlock>[];
     for (var i = first; i < parsed.blocks.length; i++) {
       var block = parsed.blocks[i];
+      if (block.kind == ControlledBlockKind.task) {
+        final start = block.source.indexOf('#tylog.task(');
+        if (start >= 0 && inlineCallEnd(block.source, start) == null) {
+          block = ControlledBlock(
+            start: block.start,
+            end: block.end,
+            source: block.source,
+            kind: ControlledBlockKind.raw,
+            supported: false,
+          );
+        }
+      }
       final nextStart = i + 1 < parsed.blocks.length
           ? parsed.blocks[i + 1].start
           : source.length;
