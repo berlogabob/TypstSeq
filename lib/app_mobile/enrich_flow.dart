@@ -248,18 +248,17 @@ extension _EnrichFlow on _HomeScreenState {
     String device,
     List<EnrichFeedback> events,
   ) {
-    // Serialize read/modify/write appends to the device ledgers.
+    // Keep ledger events in their original order.
     return _enrichLedgerWrite = _enrichLedgerWrite.then((_) async {
       try {
         final ledger = '$directory/$device.jsonl';
         await v.storage.createDirectory(directory);
-        final existing = await v.storage.exists(ledger)
-            ? await v.storage.readText(ledger)
-            : '';
-        await v.storage.writeText(
-          ledger,
-          '$existing${events.map(jsonEncode).join('\n')}\n',
-        );
+        for (final event in events) {
+          await v.storage.appendBytes(
+            ledger,
+            utf8.encode('${jsonEncode(event)}\n'),
+          );
+        }
       } catch (_) {}
     });
   }

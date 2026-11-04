@@ -51,6 +51,13 @@ NoteRef _note(String kind, [Map<String, Object?> properties = const {}]) =>
     );
 
 void main() {
+  test('storage fallback appends to missing and existing files', () async {
+    final storage = _MemoryStorage();
+    await storage.appendBytes('events.jsonl', utf8.encode('one\n'));
+    await storage.appendBytes('events.jsonl', utf8.encode('two\n'));
+    expect(await storage.readText('events.jsonl'), 'one\ntwo\n');
+  });
+
   test('attention maps screenshot statuses', () {
     for (final (status, expected) in <(Object?, String)>[
       (null, 'new'),

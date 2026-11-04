@@ -87,6 +87,72 @@ void main() {
     },
   );
 
+  test('concurrent local appends preserve both complete lines', () async {
+    final directory = await Directory.systemTemp.createTemp('tylog_append_');
+    addTearDown(() => directory.delete(recursive: true));
+    final storage = LocalVaultStorage(directory);
+    await Future.wait([
+      storage.appendBytes('logs/events.jsonl', utf8.encode('one\n')),
+      storage.appendBytes('logs/events.jsonl', utf8.encode('two\n')),
+    ]);
+    expect(
+      (await storage.readText('logs/events.jsonl')).split('\n'),
+      anyOf(equals(['one', 'two', '']), equals(['two', 'one', ''])),
+    );
+  });
+
+  test(
+    'composite append routes writes and respects mount permissions',
+    () async {
+      final main = await Directory.systemTemp.createTemp('tylog_main_');
+      final mount = await Directory.systemTemp.createTemp('tylog_mount_');
+      addTearDown(() async {
+        await main.delete(recursive: true);
+        await mount.delete(recursive: true);
+      });
+      final storage = CompositeVaultStorage(
+        LocalVaultStorage(main),
+        {'archive': LocalVaultStorage(mount)},
+        writableMounts: {'archive'},
+      );
+      await storage.appendBytes('ext/archive/a.jsonl', utf8.encode('row\n'));
+      expect(await File('${mount.path}/a.jsonl').readAsString(), 'row\n');
+      storage.writableMounts.clear();
+      await expectLater(
+        storage.appendBytes('ext/archive/a.jsonl', [1]),
+        throwsUnsupportedError,
+      );
+    },
+  );
+
+  test('SAF append uses the append channel', () async {
+    final calls = <MethodCall>[];
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(AndroidTreeVaultStorage.channel, (
+      call,
+    ) async {
+      calls.add(call);
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(
+        AndroidTreeVaultStorage.channel,
+        null,
+      ),
+    );
+    final storage = AndroidTreeVaultStorage(
+      uri: 'content://test/tree',
+      name: 'Test',
+    );
+    await storage.appendBytes(
+      '_system/decisions/a.jsonl',
+      utf8.encode('row\n'),
+    );
+    expect(calls.single.method, 'append');
+    expect(calls.single.arguments['bytes'], utf8.encode('row\n'));
+  });
+
   test('concurrent overwrites are atomic and leave no temp files', () async {
     final directory = await Directory.systemTemp.createTemp('tylog_atomic_');
     addTearDown(() => directory.delete(recursive: true));

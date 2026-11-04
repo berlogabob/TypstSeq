@@ -101,21 +101,19 @@ Future<void> sendIssueToGithub({
   }
   await vault.storage.createDirectory(decisionsDir);
   const path = '$decisionsDir/github.jsonl';
-  final old = await vault.storage.exists(path)
-      ? await vault.storage.readText(path)
-      : '';
-  await vault.storage.writeText(
+  await vault.storage.appendBytes(
     path,
-    old +
-        encodeDecisions([
-          Decision(
-            at: DateTime.now().toIso8601String(),
-            device: 'github',
-            item: issue.notePath,
-            source: 'issue',
-            action: 'sent',
-            target: '$repo#$number',
-          ),
-        ]),
+    utf8.encode(
+      encodeDecisions([
+        Decision(
+          at: DateTime.now().toIso8601String(),
+          device: 'github',
+          item: issue.notePath,
+          source: 'issue',
+          action: 'sent',
+          target: '$repo#$number',
+        ),
+      ]),
+    ),
   );
 }

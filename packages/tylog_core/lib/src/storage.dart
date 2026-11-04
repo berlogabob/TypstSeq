@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
@@ -90,6 +91,11 @@ abstract class VaultStorage {
   /// Null when this provider only supports whole-file reads.
   Stream<List<int>>? openRead(String path, [int? start, int? end]) => null;
   Future<void> writeBytes(String path, List<int> bytes);
+  Future<void> appendBytes(String path, List<int> bytes) async {
+    final existing = await exists(path) ? await readBytes(path) : <int>[];
+    await writeBytes(path, [...existing, ...bytes]);
+  }
+
   Future<void> delete(String path);
 
   /// Removes an empty directory, leaving files and non-empty directories alone.
@@ -128,6 +134,7 @@ class LocalVaultStorage extends VaultStorage {
   LocalVaultStorage(Directory root) : _root = root.absolute;
 
   final Directory _root;
+  static final _appends = <String, Future<void>>{};
 
   @override
   String get syncIdentity => _root.path;
@@ -211,6 +218,31 @@ class LocalVaultStorage extends VaultStorage {
   }
 
   @override
+  Future<void> appendBytes(String path, List<int> bytes) async {
+    final target = _path(path);
+    final previous = _appends[target];
+    final done = Completer<void>();
+    _appends[target] = done.future;
+    try {
+      if (previous != null) await previous;
+      final marker = await markIndexDirty(path);
+      final file = File(target);
+      await file.parent.create(recursive: true);
+      final sink = file.openWrite(mode: FileMode.append);
+      try {
+        sink.add(bytes);
+        await sink.flush();
+      } finally {
+        await sink.close();
+      }
+      await commitIndexWrite(marker, path);
+    } finally {
+      done.complete();
+      if (identical(_appends[target], done.future)) _appends.remove(target);
+    }
+  }
+
+  @override
   Future<void> delete(String path) async {
     final target = _path(path);
     final type = await FileSystemEntity.type(target);
@@ -287,6 +319,9 @@ class ReadOnlyVaultStorage extends VaultStorage {
       throw UnsupportedError('Read-only storage');
   @override
   Future<void> writeBytes(String path, List<int> bytes) async =>
+      throw UnsupportedError('Read-only storage');
+  @override
+  Future<void> appendBytes(String path, List<int> bytes) async =>
       throw UnsupportedError('Read-only storage');
   @override
   Future<void> delete(String path) async =>
@@ -425,6 +460,9 @@ class CompositeVaultStorage extends VaultStorage {
   @override
   Future<void> writeBytes(String path, List<int> bytes) async =>
       _writable(path).$1.writeBytes(_writable(path).$2, bytes);
+  @override
+  Future<void> appendBytes(String path, List<int> bytes) async =>
+      _writable(path).$1.appendBytes(_writable(path).$2, bytes);
   @override
   Future<void> delete(String path) async =>
       _writable(path).$1.delete(_writable(path).$2);

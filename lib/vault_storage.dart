@@ -212,6 +212,25 @@ class AndroidTreeVaultStorage extends VaultStorage {
   }
 
   @override
+  Future<void> appendBytes(String path, List<int> bytes) async {
+    final marker = await markIndexDirty(path);
+    try {
+      await invoke(
+        channel.invokeMethod<void>(
+          'append',
+          args({'path': path, 'bytes': Uint8List.fromList(bytes)}),
+        ),
+        'append',
+      );
+    } on PlatformException {
+      // ponytail: some document providers reject "wa"; read+write keeps the
+      // line (not atomic across devices, same as before append existed).
+      await super.appendBytes(path, bytes);
+    }
+    await commitIndexWrite(marker, path);
+  }
+
+  @override
   Future<void> delete(String path) => invoke(
     channel.invokeMethod<void>('delete', args({'path': path})),
     'delete',

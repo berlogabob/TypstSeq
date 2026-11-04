@@ -436,7 +436,10 @@ void main() {
       taskScheduler: TaskScheduler(),
       reconcileTasks: (_) async {},
     );
-    addTearDown(controller.dispose);
+    addTearDown(() async {
+      await controller.shutdown();
+      controller.dispose();
+    });
     final initialIndex = Completer<void>();
     controller.addListener(() {
       if (controller.index != null &&

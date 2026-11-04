@@ -167,6 +167,7 @@ void main() {
     await tester.pumpAndSettle();
     final ledger = await storage.readText('$enrichFeedbackDir/dev1.jsonl');
     expect(jsonDecode(ledger.trim()), containsPair('decision', 'accept'));
+    expect(storage.appended['$enrichFeedbackDir/dev1.jsonl'], [ledger]);
     expect(
       home.workspace.source,
       contains('#tylog.ref-note("kz")[Катя] приехала'),
@@ -360,6 +361,14 @@ void main() {
 
 class _MemoryStorage extends VaultStorage {
   final Map<String, Uint8List> _files = {};
+  final appended = <String, List<String>>{};
+
+  @override
+  Future<void> appendBytes(String path, List<int> bytes) async {
+    appended.putIfAbsent(path, () => []).add(utf8.decode(bytes));
+    await super.appendBytes(path, bytes);
+  }
+
   final Set<String> _directories = {''};
 
   @override

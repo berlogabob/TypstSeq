@@ -135,9 +135,9 @@ extension _IncomingFlow on _HomeScreenState {
       _enrichLedgerWrite = _enrichLedgerWrite.then((_) async {
         final ledger = '$decisionsDir/$device.jsonl';
         await v.storage.createDirectory(decisionsDir);
-        final existing = await v.storage.exists(ledger)
-            ? await v.storage.readText(ledger)
-            : '';
-        await v.storage.writeText(ledger, '$existing${encodeDecisions([row])}');
+        await v.storage.appendBytes(
+          ledger,
+          utf8.encode(encodeDecisions([row])),
+        );
       });
 }

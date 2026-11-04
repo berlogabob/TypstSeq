@@ -146,7 +146,7 @@ class SafBridge(
     // (Declared in the companion object — shared across engines.)
 
     private val mutatingMethods = setOf(
-        "createDirectory", "write", "delete", "deleteEmptyDirectory", "deleteRoot", "releaseAccess", "import",
+        "createDirectory", "write", "append", "delete", "deleteEmptyDirectory", "deleteRoot", "releaseAccess", "import",
     )
     private val channel = MethodChannel(messenger, CHANNEL)
 
@@ -356,7 +356,7 @@ class SafBridge(
         }
 
         if (call.method !in setOf(
-                "exists", "createDirectory", "list", "stat", "read", "write",
+                "exists", "createDirectory", "list", "stat", "read", "write", "append",
                 "delete", "deleteEmptyDirectory", "deleteRoot", "releaseAccess", "hash", "import",
                 "materialize", "open",
             )
@@ -394,6 +394,7 @@ class SafBridge(
                     }
                 }
                 "read" -> withResolved(tree, path(call), ::read)
+                "append" -> append(tree, path(call), call.argument<ByteArray>("bytes") ?: ByteArray(0)).let { null }
                 "write" -> writeAtomic(
                     tree,
                     path(call),
@@ -925,6 +926,20 @@ class SafBridge(
 
     private fun read(uri: Uri): ByteArray =
         resolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Could not read document")
+
+    private fun append(tree: Uri, path: String, bytes: ByteArray) {
+        val safe = safePath(path)
+        require(safe.isNotEmpty()) { "Cannot write the vault root" }
+        val name = safe.substringAfterLast('/')
+        val parent = ensureDirectory(tree, safe.substringBeforeLast('/', ""))
+        val target = resolve(tree, safe) ?: DocumentsContract.createDocument(
+            resolver, parent, "application/octet-stream", name,
+        )?.also { commit(tree, safe, name, it) } ?: error("Could not create document")
+        resolver.openOutputStream(target, "wa")?.use {
+            it.write(bytes)
+            it.flush()
+        } ?: error("Could not append document")
+    }
 
     private fun writeAtomic(tree: Uri, path: String, bytes: ByteArray) {
         val source = File.createTempFile("tylog-write-", ".tmp", context.cacheDir)

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:tylog_core/tylog_core.dart';
 import '../github/github_client.dart';
@@ -49,22 +50,20 @@ class _GitHubProjectBoardState extends State<GitHubProjectBoard> {
       moved = true;
       await widget.storage.createDirectory(decisionsDir);
       const path = '$decisionsDir/github.jsonl';
-      final old = await widget.storage.exists(path)
-          ? await widget.storage.readText(path)
-          : '';
-      await widget.storage.writeText(
+      await widget.storage.appendBytes(
         path,
-        old +
-            encodeDecisions([
-              Decision(
-                at: DateTime.now().toIso8601String(),
-                device: widget.deviceId,
-                item: item.id,
-                source: 'github_project',
-                action: 'status',
-                target: column.name,
-              ),
-            ]),
+        utf8.encode(
+          encodeDecisions([
+            Decision(
+              at: DateTime.now().toIso8601String(),
+              device: widget.deviceId,
+              item: item.id,
+              source: 'github_project',
+              action: 'status',
+              target: column.name,
+            ),
+          ]),
+        ),
       );
     } catch (error) {
       if (mounted) {
