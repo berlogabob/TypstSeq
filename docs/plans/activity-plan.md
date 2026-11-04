@@ -441,7 +441,8 @@ Issues found:
 - [x] S1 One review queue: OCR rows, OLT bookings, bot drafts land in Incoming with the same accept/reject + decision ledger
 - [ ] S1-rest Add audio proposals to Incoming when S5 is ready, and move queue types into a shared registry with seven-day paging.
 - [x] S2 Namespace -> structure: one-tap convert of Logseq `A/B/C` titles into parent pages + part_of
-- [ ] S3 Duplicate finder + merge (same name/alias/email; links repointed), e.g. André Sabino x2, IADE x3
+- [x] S3a Duplicate finder (read-only)
+- [ ] S3b Merge two pages (reuse rename), e.g. André Sabino x2, IADE x3
 - [x] S4 Person timeline: dailies, audio, screenshots, tasks mentioning the person, by date
 - [x] S5 Audio -> task/agenda proposals in Incoming
 - [ ] S5-rest Link accepted audio tasks to the From person when present.

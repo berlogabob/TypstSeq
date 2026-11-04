@@ -64,14 +64,20 @@ void main() {
     await openGroup('Sync and storage', ['Local folder', 'Vaults', 'Sync']);
     await openGroup('Maintenance', [
       'Problems',
+      'Duplicates',
       'Rebuild index',
       'Relink vault',
       'Migrate entity types',
       'Clean up imported notes',
       'Import vault',
       'Modules',
-      'Semantic search',
     ]);
+    await tester.tap(find.text('Maintenance'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Semantic search'), 200);
+    expect(find.text('Semantic search'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
     await openGroup('About', [
       'App version',
       'Check for updates',

@@ -85,7 +85,7 @@ const settingsSearchEntries = <SettingsSearchEntry>[
   ),
   SettingsSearchEntry(
     title: 'Maintenance',
-    keywords: 'problems index import relink modules semantic search',
+    keywords: 'problems duplicates index import relink modules semantic search',
     path: 'Maintenance',
     routeName: '$kSettingsRoute/page',
     builder: _maintenance,

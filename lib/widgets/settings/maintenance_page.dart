@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:tylog_core/tylog_core.dart' show VaultIndex, findDuplicates;
 import '../app_icons.dart';
 import '../ds/app_tile.dart';
 import '../settings_sheet.dart';
@@ -16,6 +17,18 @@ class MaintenancePage extends StatelessWidget {
         icon: AppIcons.warning,
         title: 'Problems',
         onTap: settings.onProblems,
+      ),
+      AppTile(
+        icon: Icons.content_copy,
+        title: 'Duplicates',
+        onTap: settings.workspace?.index == null
+            ? null
+            : () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) =>
+                      _DuplicatesPage(index: settings.workspace!.index!),
+                ),
+              ),
       ),
       AppTile(
         icon: Icons.refresh,
@@ -66,4 +79,35 @@ class MaintenancePage extends StatelessWidget {
       ),
     ],
   );
+}
+
+class _DuplicatesPage extends StatelessWidget {
+  const _DuplicatesPage({required this.index});
+  final VaultIndex index;
+
+  @override
+  Widget build(BuildContext context) {
+    final groups = findDuplicates(index);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Duplicates')),
+      body: groups.isEmpty
+          ? const Center(child: Text('No duplicates found'))
+          : ListView.builder(
+              itemCount: groups.length,
+              itemBuilder: (context, i) => Card(
+                child: Column(
+                  children: [
+                    for (final note in groups[i])
+                      ListTile(
+                        title: Text(note.title),
+                        subtitle: Text(
+                          '${note.path} · ${(index.backlinksByTarget[note.path] ?? const []).length} backlinks',
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+    );
+  }
 }

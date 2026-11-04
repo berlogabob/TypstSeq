@@ -35,6 +35,26 @@ const _pageTypes = {'person', 'place', 'organization', 'project', 'event'};
 bool isEnrichTarget(NoteRef note) =>
     note.kind == 'note' || entityNoteKinds.contains(note.kind);
 
+/// Groups pages that share a normalized title or alias.
+List<List<NoteRef>> findDuplicates(VaultIndex index) {
+  final byKey = <String, List<NoteRef>>{};
+  for (final note in index.notes.where(isEnrichTarget)) {
+    final keys = {
+      for (final name in [note.title, ...note.aliases]) enrichKey(name),
+    };
+    for (final key in keys.where((key) => key.isNotEmpty)) {
+      (byKey[key] ??= []).add(note);
+    }
+  }
+  final seen = <String>{};
+  return [
+    for (final group in byKey.values)
+      if (group.length > 1 &&
+          seen.add(group.map((note) => note.path).join('\x00')))
+        group,
+  ];
+}
+
 /// `_system/enrich/mentions/<note path without .typ>.json`.
 String enrichMentionsPath(String notePath) =>
     '$enrichMentionsDir/${notePath.replaceFirst(RegExp(r'\.typ$'), '')}.json';
