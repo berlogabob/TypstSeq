@@ -91,6 +91,10 @@ void main() {
   testWidgets('shows a persisted pack update and opens its installer', (
     tester,
   ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     late Directory root;
     late WorkspaceController workspace;
     await tester.runAsync(() async {
@@ -109,7 +113,7 @@ void main() {
       await storage.writeText(
         '_system/modules/course.json',
         jsonEncode({
-          'name': 'Course',
+          'name': 'A long research methods course pack',
           'version': '1.0.0',
           'source': {'github': 'owner/repo'},
           'updateAvailableVersion': '2.0.0',
@@ -132,6 +136,10 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 100));
     });
     await tester.pumpAndSettle();
+    expect(
+      tester.getSize(find.text('A long research methods course pack')).width,
+      greaterThan(200),
+    );
     expect(find.text('Update to 2.0.0'), findsOneWidget);
     await tester.tap(find.text('Update to 2.0.0'));
     expect(selected?.id, 'course');

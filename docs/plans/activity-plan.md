@@ -506,5 +506,6 @@ Issues found:
 - [ ] U1c-rest Finish entity page polish: header, remaining part_of and Contains states, Timeline, Board switch (Kanban/Whiteboard/Tree), and kind icon picker; check phone layouts.
 - [x] U1d Clarify which duplicate is removed and choose the survivor at 360 dp.
 - [ ] U1d-rest Finish Settings > Maintenance polish: duplicates list and merge preview, namespace convert, health report link, and remaining loading, error, and phone-layout states.
-- [ ] U1e Polish Extensions: packs + update button, OLT sources, GitHub sign-in states, mounts.
+- [x] U1e Keep pack names and update buttons usable on phones in Extensions.
+- [ ] U1e-rest Polish Extensions: OLT sources, GitHub sign-in states, mounts, and remaining pack states and phone layouts.
 - [ ] U1f Polish boards: GitHub repo columns, OLT whiteboard cards, empty board, add-card flows.

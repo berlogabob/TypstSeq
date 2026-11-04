@@ -229,22 +229,27 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
         children: [
           if (_modules.any((m) => m.github != null))
             const ListTile(title: Text('Packs')),
-          for (final module in _modules.where((m) => m.github != null))
+          for (final module in _modules.where((m) => m.github != null)) ...[
             AppTile(
               icon: Icons.school_outlined,
               title: module.name,
               subtitle: 'Version ${module.version}',
-              trailing:
-                  module.updateAvailableVersion == null ||
-                      widget.onUpdateModule == null
-                  ? null
-                  : TextButton(
-                      onPressed: _busy
-                          ? null
-                          : () => widget.onUpdateModule!(module),
-                      child: Text('Update to ${module.updateAvailableVersion}'),
-                    ),
             ),
+            if (module.updateAvailableVersion != null &&
+                widget.onUpdateModule != null)
+              Padding(
+                padding: const EdgeInsets.only(left: 48),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    onPressed: _busy
+                        ? null
+                        : () => _run(() => widget.onUpdateModule!(module)),
+                    child: Text('Update to ${module.updateAvailableVersion}'),
+                  ),
+                ),
+              ),
+          ],
           const ListTile(title: Text('Sources')),
           const OltSection(),
           GitHubSignIn(onChanged: () => setState(_permissions.clear)),
