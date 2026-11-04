@@ -39,8 +39,7 @@ extension _DuplicateMerge on WorkspaceController {
     final body = loserText.startsWith(canonical)
         ? loserText.substring(canonical.length)
         : null;
-    if (draft.tags.isNotEmpty ||
-        draft.date != null ||
+    if (draft.date != null ||
         draft.project != null ||
         draft.properties.keys.any((k) => k != 'part_of') ||
         (body == null && loserText.trim() != canonical.trim()) ||
@@ -49,7 +48,7 @@ extension _DuplicateMerge on WorkspaceController {
             survivor.substring(0, survivor.lastIndexOf('/')) !=
                 loser.substring(0, loser.lastIndexOf('/')))) {
       throw StateError(
-        'Only canonical pages without additional metadata in the same folder can be merged yet.',
+        'Only canonical pages in the same folder without date, project, or other properties can be merged yet.',
       );
     }
     final resolver = LinkResolver(currentIndex.notes);
@@ -88,7 +87,19 @@ extension _DuplicateMerge on WorkspaceController {
         final metadata = scanNote(survivor, updated);
         final aliases = {...metadata.aliases, remove.title, ...remove.aliases}
           ..remove(metadata.title);
+        if (draft.tags.isNotEmpty &&
+            !text.startsWith(
+              replaceNoteHeader(
+                '',
+                NoteMetadataDraft.fromNote(scanNote(survivor, text)),
+              ),
+            )) {
+          throw StateError('Tagged pages require a canonical survivor header.');
+        }
         updated = replaceNoteFields(updated, {
+          if (draft.tags.isNotEmpty)
+            'tags':
+                '(${{...metadata.tags, ...draft.tags}.map(typstString).map((s) => '$s,').join(' ')})',
           'aliases':
               '(${aliases.map(typstString).map((s) => '$s,').join(' ')})',
         });

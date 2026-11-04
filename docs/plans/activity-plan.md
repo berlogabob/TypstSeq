@@ -447,7 +447,8 @@ Issues found:
 - [x] S3a Duplicate finder (read-only)
 - [x] S3b Merge two pages (reuse rename), e.g. André Sabino x2, IADE x3
 - [x] S3b-rest Merge canonical pages with body text in the same folder, preserving supported metadata and repointing supported references.
-- [ ] S3b-rest-rest Merge noncanonical pages and preserve all metadata; handle pages in different folders, repoint other link forms and references outside indexed notes, handle ambiguous names, and recover safely from partial writes.
+- [x] S3b-rest-rest Merge canonical pages with tags, preserving both pages’ tags.
+- [ ] S3b-rest-rest-rest Merge noncanonical pages and preserve all metadata; handle pages in different folders, repoint other link forms and references outside indexed notes, handle ambiguous names, and recover safely from partial writes.
 - [x] S4 Person timeline: dailies, audio, screenshots, tasks mentioning the person, by date
 - [x] S5 Audio -> task/agenda proposals in Incoming
 - [x] S5-rest Link accepted audio tasks to the From person when present.
@@ -459,3 +460,12 @@ Issues found:
 - [x] S9 Mention chooser: select a ranked candidate or search pages from Incoming and daily review.
 - [x] S9-rest Add a durable “Not a person/ignore” decision, last-seen day, and distinct icons for all candidate kinds.
 - [ ] Re-process PTT-20261104-WA0001 after the worker fix (user, Re-process)
+
+## Wave 23 (2026-11-04, A24 findings)
+- [ ] M1 Drop the `// tylog:auto-entities` Mentions block (user: doubles Incoming, no help). Accepted mention = inline link on the name in the text (exists); auto tags -> header `tags:`; unsure stays in Incoming. Migration of existing dailies (~19): remove block, add missing inline links, move tags to header; preview list to user before any vault write.
+- [ ] M2 People cleanup: person pages created as kind `note` with CamelCase titles (AlexandrePereira, AndreSabino, AngelaSilvestre, BrunoAlmeida, CarlosRosa, ÉlmanoRicarte, EulersonRodrigues, FernandoMarson, HéliaPereira, JoséGraça, JoshGambrell, PamelaTeubig, PauloAndrade, RitaMalaquias) -> kind person + spaced title via rename (links repointed, old title kept as alias). Non-people CamelCase pages (ArtStation, GameObject, MetaMask, ...) untouched. User confirms the list first.
+- [ ] M3 Root cause of M2: find the flow that creates CamelCase kind-note pages (mention "+" create / contact import?) and make it create kind person with the spoken name as title.
+- [ ] M4 Merge AndreSabino + "André Sabino" (Settings > Duplicates once M2 runs); Анжела Хавьер is a different person, not a duplicate.
+- [ ] M5 PT pack 1.3.1 blocked: Studio GPU full even with Ornith unloaded (Chatterbox 400); user: nvidia-smi on Studio or allow CPU TTS.
+- [ ] M6 P6 bot vaults: no freeze; design doc first (bot <-> TyLog folder contract, 5 open questions), user approves before code.
+- [ ] M7 Build policy: one APK at plan end (user 2026-11-04); exception only for blocking bugs.

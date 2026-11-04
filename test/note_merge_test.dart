@@ -145,4 +145,68 @@ void main() {
       expect(compile.exitCode, 0, reason: '${compile.stderr}');
     },
   );
+  test(
+    'merges tagged canonical pages without losing either set of tags',
+    () async {
+      final root = await Directory.systemTemp.createTemp('merge-tags-');
+      final storage = LocalVaultStorage(root);
+      final vault = Vault.withStorage(storage);
+      await vault.ensureCreated();
+      final workspace = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        reconcileTasks: (_) async {},
+      )..vault = vault;
+      addTearDown(() async {
+        workspace.dispose();
+        await root.delete(recursive: true);
+      });
+      await storage.writeText(
+        'notes/a.typ',
+        replaceNoteHeader(
+          'Keep body\n',
+          const NoteMetadataDraft(
+            id: 'a',
+            title: 'A',
+            tags: ['keep', 'shared'],
+          ),
+        ),
+      );
+      await storage.writeText(
+        'notes/b.typ',
+        replaceNoteHeader(
+          'Other body\n',
+          const NoteMetadataDraft(
+            id: 'b',
+            title: 'B',
+            tags: ['other', 'shared'],
+          ),
+        ),
+      );
+      workspace.index = await scanVaultStorage(storage);
+      final preview = await workspace.previewDuplicateMerge(
+        'notes/a.typ',
+        'notes/b.typ',
+      );
+      expect(preview.files, containsAll(['notes/a.typ', 'notes/b.typ']));
+      await workspace.mergeDuplicate(preview);
+      final text = await storage.readText('notes/a.typ');
+      expect(scanNote('notes/a.typ', text).tags.toSet(), {
+        'keep',
+        'shared',
+        'other',
+      });
+      expect(text, contains('Keep body'));
+      expect(text, contains('Other body'));
+      expect(await storage.exists('notes/b.typ'), isFalse);
+      expect(await loadDecisions(storage), hasLength(1));
+      final compile = Process.runSync('typst', [
+        'compile',
+        '--root',
+        root.path,
+        '${root.path}/notes/a.typ',
+        '${root.path}/out.pdf',
+      ]);
+      expect(compile.exitCode, 0, reason: '${compile.stderr}');
+    },
+  );
 }
