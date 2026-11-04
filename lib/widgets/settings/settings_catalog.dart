@@ -158,7 +158,7 @@ Widget _extensions(
   SettingsSheet s, {
   ValueChanged<String>? onPaperChanged,
   ValueChanged<ThemeMode>? onThemeChanged,
-}) => ExtensionsPage(workspace: s.workspace);
+}) => ExtensionsPage(workspace: s.workspace, onUpdateModule: s.onUpdateModule);
 Widget _about(
   SettingsSheet s, {
   ValueChanged<String>? onPaperChanged,

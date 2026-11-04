@@ -70,45 +70,52 @@ class WorkspaceController extends ChangeNotifier {
        _useForegroundService = useForegroundService ?? Platform.isAndroid;
 
   final Map<String, ModulePack> moduleUpdates = {};
-  Future<void> checkModuleUpdates({bool automatic = false}) async {
+  Future<void>? _moduleCheck;
+  Future<void> checkModuleUpdates({bool automatic = false}) => _moduleCheck ??=
+      _checkModuleUpdates().whenComplete(() => _moduleCheck = null);
+
+  Future<void> _checkModuleUpdates() async {
     final opened = vault;
     if (opened == null) return;
-    const stamp = '_system/modules/.update-check';
     try {
-      if (automatic && await opened.storage.exists(stamp)) {
-        final last = DateTime.tryParse(await opened.storage.readText(stamp));
-        if (last != null &&
-            _now().difference(last) < const Duration(hours: 24)) {
-          return;
-        }
-      }
       final modules = await listInstalledModules(opened.storage);
-      if (modules.every((m) => m.github == null)) return;
-      await opened.storage.writeText(stamp, _now().toIso8601String());
-      final client = await githubClient();
       for (final module in modules.where((m) => m.github != null)) {
+        if (vault != opened) return;
+        final path = moduleRecordPath(module.id);
+        final record = Map<String, dynamic>.from(
+          jsonDecode(await opened.storage.readText(path)) as Map,
+        );
+        final last =
+            DateTime.tryParse(record['updateAttemptedAt'] as String? ?? '') ??
+            module.updateCheckedAt;
+        if (last != null && _now().difference(last) < const Duration(days: 7))
+          continue;
+        record['updateAttemptedAt'] = _now().toIso8601String();
+        await opened.storage.writeText(path, jsonEncode(record));
         try {
-          final pack = await checkModuleUpdate(client, module);
+          final pack = await checkModuleUpdate(await githubClient(), module);
           if (vault != opened) return;
-          final path = moduleRecordPath(module.id);
-          final record = Map<String, dynamic>.from(
+          final current = Map<String, dynamic>.from(
             jsonDecode(await opened.storage.readText(path)) as Map,
           );
-          record['updateAvailableVersion'] = pack?.version;
-          record['updateCheckedAt'] = _now().toIso8601String();
-          await opened.storage.writeText(path, jsonEncode(record));
+          if ((current['source'] as Map?)?['github'] != module.github ||
+              (current['version'] ?? '0') != module.version)
+            continue;
+          current['updateAvailableVersion'] = pack?.version;
+          current['updateCheckedAt'] = _now().toIso8601String();
+          await opened.storage.writeText(path, jsonEncode(current));
           if (pack == null) {
             moduleUpdates.remove(module.id);
           } else {
             moduleUpdates[module.id] = pack;
           }
         } catch (_) {
-          /* Other modules can still be checked. */
+          // Offline or rate-limited checks are silent.
         }
       }
       if (vault == opened) notifyListeners();
     } catch (_) {
-      /* A background check must never block opening a vault. */
+      // A background check must never block opening a vault.
     }
   }
 

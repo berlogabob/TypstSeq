@@ -3331,6 +3331,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     _closeSettings(context);
                     await _importVault();
                   },
+                  onUpdateModule: (module) async {
+                    _closeSettings(context);
+                    await _updateModule(module);
+                  },
                   onInstallModule: () async {
                     _closeSettings(context);
                     await _showModules();

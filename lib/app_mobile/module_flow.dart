@@ -65,7 +65,7 @@ extension _ModuleFlow on _HomeScreenState {
                   if (module.updateAvailableVersion case final update?
                       when module.updateCheckedAt != null &&
                           DateTime.now().difference(module.updateCheckedAt!) <
-                              const Duration(hours: 24))
+                              const Duration(days: 7))
                     AppTile(
                       icon: Icons.system_update,
                       title: 'Update available ${module.version} -> $update',
@@ -146,17 +146,16 @@ extension _ModuleFlow on _HomeScreenState {
         } else {
           record['source'] = source;
         }
+        record.remove('updateAttemptedAt');
+        record.remove('updateCheckedAt');
+        record.remove('updateAvailableVersion');
         await v.storage.writeText(path, jsonEncode(record));
         workspace.moduleUpdates.remove(module.id);
         if (mounted) await _showModules();
         return;
       }
       if (choice.action == 'update') {
-        final pack = await downloadGitHubModuleUpdate(
-          await workspace.githubClient(),
-          module,
-        );
-        await _installModulePack(pack, github: module.github);
+        await _updateModule(module);
         return;
       }
       String message;
@@ -195,6 +194,18 @@ extension _ModuleFlow on _HomeScreenState {
             '${result.skipped.isEmpty ? '' : ', ${result.skipped.length} kept (edited)'}';
       }
       if (mounted) showSnack(context, message);
+    } catch (error) {
+      if (mounted) showSnack(context, 'Module operation failed: $error');
+    }
+  }
+
+  Future<void> _updateModule(InstalledModule module) async {
+    try {
+      final pack = await downloadGitHubModuleUpdate(
+        await workspace.githubClient(),
+        module,
+      );
+      await _installModulePack(pack, github: module.github);
     } catch (error) {
       if (mounted) showSnack(context, 'Module operation failed: $error');
     }

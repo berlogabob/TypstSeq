@@ -9,7 +9,8 @@ import 'package:tylog/github/github_client.dart';
 import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:tylog_core/tylog_core.dart' show Mount, MountSource;
+import 'package:tylog_core/tylog_core.dart'
+    show Mount, MountSource, InstalledModule;
 import 'package:tylog/task_scheduler.dart';
 import 'package:tylog/vault_registry.dart';
 import 'package:tylog/vault_storage.dart';
@@ -43,6 +44,16 @@ class _GitHub extends GitHubClient {
   _GitHub({this.pushAllowed = false});
   final bool pushAllowed;
   int pushes = 0;
+  int releaseChecks = 0;
+  bool offline = false;
+  @override
+  Future<({String tag, List<({String name, String url})> assets})>
+  latestRelease(String repo) async {
+    releaseChecks++;
+    if (offline) throw const SocketException('offline');
+    return (tag: '1.0.0', assets: <({String name, String url})>[]);
+  }
+
   @override
   Future<Map<String, dynamic>> repoPermissions(String repo) async => {
     'push': pushAllowed,
@@ -76,6 +87,110 @@ class _GitHub extends GitHubClient {
 
 void main() {
   FlutterSecureStorage.setMockInitialValues({'github_token': 'test-token'});
+
+  testWidgets('shows a persisted pack update and opens its installer', (
+    tester,
+  ) async {
+    late Directory root;
+    late WorkspaceController workspace;
+    await tester.runAsync(() async {
+      root = await Directory.systemTemp.createTemp('pack-extension');
+      final storage = LocalVaultStorage(Directory('${root.path}/vault'));
+      workspace = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _Inspector(),
+        reconcileTasks: (_) async {},
+      );
+      await workspace.openVault(
+        VaultEntry(id: 'test', name: 'Test', path: '${root.path}/vault'),
+        storage: storage,
+      );
+      expect(workspace.vault, isNotNull, reason: workspace.status);
+      await storage.writeText(
+        '_system/modules/course.json',
+        jsonEncode({
+          'name': 'Course',
+          'version': '1.0.0',
+          'source': {'github': 'owner/repo'},
+          'updateAvailableVersion': '2.0.0',
+          'updateCheckedAt': DateTime.now().toIso8601String(),
+        }),
+      );
+    });
+    InstalledModule? selected;
+    await tester.runAsync(() async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ExtensionsPage(
+            workspace: workspace,
+            onUpdateModule: (module) async {
+              selected = module;
+            },
+          ),
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    await tester.pumpAndSettle();
+    expect(find.text('Update to 2.0.0'), findsOneWidget);
+    await tester.tap(find.text('Update to 2.0.0'));
+    expect(selected?.id, 'course');
+    await tester.pumpWidget(const SizedBox());
+    workspace.dispose();
+    await tester.runAsync(() => root.delete(recursive: true));
+  });
+
+  testWidgets('checks each GitHub pack at most weekly even offline', (
+    tester,
+  ) async {
+    late Directory root;
+    late WorkspaceController workspace;
+    final client = _GitHub()..offline = true;
+    var now = DateTime(2026, 11, 4);
+    await tester.runAsync(() async {
+      root = await Directory.systemTemp.createTemp('pack-weekly');
+      final storage = LocalVaultStorage(Directory('${root.path}/vault'));
+      workspace = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _Inspector(),
+        reconcileTasks: (_) async {},
+        githubClientFactory: (_) => client,
+        now: () => now,
+      );
+      await workspace.openVault(
+        VaultEntry(id: 'test', name: 'Test', path: '${root.path}/vault'),
+        storage: storage,
+      );
+      expect(workspace.vault, isNotNull, reason: workspace.status);
+      await storage.writeText(
+        '_system/modules/course.json',
+        jsonEncode({
+          'version': '1.0.0',
+          'source': {'github': 'owner/repo'},
+          'updateAvailableVersion': '2.0.0',
+        }),
+      );
+      await workspace.checkModuleUpdates();
+      await workspace.checkModuleUpdates();
+      expect(client.releaseChecks, 1);
+      expect(
+        (jsonDecode(await storage.readText('_system/modules/course.json'))
+            as Map)['updateAvailableVersion'],
+        '2.0.0',
+      );
+      now = now.add(const Duration(days: 7));
+      client.offline = false;
+      await workspace.checkModuleUpdates();
+      expect(client.releaseChecks, 2);
+      expect(
+        (jsonDecode(await storage.readText('_system/modules/course.json'))
+            as Map)['updateAvailableVersion'],
+        isNull,
+      );
+      workspace.dispose();
+      await root.delete(recursive: true);
+    });
+  });
 
   testWidgets('saving twice debounces a single outbox push', (tester) async {
     late Directory root;

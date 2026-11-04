@@ -240,6 +240,7 @@ Future<ModuleInstallResult> installModule(
     moduleRecordPath(pack.id),
     jsonEncode({
       ...record,
+      'updateAvailableVersion': null,
       if (github != null)
         'source': {...?(record['source'] as Map?), 'github': github},
       'id': pack.id,

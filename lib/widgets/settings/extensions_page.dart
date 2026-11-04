@@ -1,8 +1,10 @@
 import 'dart:io';
+import 'dart:async';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:tylog_core/tylog_core.dart' show Mount, MountSource;
+import 'package:tylog_core/tylog_core.dart'
+    show Mount, MountSource, InstalledModule, listInstalledModules;
 
 import '../../workspace_controller.dart';
 import '../ds/app_tile.dart';
@@ -15,16 +17,44 @@ class ExtensionsPage extends StatefulWidget {
     super.key,
     required this.workspace,
     this.pickDirectory,
+    this.onUpdateModule,
   });
 
   final WorkspaceController? workspace;
   final Future<String?> Function()? pickDirectory;
+  final Future<void> Function(InstalledModule)? onUpdateModule;
 
   @override
   State<ExtensionsPage> createState() => _ExtensionsPageState();
 }
 
 class _ExtensionsPageState extends State<ExtensionsPage> {
+  List<InstalledModule> _modules = [];
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadModules());
+  }
+
+  Future<void> _loadModules() async {
+    final workspace = widget.workspace;
+    final storage = workspace?.vault?.storage;
+    if (workspace == null || storage == null) return;
+    Future<void> load() async {
+      final modules = await listInstalledModules(storage);
+      if (mounted) setState(() => _modules = modules);
+    }
+
+    try {
+      await load();
+      await workspace.checkModuleUpdates(automatic: true);
+      await load();
+    } catch (_) {
+      // Extensions remain usable when a pack record cannot be read.
+    }
+  }
+
   DateTime? _lastRefresh;
   bool _busy = false;
   final Map<String, Future<bool>> _permissions = {};
@@ -197,6 +227,24 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
       builder: (context, _) => SettingsPage(
         title: 'Extensions',
         children: [
+          if (_modules.any((m) => m.github != null))
+            const ListTile(title: Text('Packs')),
+          for (final module in _modules.where((m) => m.github != null))
+            AppTile(
+              icon: Icons.school_outlined,
+              title: module.name,
+              subtitle: 'Version ${module.version}',
+              trailing:
+                  module.updateAvailableVersion == null ||
+                      widget.onUpdateModule == null
+                  ? null
+                  : TextButton(
+                      onPressed: _busy
+                          ? null
+                          : () => widget.onUpdateModule!(module),
+                      child: Text('Update to ${module.updateAvailableVersion}'),
+                    ),
+            ),
           const ListTile(title: Text('Sources')),
           const OltSection(),
           GitHubSignIn(onChanged: () => setState(_permissions.clear)),

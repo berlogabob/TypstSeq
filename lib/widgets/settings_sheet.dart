@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:tylog_core/storage.dart';
+import 'package:tylog_core/tylog_core.dart' show InstalledModule;
 
 import 'package:flutter/material.dart';
 import 'date_format.dart' show shortStamp;
@@ -40,6 +41,7 @@ class SettingsSheet extends StatefulWidget {
     required this.onStripImportNoise,
     required this.onImportVault,
     required this.onInstallModule,
+    this.onUpdateModule,
     this.onProblems,
     this.onRebuildIndex,
     this.onRelinkVault,
@@ -101,6 +103,7 @@ class SettingsSheet extends StatefulWidget {
   final Future<void> Function() onStripImportNoise;
   final Future<void> Function() onImportVault;
   final Future<void> Function() onInstallModule;
+  final Future<void> Function(InstalledModule)? onUpdateModule;
 
   final VoidCallback? onProblems;
 
