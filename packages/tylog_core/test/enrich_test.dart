@@ -116,6 +116,37 @@ void main() {
     );
   });
 
+  test(
+    'ignored surfaces stay hidden after ledger reload, including new names',
+    () {
+      final events = EnrichFeedback.parseLedger(
+        '{"decision":"reject","surface":"André","entity":"mention:ignore"}\n'
+        '{"decision":"reject","surface":"Unknown","entity":"mention:ignore"}',
+      );
+      final decisions = resolveMentions(
+        mentionsOf([
+          andre,
+          const EnrichMention(surface: 'Unknown', type: 'person', line: 1),
+        ]),
+        day('2026-10-01'),
+        EnrichMemory.build(index, events),
+      );
+      expect(decisions, isEmpty);
+    },
+  );
+
+  test('candidates show the most recent linked day', () {
+    final decisions = resolveMentions(
+      mentionsOf([andre]),
+      day('2026-10-01'),
+      EnrichMemory.build(index),
+    );
+    final seen = {
+      for (final c in decisions.single.candidates) c.note.id: c.lastSeenDay,
+    };
+    expect(seen, {'andre-silva': '2026-09-05', 'andre-costa': '2026-08-05'});
+  });
+
   test('first name alone is ambiguous: review, not link', () {
     final [decision] = resolveMentions(
       mentionsOf([andre]),

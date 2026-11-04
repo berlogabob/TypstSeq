@@ -27,7 +27,7 @@ void main() {
     outgoingLinks: [],
   );
   const decision = EnrichDecision(mention, EnrichStatus.review, [
-    EnrichCandidate(first, 1, strong: false),
+    EnrichCandidate(first, 1, strong: false, lastSeenDay: "2026-10-20"),
     EnrichCandidate(second, .5, strong: false),
   ]);
 
@@ -44,6 +44,7 @@ void main() {
             onAccept: (_, target) => accepted(target),
             onReject: (_, _) {},
             onCreate: (_) {},
+            onIgnore: (_) {},
           ),
         ),
       ),
@@ -51,6 +52,18 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('enrich-review-Alex')));
     await tester.pumpAndSettle();
   }
+
+  testWidgets('shows candidate kind and last seen', (tester) async {
+    await showReview(tester, (_) {});
+    expect(find.text('Last seen 2026-10-20'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.widgetWithText(ListTile, 'Alex A'),
+        matching: find.byIcon(Icons.person_outline),
+      ),
+      findsOneWidget,
+    );
+  });
 
   testWidgets('chooses a lower ranked candidate', (tester) async {
     NoteRef? accepted;

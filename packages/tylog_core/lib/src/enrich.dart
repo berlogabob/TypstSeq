@@ -22,6 +22,7 @@ const autoEntitiesMarker = '// tylog:auto-entities';
 const enrichMentionsDir = '_system/enrich/mentions';
 const enrichFeedbackDir = '_system/enrich/feedback';
 const enrichShownDir = '_system/enrich/shown';
+const enrichIgnoreEntity = 'mention:ignore';
 
 /// Ledger `entity` for a decision about an auto-added tag.
 String enrichTagEntity(String tag) => 'tag:$tag';
@@ -250,9 +251,15 @@ Set<String> enrichFeatures(NoteRef note, Map<String, String> entityIdByTarget) {
 enum EnrichStatus { linked, review, propose }
 
 class EnrichCandidate {
-  const EnrichCandidate(this.note, this.score, {required this.strong});
+  const EnrichCandidate(
+    this.note,
+    this.score, {
+    required this.strong,
+    this.lastSeenDay,
+  });
   final NoteRef note;
   final double score;
+  final String? lastSeenDay;
 
   /// Name matches exactly or the user accepted this surface before: safe to
   /// link without asking when it also clearly wins.
@@ -283,6 +290,7 @@ class EnrichMemory {
   /// entity id -> feature -> notes having both; and notes per entity.
   final _context = <String, Map<String, int>>{};
   final _seen = <String, int>{};
+  final _lastSeenDay = <String, String>{};
 
   /// Every tag in the vault, for [enrichTags] (collected once, not per day).
   final Set<String> tags;
@@ -315,7 +323,14 @@ class EnrichMemory {
       final features = enrichFeatures(note, idByTarget);
       for (final feature in features) {
         if (feature.startsWith('e:')) {
-          memory._observe(feature.substring(2), features);
+          final id = feature.substring(2);
+          memory._observe(id, features);
+          final day = RegExp(
+            r'\d{4}-\d{2}-\d{2}',
+          ).firstMatch(note.kind == 'daily' ? note.path : '')?.group(0);
+          if (day != null && day.compareTo(memory._lastSeenDay[id] ?? '') > 0) {
+            memory._lastSeenDay[id] = day;
+          }
         }
       }
     }
@@ -409,6 +424,7 @@ List<EnrichDecision> resolveMentions(
     for (final mention in mentions.mentions) _candidates(mention, memory),
   ];
   for (final (i, mention) in mentions.mentions.indexed) {
+    if (memory.isRejected(mention.surface, enrichIgnoreEntity)) continue;
     final exact = candidates[i].where((c) => c.$2).toList();
     if (exact.length == 1 &&
         !memory.isRejected(mention.surface, exact.single.$1.id)) {
@@ -420,11 +436,12 @@ List<EnrichDecision> resolveMentions(
   final proposed = <String>{};
   return [
     for (final (i, mention) in mentions.mentions.indexed)
-      if (_decide(mention, candidates[i], context, memory) case final decision
-          when decision.status != EnrichStatus.propose ||
-              (_pageTypes.contains(mention.type) &&
-                  _keys(mention).every(proposed.add)))
-        decision,
+      if (!memory.isRejected(mention.surface, enrichIgnoreEntity))
+        if (_decide(mention, candidates[i], context, memory) case final decision
+            when decision.status != EnrichStatus.propose ||
+                (_pageTypes.contains(mention.type) &&
+                    _keys(mention).every(proposed.add)))
+          decision,
   ];
 }
 
@@ -558,6 +575,7 @@ EnrichDecision _decide(
             context.difference({'e:${entity.id}'}),
           ),
           strong: exact || memory.acceptedCount(mention.surface, entity.id) > 0,
+          lastSeenDay: memory._lastSeenDay[entity.id],
         ),
   ]..sort((a, b) => b.score.compareTo(a.score));
   if (ranked.isEmpty) {

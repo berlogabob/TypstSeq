@@ -206,6 +206,32 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   }, variant: desktop);
 
+  testWidgets('ignore records a durable decision without changing note text', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1100, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final (home, storage) = await _mount(tester);
+    final before = home.workspace.source as String;
+    await tester.tap(find.byKey(const ValueKey('enrich-review-Катя')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Not a person/ignore'));
+    await _pump(tester);
+    final events = EnrichFeedback.parseLedger(
+      await storage.readText('$enrichFeedbackDir/dev1.jsonl'),
+    );
+    expect(events.single.entity, 'mention:ignore');
+    expect(events.single.accepted, isFalse);
+    expect(
+      stripAutoEntities(home.workspace.source as String).trim(),
+      stripAutoEntities(before).trim(),
+    );
+    expect(find.byKey(const ValueKey('enrich-review-Катя')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  }, variant: phone);
+
   testWidgets('offers are shown once across refreshes and ledger reloads', (
     tester,
   ) async {

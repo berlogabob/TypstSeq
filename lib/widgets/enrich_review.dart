@@ -20,6 +20,7 @@ class EnrichReview extends StatelessWidget {
     required this.onAccept,
     required this.onReject,
     required this.onCreate,
+    required this.onIgnore,
     this.onRejectTag,
   });
 
@@ -38,6 +39,7 @@ class EnrichReview extends StatelessWidget {
   final void Function(EnrichMention mention, NoteRef target) onAccept;
   final void Function(EnrichMention mention, NoteRef target) onReject;
   final void Function(EnrichMention mention) onCreate;
+  final void Function(EnrichMention mention) onIgnore;
 
   @override
   Widget build(BuildContext context) {
@@ -179,21 +181,27 @@ class EnrichReview extends StatelessWidget {
                                     (candidate) => candidate.note,
                                   ))
                           ListTile(
-                            leading: Icon(
-                              page.kind == 'person'
-                                  ? Icons.person_outline
-                                  : Icons.description_outlined,
-                            ),
+                            leading: Icon(switch (page.kind) {
+                              'website' => Icons.language,
+                              'event' => Icons.event_outlined,
+                              _ => iconForKind(page.kind),
+                            }),
                             title: Text(page.title),
-                            subtitle: page.partOf.isEmpty
-                                ? null
-                                : Text(page.partOf.join(', ')),
+                            subtitle: _candidateDetails(page, decision),
                             onTap: () => Navigator.pop(context, page),
                           ),
                         if (!searching)
                           ListTile(
                             title: const Text('Other page…'),
                             onTap: () => setState(() => searching = true),
+                          ),
+                        if (!searching)
+                          ListTile(
+                            title: const Text('Not a person/ignore'),
+                            onTap: () {
+                              Navigator.pop(context);
+                              onIgnore(mention);
+                            },
                           ),
                         if (!searching)
                           ListTile(
@@ -214,6 +222,15 @@ class EnrichReview extends StatelessWidget {
       ),
     );
     if (chosen != null) onAccept(mention, chosen);
+  }
+
+  Widget? _candidateDetails(NoteRef page, EnrichDecision decision) {
+    final day = decision.candidates
+        .where((candidate) => candidate.note.id == page.id)
+        .firstOrNull
+        ?.lastSeenDay;
+    final details = [...page.partOf, if (day != null) 'Last seen $day'];
+    return details.isEmpty ? null : Text(details.join(' · '));
   }
 
   Widget _chip(BuildContext context, EnrichDecision decision) {
@@ -242,8 +259,8 @@ class EnrichReview extends StatelessWidget {
         key: ValueKey('enrich-new-${mention.surface}'),
         avatar: const Icon(Icons.add, size: 16),
         label: Text(mention.surface),
-        tooltip: 'Create a ${mention.type} page',
-        onPressed: () => onCreate(mention),
+        tooltip: 'Choose a page',
+        onPressed: () => _choose(context, decision),
       ),
     };
   }

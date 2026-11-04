@@ -356,6 +356,16 @@ extension _EnrichFlow on _HomeScreenState {
     await _refreshEnrichDay(path);
   }
 
+  Future<void> _ignoreEnrich(String path, EnrichMention mention) async {
+    await _recordEnrichFeedback(
+      mention,
+      enrichIgnoreEntity,
+      path: path,
+      accepted: false,
+    );
+    await _refreshEnrichDay(path);
+  }
+
   Future<void> _rejectEnrichTag(String path, String tag) async {
     await _recordEnrichFeedback(
       EnrichMention(surface: tag, type: 'topic', line: 0),
@@ -587,6 +597,9 @@ extension _EnrichIncoming on _HomeScreenState {
                                 onReject: (mention, target) => decide(
                                   () =>
                                       _rejectEnrich(entry.key, mention, target),
+                                ),
+                                onIgnore: (mention) => decide(
+                                  () => _ignoreEnrich(entry.key, mention),
                                 ),
                                 onCreate: (mention) => decide(
                                   () => _createFromEnrich(entry.key, mention),
