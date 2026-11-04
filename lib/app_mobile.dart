@@ -6398,16 +6398,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       );
       if (suggestionCount > 0 && !keyboardUp) {
-        documentContent = Stack(
+        documentContent = Column(
           children: [
-            Positioned.fill(child: documentContent),
-            Positioned(
-              right: 12,
-              bottom: 8,
-              child: ActionChip(
-                key: const ValueKey('enrich-day-chip'),
-                label: Text('$suggestionCount suggestions'),
-                onPressed: () => _showEnrichIncoming(day: current),
+            Expanded(child: documentContent),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Padding(
+                padding: const EdgeInsets.only(
+                  right: kSpace12,
+                  bottom: kSpace8,
+                ),
+                child: ActionChip(
+                  key: const ValueKey('enrich-day-chip'),
+                  label: Text(
+                    '$suggestionCount suggestion${suggestionCount == 1 ? '' : 's'}',
+                  ),
+                  onPressed: () => _showEnrichIncoming(day: current),
+                ),
               ),
             ),
           ],

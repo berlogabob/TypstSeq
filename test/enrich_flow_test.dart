@@ -150,6 +150,25 @@ Future<void> _openIncoming(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('daily suggestions stay outside the editor at 360 dp', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await _mount(tester);
+    Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
+    await _pump(tester);
+    final editor = tester.getRect(find.byKey(const Key('rich-journal-editor')));
+    final chip = tester.getRect(find.byKey(const ValueKey('enrich-day-chip')));
+    expect(chip.top, greaterThanOrEqualTo(editor.bottom));
+    await _openIncoming(tester);
+    expect(find.byType(EnrichReview), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('audio proposals are readable and actionable at 360 dp', (
     tester,
   ) async {
