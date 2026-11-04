@@ -1481,7 +1481,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           if (recent != null) {
             await _openNote(recent, heading: heading);
           } else {
-            await _createFromLink(target, heading: heading);
+            final label = RegExp(
+              r'\)\[([^\[\]]+)\]$',
+            ).firstMatch(source)?.group(1);
+            await _createFromLink(target, heading: heading, label: label);
           }
       }
       return;
@@ -1491,7 +1494,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _createFromLink(String target, {String? heading}) async {
+  @visibleForTesting
+  Future<void> openReferenceForTesting(String source) =>
+      _handleAtomSource(source, allowEdit: false);
+
+  Future<void> _createFromLink(
+    String target, {
+    String? heading,
+    String? label,
+  }) async {
     final generation = ++_openGeneration;
     final v = vault;
     if (v == null) return;
@@ -1506,14 +1517,52 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return;
     }
     if (!mounted) return;
-    final create = await showConfirmDialog(
-      context,
-      title: 'Create note?',
-      message: 'No note called “$target”. Create it?',
-      confirmLabel: 'Create',
+    var name = (label?.trim().isNotEmpty == true ? label! : target).trim();
+    var kind = 'note';
+    final create = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Create note?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                initialValue: name,
+                decoration: const InputDecoration(labelText: 'Name'),
+                onChanged: (value) => name = value,
+              ),
+              DropdownButton<String>(
+                value: kind,
+                items: const [
+                  DropdownMenuItem(value: 'note', child: Text('Note')),
+                  DropdownMenuItem(value: 'person', child: Text('Person')),
+                ],
+                onChanged: (value) => setDialogState(() => kind = value!),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Create'),
+            ),
+          ],
+        ),
+      ),
     );
-    if (!create || !mounted) return;
-    final file = await workspace.createPage(target);
+    if (create != true || !mounted || name.trim().isEmpty || vault != v) return;
+    name = name.trim();
+    final path = 'notes/${name.replaceAll(RegExp(r'[\\/]'), '-')}.typ';
+    if (await v.storage.exists(path)) {
+      if (mounted) showSnack(context, 'A page with that name already exists.');
+      return;
+    }
+    final file = await workspace.createPage(name, kind: kind, id: target);
     // Open first — the refresh only serves future link resolution and can
     // block for minutes behind an in-flight full rebuild.
     await _openNote(file, heading: heading, generation: generation);

@@ -465,7 +465,8 @@ Issues found:
 ## Wave 23 (2026-11-04, A24 findings)
 - [ ] M1 (codex: code + dry-run report only, NO vault writes) Drop the `// tylog:auto-entities` Mentions block (user: doubles Incoming, no help). Accepted mention = inline link on the name in the text (exists); auto tags -> header `tags:`; unsure stays in Incoming. Migration of existing dailies (~19): remove block, add missing inline links, move tags to header; preview list to user before any vault write.
 - [ ] M2 People cleanup: person pages created as kind `note` with CamelCase titles (AlexandrePereira, AndreSabino, AngelaSilvestre, BrunoAlmeida, CarlosRosa, ÉlmanoRicarte, EulersonRodrigues, FernandoMarson, HéliaPereira, JoséGraça, JoshGambrell, PamelaTeubig, PauloAndrade, RitaMalaquias) -> kind person + spaced title via rename (links repointed, old title kept as alias). Non-people CamelCase pages (ArtStation, GameObject, MetaMask, ...) untouched. User confirms the list first.
-- [ ] M3 Root cause of M2: find the flow that creates CamelCase kind-note pages (mention "+" create / contact import?) and make it create kind person with the spoken name as title.
+- [x] M3 Unresolved references: create a person using the displayed name while preserving the reference ID.
+- [ ] M3-rest Identify the historical source of the M2 CamelCase pages using vault evidence; address any remaining creation flows, including editor mention creation, that produce generic notes for people.
 - [ ] M4 Merge AndreSabino + "André Sabino" (Settings > Duplicates once M2 runs); Анжела Хавьер is a different person, not a duplicate.
 - [ ] M5 PT pack 1.3.1 blocked: Studio GPU full even with Ornith unloaded (Chatterbox 400); user: nvidia-smi on Studio or allow CPU TTS.
 - [ ] M6 P6 bot vaults: no freeze; design doc first (bot <-> TyLog folder contract, 5 open questions), user approves before code.

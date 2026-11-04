@@ -457,6 +457,34 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('create a person from an unresolved reference label', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1100, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final storage = _GatedStorage();
+    final home = await _mount(tester, storage);
+    final Future<void> action = home.openReferenceForTesting(
+      '#tylog.ref-note("AndreSabino")[André Sabino]',
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('André Sabino'), findsOneWidget);
+    await tester.tap(find.text('Note').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Person').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Create').last);
+    await tester.pumpAndSettle();
+    await action;
+    final source = await storage.readText('notes/André Sabino.typ');
+    expect(source, contains('id: "AndreSabino"'));
+    expect(source, contains('title: "André Sabino"'));
+    expect(source, contains('kind: "person"'));
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('tapping a daily Cyrillic Search result opens that daily note', (
     tester,
   ) async {
