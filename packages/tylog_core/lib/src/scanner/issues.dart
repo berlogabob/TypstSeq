@@ -92,7 +92,7 @@ List<String> _issueCandidateLines(String source) {
   final lines = source.split('\n');
   return [
     for (var i = 0; i < lines.length; i++)
-      if (_issueLink.hasMatch(lines[i])) '${i + 1}:${lines[i]}',
+      if (lines[i].trim().isNotEmpty) '${i + 1}:${lines[i]}',
   ];
 }
 
@@ -155,6 +155,32 @@ Future<List<IssueRef>> _scanIssues(
   final markers = configured == null
       ? discovered.take(12).map((e) => e.key).toList()
       : configured.map((name) => byName[name]?.id ?? name).toList();
+  RegExp wordPattern(String word) => RegExp(
+    '(?<![\\p{L}\\p{N}_])${RegExp.escape(word)}(?![\\p{L}\\p{N}_])',
+    unicode: true,
+    caseSensitive: false,
+  );
+
+  final projectPatterns = {
+    for (final note in notes.values.where((note) => note.kind == 'project'))
+      note.id: [
+        for (final name in [note.title, ...note.aliases])
+          if (name.trim().isNotEmpty) wordPattern(name),
+      ],
+  };
+  final markerPatterns = {
+    for (final id in markers)
+      id: [
+        for (final name in [
+          id,
+          if (byName[id] != null) ...[
+            byName[id]!.title,
+            ...byName[id]!.aliases,
+          ],
+        ])
+          if (name.trim().isNotEmpty) wordPattern(name),
+      ],
+  };
   final issues = <IssueRef>[];
   for (final entry in sources.entries) {
     for (final candidate in entry.value) {
@@ -162,30 +188,25 @@ Future<List<IssueRef>> _scanIssues(
       final lineNumber = int.parse(candidate.substring(0, separator));
       final text = candidate.substring(separator + 1);
       final links = _issueLink.allMatches(text).toList();
-      final projects = <String>{};
-      for (final link in links) {
-        final note = byName[link[1]];
-        if (note?.kind == 'project') projects.add(note!.id);
-      }
-      if (projects.isEmpty) continue;
       final found = <String>{};
       for (final link in links) {
         final id = byName[link[1]]?.id ?? link[1]!;
         if (markers.contains(id)) found.add(id);
       }
-      final plain = text
-          .substring(_issuePrefix.firstMatch(text)!.end)
-          .toLowerCase();
-      for (final id in markers) {
-        final name = (byName[id]?.title ?? id).toLowerCase();
-        if (name.length >= 3 &&
-            plain.startsWith(name) &&
-            (plain.length == name.length ||
-                !RegExp(
-                  r'[\p{L}\p{N}]',
-                  unicode: true,
-                ).hasMatch(plain[name.length]))) {
-          found.add(id);
+      for (final marker in markerPatterns.entries) {
+        if (marker.value.any((pattern) => pattern.hasMatch(text))) {
+          found.add(marker.key);
+        }
+      }
+      if (found.isEmpty) continue;
+      final projects = <String>{};
+      for (final link in links) {
+        final note = byName[link[1]];
+        if (note?.kind == 'project') projects.add(note!.id);
+      }
+      for (final project in projectPatterns.entries) {
+        if (project.value.any((pattern) => pattern.hasMatch(text))) {
+          projects.add(project.key);
         }
       }
       for (final project in projects) {

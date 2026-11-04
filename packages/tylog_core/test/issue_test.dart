@@ -46,6 +46,52 @@ void main() {
     expect(index.issues.first.status, 'todo');
     expect(VaultIndex.fromJson(index.toJson()).issues.length, 2);
   });
+  test(
+    'detects plain project names and markers and upgrades cached candidates',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('plain-issues');
+      addTearDown(() => dir.delete(recursive: true));
+      final storage = LocalVaultStorage(dir);
+      await storage.writeText(
+        '_system/settings/ai.json',
+        '{"tasks":{"enrich":{"markers":["fixit"]}}}',
+      );
+      await storage.writeText(
+        'notes/project.typ',
+        '#show: tylog.note.with(id: "project", title: "TyLog", kind: "project", aliases: ("TLApp",))',
+      );
+      await storage.writeText(
+        'notes/person.typ',
+        '#show: tylog.note.with(id: "person", title: "Alice", kind: "person")',
+      );
+      const source =
+          '- 10:44 fixit TyLog audio and screenshots...\n'
+          '- 20:19 fixit TyLog@fixit add feature...\n'
+          '- 11:40 TyLog fixit screenshots library...\n'
+          '- FIXIT tlapp alias\n'
+          '- fixity TyLog no\n'
+          '- fixit Alice no';
+      await storage.writeText('daily/2026-01-01.typ', source);
+      final first = await scanVaultStorage(storage);
+      expect(first.issues.map((i) => i.line), [1, 2, 3, 4]);
+      final old = first.toJson();
+      old['version'] = kVaultIndexVersion - 1;
+      old['issueLines'] = <String, Object>{};
+      final rebuilt = await scanVaultStorage(
+        storage,
+        previous: VaultIndex.fromJson(old),
+      );
+      expect(rebuilt.issues.map((i) => i.line), [1, 2, 3, 4]);
+      expect(
+        setIssueStatus(source, rebuilt.issues.first, 'done'),
+        source.replaceFirst(
+          'screenshots...',
+          'screenshots... #metadata(("tylog-issue-status": "done"))',
+        ),
+      );
+    },
+  );
+
   test('cached notes without issue lines are read before reuse', () async {
     final dir = await Directory.systemTemp.createTemp('issue-cache');
     addTearDown(() => dir.delete(recursive: true));

@@ -61,53 +61,76 @@ class EntityHeader extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                IconButton(
-                  tooltip: 'Change kind icon',
-                  onPressed: onChangeKindIcon,
-                  icon: _Avatar(
-                    path: _avatarPath,
-                    kind: note.kind,
-                    imageResolver: imageResolver,
-                  ),
-                ),
-                const SizedBox(width: kSpace8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        note.title,
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      Text(
-                        labelForKind(note.kind),
-                        style: Theme.of(context).textTheme.labelMedium
-                            ?.copyWith(color: scheme.onSurfaceVariant),
-                      ),
-                    ],
-                  ),
-                ),
-                if (onOpenTree != null)
-                  TextButton(onPressed: onOpenTree, child: const Text('Tree')),
-                if (onOpenWhiteboard != null)
-                  TextButton(
-                    onPressed: onOpenWhiteboard,
-                    child: const Text('Whiteboard'),
-                  ),
-                if (onOpenBoard != null)
-                  TextButton.icon(
-                    key: const Key('entity-board-button'),
-                    style: TextButton.styleFrom(
-                      visualDensity: VisualDensity.compact,
-                      padding: const EdgeInsets.symmetric(horizontal: kSpace8),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final narrow = constraints.maxWidth < 600;
+                final actions = <Widget>[
+                  if (onOpenTree != null)
+                    TextButton(
+                      onPressed: onOpenTree,
+                      child: const Text('Tree'),
                     ),
-                    onPressed: onOpenBoard,
-                    icon: const Icon(Icons.view_kanban_outlined),
-                    label: const Text('Board'),
-                  ),
-              ],
+                  if (onOpenWhiteboard != null)
+                    TextButton(
+                      onPressed: onOpenWhiteboard,
+                      child: const Text('Whiteboard'),
+                    ),
+                  if (onOpenBoard != null)
+                    TextButton.icon(
+                      key: const Key('entity-board-button'),
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: kSpace8,
+                        ),
+                      ),
+                      onPressed: onOpenBoard,
+                      icon: const Icon(Icons.view_kanban_outlined),
+                      label: const Text('Board'),
+                    ),
+                ];
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        IconButton(
+                          tooltip: 'Change kind icon',
+                          onPressed: onChangeKindIcon,
+                          icon: _Avatar(
+                            path: _avatarPath,
+                            kind: note.kind,
+                            imageResolver: imageResolver,
+                          ),
+                        ),
+                        const SizedBox(width: kSpace8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                note.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                              Text(
+                                labelForKind(note.kind),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.labelMedium
+                                    ?.copyWith(color: scheme.onSurfaceVariant),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (!narrow) ...actions,
+                      ],
+                    ),
+                    if (narrow) Wrap(children: actions),
+                  ],
+                );
+              },
             ),
             if (note.aliases.isNotEmpty) ...[
               const SizedBox(height: kSpace4),

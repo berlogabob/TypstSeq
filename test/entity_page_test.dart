@@ -21,6 +21,37 @@ NoteRef _note({
 );
 
 void main() {
+  testWidgets('narrow header keeps title and actions accessible', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final opened = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: EntityHeader(
+            note: _note(id: 'tylog', title: 'TyLog', kind: 'project'),
+            onOpenUrl: (_) {},
+            onOpenTree: () => opened.add('Tree'),
+            onOpenWhiteboard: () => opened.add('Whiteboard'),
+            onOpenBoard: () => opened.add('Board'),
+          ),
+        ),
+      ),
+    );
+    final title = tester.widget<Text>(find.text('TyLog'));
+    expect(title.maxLines, 1);
+    expect(title.overflow, TextOverflow.ellipsis);
+    for (final action in ['Tree', 'Whiteboard', 'Board']) {
+      await tester.tap(find.text(action));
+    }
+    expect(opened, ['Tree', 'Whiteboard', 'Board']);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('EntityHeader shows aliases + a tappable email', (tester) async {
     final tapped = <String>[];
     await tester.pumpWidget(
