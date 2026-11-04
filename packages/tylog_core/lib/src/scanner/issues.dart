@@ -125,20 +125,22 @@ Future<List<IssueRef>> _scanIssues(
   final recent = DateTime.now().subtract(const Duration(days: 365));
   final recentDay =
       '${recent.year.toString().padLeft(4, '0')}-${recent.month.toString().padLeft(2, '0')}-${recent.day.toString().padLeft(2, '0')}';
-  for (final entry in sources.entries) {
-    if (!entry.key.startsWith('daily/')) {
-      continue;
-    }
-    for (final candidate in entry.value) {
-      final line = candidate.substring(candidate.indexOf(':') + 1);
-      final prefix = _issuePrefix.firstMatch(line)!;
-      final link = _issueLink.matchAsPrefix(line, prefix.end);
-      if (link != null) {
-        final id = byName[link[1]]?.id ?? link[1]!;
-        final day = entry.key.split('/').last.replaceFirst('.typ', '');
-        if (day.compareTo(lastUsed[id] ?? '') > 0) lastUsed[id] = day;
-        if (line.substring(link.end).trim().isNotEmpty) {
-          counts[id] = (counts[id] ?? 0) + 1;
+  if (configured == null) {
+    for (final entry in sources.entries) {
+      if (!entry.key.startsWith('daily/')) {
+        continue;
+      }
+      for (final candidate in entry.value) {
+        final line = candidate.substring(candidate.indexOf(':') + 1);
+        final prefix = _issuePrefix.firstMatch(line)!;
+        final link = _issueLink.matchAsPrefix(line, prefix.end);
+        if (link != null) {
+          final id = byName[link[1]]?.id ?? link[1]!;
+          final day = entry.key.split('/').last.replaceFirst('.typ', '');
+          if (day.compareTo(lastUsed[id] ?? '') > 0) lastUsed[id] = day;
+          if (line.substring(link.end).trim().isNotEmpty) {
+            counts[id] = (counts[id] ?? 0) + 1;
+          }
         }
       }
     }
@@ -155,6 +157,7 @@ Future<List<IssueRef>> _scanIssues(
   final markers = configured == null
       ? discovered.take(12).map((e) => e.key).toList()
       : configured.map((name) => byName[name]?.id ?? name).toList();
+  if (markers.isEmpty) return [];
   RegExp wordPattern(String word) => RegExp(
     '(?<![\\p{L}\\p{N}_])${RegExp.escape(word)}(?![\\p{L}\\p{N}_])',
     unicode: true,

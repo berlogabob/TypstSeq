@@ -1,8 +1,54 @@
 import 'dart:io';
+import 'dart:collection';
 import 'package:test/test.dart';
 import 'package:tylog_core/tylog_core.dart';
 
+class _CountedLines extends ListBase<String> {
+  _CountedLines(this.lines);
+  final List<String> lines;
+  int traversals = 0;
+  @override
+  int get length => lines.length;
+  @override
+  set length(int value) => throw UnsupportedError('read only');
+  @override
+  String operator [](int index) => lines[index];
+  @override
+  void operator []=(int index, String value) =>
+      throw UnsupportedError('read only');
+  @override
+  Iterator<String> get iterator {
+    traversals++;
+    return lines.iterator;
+  }
+}
+
 void main() {
+  test('configured markers skip discovery over cached daily lines', () async {
+    final dir = await Directory.systemTemp.createTemp('issue-discovery');
+    addTearDown(() => dir.delete(recursive: true));
+    final storage = LocalVaultStorage(dir);
+    await storage.writeText(
+      '_system/settings/ai.json',
+      '{"tasks":{"enrich":{"markers":["fixit"]}}}',
+    );
+    await storage.writeText(
+      'notes/project.typ',
+      '#show: tylog.note.with(id: "project", title: "Project", kind: "project")',
+    );
+    await storage.writeText('daily/2026-01-01.typ', '- fixit Project bug');
+    final first = await scanVaultStorage(storage);
+    final lines = _CountedLines(first.issueLines['daily/2026-01-01.typ']!);
+    final cached = VaultIndex(
+      notesByPath: first.notesByPath,
+      backlinksByTarget: first.backlinksByTarget,
+      issueLines: {...first.issueLines, 'daily/2026-01-01.typ': lines},
+    );
+    final second = await scanVaultStorage(storage, previous: cached);
+    expect(second.issues.map((issue) => issue.marker), ['fixit']);
+    expect(lines.traversals, 1);
+  });
+
   test('status is inserted before a comment', () {
     const text = '- issue // #metadata(("tylog-issue-status": "done"))';
     const issue = IssueRef(
