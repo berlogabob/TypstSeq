@@ -270,6 +270,12 @@ class EnrichDecision {
   NoteRef? get target => candidates.firstOrNull?.note;
 }
 
+typedef EnrichDayResolution = ({
+  List<EnrichDecision> decisions,
+  List<String> tags,
+  List<EnrichMarkerOffer> markers,
+});
+
 /// Everything learned so far. Rebuilt from the vault and the ledgers on
 /// demand; never stored, so it can never disagree with them.
 class EnrichMemory {
@@ -650,6 +656,30 @@ List<String> enrichTags(
               memory?.isRejected(tag, enrichTagEntity(tag)) != true)
         tag,
   }.toList();
+}
+
+/// Resolves one day-log's extracted suggestions and removes links already in
+/// its text. Kept pure so callers can run the vault-wide scans off-isolate.
+EnrichDayResolution resolveEnrichDay(
+  EnrichMentions mentions,
+  NoteRef note,
+  EnrichMemory memory,
+  VaultIndex index,
+  String source,
+) {
+  final typed = scanNote(note.path, stripAutoEntities(source)).outgoingLinks;
+  final lines = source.split('\n');
+  return (
+    decisions: [
+      for (final decision in resolveMentions(mentions, note, memory))
+        if ((decision.status != EnrichStatus.linked ||
+                !typed.contains(decision.target!.id)) &&
+            !enrichLinkedOnLine(decision.mention, lines))
+          decision,
+    ],
+    tags: enrichTags(mentions.keywords, index, memory: memory),
+    markers: enrichMarkerOffers(mentions, source, memory),
+  );
 }
 
 /// Removes our block (marker, heading, link and tag items) and keeps

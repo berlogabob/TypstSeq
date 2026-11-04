@@ -46,6 +46,44 @@ EnrichMentions mentionsOf(
 );
 
 void main() {
+  test(
+    'day resolution filters typed links and returns matching tags/markers',
+    () {
+      final person = entity('person', 'Alex');
+      final marker = entity('fixit', 'fixit', kind: 'note');
+      final note = day('2026-11-04');
+      final tagged = NoteRef(
+        id: 'tagged',
+        path: 'notes/tagged.typ',
+        title: 'Tagged',
+        tags: const ['design'],
+        outgoingLinks: const [],
+      );
+      final index = indexOf([person, marker, note, tagged]);
+      final memory = EnrichMemory.build(index);
+      const source =
+          '#import "/_system/tylog.typ" as tylog\n'
+          '#show: tylog.note.with(id: "2026-11-04", title: "2026-11-04", kind: "daily")\n'
+          '- #tylog.ref-note("person")[Alex] met Alex\n'
+          '- fix the build\n';
+      final mentions = EnrichMentions(
+        note: note.path,
+        contentSha: 'unused',
+        mentions: const [
+        EnrichMention(surface: 'Alex', type: 'person', line: 2),
+        ],
+        keywords: const ['Design'],
+        markers: const [(4, 'fixit')],
+      );
+
+      final result = resolveEnrichDay(mentions, note, memory, index, source);
+
+      expect(result.decisions, isEmpty);
+      expect(result.tags, ['design']);
+      expect(result.markers.single.text, 'fix the build');
+    },
+  );
+
   test('repeated unrelated mentions do not scan the whole vault', () {
     final memory = EnrichMemory.build(
       indexOf([for (var i = 0; i < 10000; i++) entity('id$i', 'Person$i')]),

@@ -18,6 +18,10 @@ const _EnrichView _noEnrich = (
 EnrichMemory _buildEnrichMemory((VaultIndex, List<EnrichFeedback>) input) =>
     EnrichMemory.build(input.$1, input.$2);
 
+EnrichDayResolution _resolveEnrichDay(
+  (EnrichMentions, NoteRef, EnrichMemory, VaultIndex, String) input,
+) => resolveEnrichDay(input.$1, input.$2, input.$3, input.$4, input.$5);
+
 /// Day-log enrichment in the app: reads the worker's mentions files,
 /// resolves them with [EnrichMemory], and records decisions in the ledger.
 extension _EnrichFlow on _HomeScreenState {
@@ -82,18 +86,17 @@ extension _EnrichFlow on _HomeScreenState {
         workspace.indexRevision != navigation.$3) {
       return;
     }
-    final lines = source.split('\n');
-    final typed = scanNote(path, stripAutoEntities(source)).outgoingLinks;
-    final decisions = resolveMentions(mentions, ref, memory);
-    final links = [
-      for (final decision in decisions)
-        if (decision.status == EnrichStatus.linked)
-          if (decision.target case final target?
-              when !typed.contains(target.id) &&
-                  !enrichLinkedOnLine(decision.mention, lines))
-            decision,
-    ];
-    final tags = enrichTags(mentions.keywords, currentIndex, memory: memory);
+    final resolution = await compute(_resolveEnrichDay, (
+      mentions,
+      ref,
+      memory,
+      currentIndex,
+      source,
+    ));
+    final links = resolution.decisions
+        .where((decision) => decision.status == EnrichStatus.linked)
+        .toList();
+    final tags = resolution.tags;
     if (links.isEmpty && tags.isEmpty) return;
 
     var updated = source;
@@ -157,7 +160,7 @@ extension _EnrichFlow on _HomeScreenState {
           workspace.indexRevision != currentIndexRevision) {
         return;
       }
-      _rebuild(() => _enrichDecisions = path == null ? null : (path, view));
+      _rebuild(() => _enrichDecisions = (path, view));
     } catch (error) {
       // Enrichment is advisory: never break opening a note.
       _enrichTrace('$path error $error');
@@ -243,21 +246,17 @@ extension _EnrichFlow on _HomeScreenState {
       _enrichTrace('$path edited-since-extraction');
       return none;
     }
-    final decisions = resolveMentions(mentions, ref, memory);
-    final tags = enrichTags(mentions.keywords, currentIndex, memory: memory);
-    // Links the user typed are theirs: no chip offering to unlink them.
-    final typed = scanNote(path, stripAutoEntities(source)).outgoingLinks;
-    final lines = source.split('\n');
+    final resolution = await compute(_resolveEnrichDay, (
+      mentions,
+      ref,
+      memory,
+      currentIndex,
+      source,
+    ));
     final _EnrichView result = (
-      decisions: [
-        for (final decision in decisions)
-          if ((decision.status != EnrichStatus.linked ||
-                  !typed.contains(decision.target!.id)) &&
-              !enrichLinkedOnLine(decision.mention, lines))
-            decision,
-      ],
-      tags: tags,
-      markers: enrichMarkerOffers(mentions, source, memory),
+      decisions: resolution.decisions,
+      tags: resolution.tags,
+      markers: resolution.markers,
       source: source,
     );
     _enrichMemo = (memoKey, result);
