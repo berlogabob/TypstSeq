@@ -9,11 +9,20 @@ class RichEditorSyntaxError implements Exception {
 }
 
 int? _richSyntaxErrorLine(String source) {
-  // Detect known task corruption and unclosed task calls.
+  // Detect known task corruption and unclosed task or table calls.
   final pattern = RegExp(
     r'text\s*:\s*"(?:\\.|[^"\\])*#tylog\.ref-note\s*\(\s*"',
   );
   for (final block in parseControlledTypst(source).blocks) {
+    if (block.kind == ControlledBlockKind.table) {
+      final start = block.source.indexOf('#table(');
+      if (start >= 0 && inlineCallEnd(block.source, start) == null) {
+        return '\n'
+                .allMatches(source.substring(0, block.start + start))
+                .length +
+            1;
+      }
+    }
     if (block.kind != ControlledBlockKind.task) continue;
     final match = pattern.firstMatch(block.source);
     if (match == null) {
@@ -45,7 +54,7 @@ class TyLogEditingController extends TextEditingController {
     Future<String> Function(String path, Uint8List bytes)? imageWriter,
     String? foldScope,
   }) : this._(
-         TyLogDocument.parse(source),
+         source,
          onSourceChanged,
          onError,
          onProtectedTap,
@@ -59,7 +68,7 @@ class TyLogEditingController extends TextEditingController {
        );
 
   TyLogEditingController._(
-    this.document,
+    String source,
     this.onSourceChanged,
     this.onError,
     this.onProtectedTap,
@@ -70,10 +79,10 @@ class TyLogEditingController extends TextEditingController {
     this.nextTaskId,
     this.beforeTaskDoing,
     this.foldScope,
-  ) : _syntaxErrorLine = _richSyntaxErrorLine(
-        document.toSource(validate: false),
-      ),
-      super(text: document.visibleText) {
+  ) : document = TyLogDocument.parse(source),
+      _syntaxErrorLine = _richSyntaxErrorLine(source),
+      super() {
+    text = document.visibleText;
     _lastValue = value;
     addListener(_handleValue);
   }

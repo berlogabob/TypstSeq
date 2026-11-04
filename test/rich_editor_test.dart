@@ -34,6 +34,27 @@ const _source = '''#import "/_system/tylog.typ" as tylog
 ''';
 
 void main() {
+  test('unclosed table reports its original line and blocks writes', () {
+    const source =
+        '#import "/_system/tylog.typ" as tylog\n\n'
+        '= Day\n\n#table(\n  columns: 2,\n  [one], [two]';
+    final errors = <Object>[];
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: source,
+      onSourceChanged: saved.add,
+      onError: errors.add,
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    final text = controller.text;
+    controller.value = TextEditingValue(
+      text: '$text!',
+      selection: TextSelection.collapsed(offset: text.length + 1),
+    );
+    expect(saved, isEmpty);
+    expect(errors.single.toString(), 'Syntax error at line 5');
+  });
   test('a link inserted inside a task string reports its source line', () {
     const source = '= Day\n\n#tylog.task(\n  id: "1",\n'
         '  text: "Ask #tylog.ref-note("angela")[Angela] tomorrow",\n'
