@@ -236,6 +236,32 @@ void main() {
     expect(again.target!.id, 'andre-silva');
   });
 
+  test('feedback can be applied to a cached memory incrementally', () {
+    final memory = EnrichMemory.build(index);
+    expect(memory.acceptedCount('André', 'andre-silva'), 0);
+    memory.addFeedback(
+      const EnrichFeedback(
+        surface: 'André',
+        entity: 'andre-silva',
+        accepted: true,
+        note: 'd',
+        at: 't',
+      ),
+    );
+    expect(memory.acceptedCount('André', 'andre-silva'), 1);
+    expect(memory.isRejected('André', 'andre-silva'), isFalse);
+    memory.addFeedback(
+      const EnrichFeedback(
+        surface: 'André',
+        entity: 'andre-silva',
+        accepted: false,
+        note: 'd',
+        at: 't2',
+      ),
+    );
+    expect(memory.isRejected('André', 'andre-silva'), isTrue);
+  });
+
   test('with the band in the note the same surface means Costa', () {
     final learned = EnrichMemory.build(index, [
       const EnrichFeedback(
@@ -484,7 +510,6 @@ void main() {
       final offers = enrichMarkerOffers(
         found,
         day20,
-        markerIndex,
         EnrichMemory.build(markerIndex, [
           EnrichFeedback(
             surface: 'решаем проблему поиска',

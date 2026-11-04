@@ -15,6 +15,7 @@ import 'package:tylog/widgets/enrich_review.dart';
 import 'package:tylog_core/enrich.dart';
 
 Future<void> _emptyStartup() async {}
+bool _waitForEnrichmentWorker = false;
 
 const _dayPath = 'daily/2026/10/2026-10-22.typ';
 const _day =
@@ -129,6 +130,7 @@ Future<(dynamic, _MemoryStorage)> _mount(
   home.workspace.replaceNote(dayPath, _day);
   home.sourceController.text = _day;
   home.richController.loadSource(_day);
+  _waitForEnrichmentWorker = true;
   home.workspace.notifyListeners();
   await _pump(tester);
   expect(find.byType(EnrichReview), findsNothing);
@@ -138,8 +140,16 @@ Future<(dynamic, _MemoryStorage)> _mount(
 }
 
 Future<void> _pump(WidgetTester tester) async {
+  if (_waitForEnrichmentWorker) {
+    _waitForEnrichmentWorker = false;
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(seconds: 1)),
+    );
+  }
   for (var i = 0; i < 20; i++) {
-    await tester.runAsync(() async {});
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 5)),
+    );
     await tester.pump(const Duration(milliseconds: 100));
   }
 }
@@ -570,6 +580,7 @@ void main() {
         },
         backlinksByTarget: const {},
       );
+      _waitForEnrichmentWorker = true;
       // The chip's sheet stays filtered even if another day has suggestions.
       Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
       await _pump(tester);
@@ -636,6 +647,7 @@ void main() {
       },
       backlinksByTarget: const {},
     );
+    _waitForEnrichmentWorker = true;
     Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
     await _pump(tester);
     await tester.tap(find.textContaining('More').first);

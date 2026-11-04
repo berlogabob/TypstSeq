@@ -273,7 +273,7 @@ class EnrichDecision {
 /// Everything learned so far. Rebuilt from the vault and the ledgers on
 /// demand; never stored, so it can never disagree with them.
 class EnrichMemory {
-  EnrichMemory._(this.entities, this._idByTarget, this.tags);
+  EnrichMemory._(this.entities, this._idByTarget, this.tags, this.markerNotes);
 
   /// Every linkable entity note, by id.
   final Map<String, NoteRef> entities;
@@ -290,6 +290,9 @@ class EnrichMemory {
 
   /// Every tag in the vault, for [enrichTags] (collected once, not per day).
   final Set<String> tags;
+
+  /// Marker lookup is shared by every day resolved against this index.
+  final Map<String, NoteRef> markerNotes;
 
   factory EnrichMemory.build(
     VaultIndex index, [
@@ -312,9 +315,12 @@ class EnrichMemory {
         }
       }
     }
-    final memory = EnrichMemory._(entities, idByTarget, {
-      for (final note in index.notesByPath.values) ...note.tags,
-    });
+    final memory = EnrichMemory._(
+      entities,
+      idByTarget,
+      {for (final note in index.notesByPath.values) ...note.tags},
+      {for (final note in index.notesByPath.values) note.id: note},
+    );
     for (final note in index.notesByPath.values) {
       final features = enrichFeatures(note, idByTarget);
       for (final feature in features) {
@@ -334,21 +340,24 @@ class EnrichMemory {
     // index catches up its context counts twice; harmless while counts only
     // rank candidates, revisit if scores get calibrated into probabilities.
     for (final event in feedback) {
-      if (event.shown) continue;
-      final key = '${enrichKey(event.surface)}\n${event.entity}';
-      if (event.accepted) {
-        final counts = memory._accepted.putIfAbsent(
-          enrichKey(event.surface),
-          () => {},
-        );
-        counts[event.entity] = (counts[event.entity] ?? 0) + 1;
-        memory._rejected.remove(key);
-        memory._observe(event.entity, event.context.toSet());
-      } else {
-        memory._rejected.add(key);
-      }
+      memory.addFeedback(event);
     }
     return memory;
+  }
+
+  /// Applies one newly persisted decision without rebuilding vault-wide priors.
+  void addFeedback(EnrichFeedback event) {
+    if (event.shown) return;
+    final surface = enrichKey(event.surface);
+    final key = '$surface\n${event.entity}';
+    if (event.accepted) {
+      final counts = _accepted.putIfAbsent(surface, () => {});
+      counts[event.entity] = (counts[event.entity] ?? 0) + 1;
+      _rejected.remove(key);
+      _observe(event.entity, event.context.toSet());
+    } else {
+      _rejected.add(key);
+    }
   }
 
   void _observe(String entity, Set<String> features) {
@@ -796,16 +805,14 @@ class EnrichMarkerOffer {
 List<EnrichMarkerOffer> enrichMarkerOffers(
   EnrichMentions mentions,
   String source,
-  VaultIndex index,
   EnrichMemory memory,
 ) {
   if (mentions.markers.isEmpty) return const [];
   final lines = source.split('\n');
-  final byId = {for (final note in index.notesByPath.values) note.id: note};
   return [
     for (final (line, id) in mentions.markers)
       // A marker with no page yet ("Купить") links by name, as the user does.
-      if (byId[id] ??
+      if (memory.markerNotes[id] ??
               NoteRef(id: id, path: '', title: id, outgoingLinks: const [])
           case final marker)
         if (line >= 1 && line <= lines.length)

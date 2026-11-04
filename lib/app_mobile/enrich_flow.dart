@@ -15,6 +15,9 @@ const _EnrichView _noEnrich = (
   source: '',
 );
 
+EnrichMemory _buildEnrichMemory((VaultIndex, List<EnrichFeedback>) input) =>
+    EnrichMemory.build(input.$1, input.$2);
+
 /// Day-log enrichment in the app: reads the worker's mentions files,
 /// resolves them with [EnrichMemory], and records decisions in the ledger.
 extension _EnrichFlow on _HomeScreenState {
@@ -34,6 +37,7 @@ extension _EnrichFlow on _HomeScreenState {
   Future<void> _refreshEnrichment() async {
     final v = vault;
     final currentIndex = index;
+    final currentIndexRevision = workspace.indexRevision;
     if (v == null || currentIndex == null) return;
     final path = note;
     final isDay = path != null && path.startsWith('daily/');
@@ -45,14 +49,25 @@ extension _EnrichFlow on _HomeScreenState {
     try {
       final memory = await _enrichMemory(v, currentIndex);
       final memoryMs = clock.elapsedMilliseconds;
-      final view = await _applyEnrichment(path, memory);
+      if (workspace.indexRevision != currentIndexRevision) return;
+      final view = await _applyEnrichment(
+        path,
+        memory,
+        currentIndex,
+        currentIndexRevision,
+      );
       _enrichTrace(
         '$path decisions=${view.decisions.length} '
         'tags=${view.tags.length} markers=${view.markers.length} '
         'memoryMs=$memoryMs '
         'ms=${clock.elapsedMilliseconds}',
       );
-      if (!mounted || vault != v || note != path) return;
+      if (!mounted ||
+          vault != v ||
+          note != path ||
+          workspace.indexRevision != currentIndexRevision) {
+        return;
+      }
       _rebuild(() => _enrichDecisions = path == null ? null : (path, view));
     } catch (error) {
       // Enrichment is advisory: never break opening a note.
@@ -74,11 +89,13 @@ extension _EnrichFlow on _HomeScreenState {
   }
 
   Future<EnrichMemory> _enrichMemory(Vault v, VaultIndex currentIndex) async {
+    final currentIndexRevision = workspace.indexRevision;
     final cached = _enrichMemoryCache;
     if (cached != null &&
         identical(cached.$1, v) &&
-        DateTime.now().difference(cached.$2) < const Duration(minutes: 10)) {
-      return cached.$3;
+        cached.$2 == currentIndexRevision &&
+        DateTime.now().difference(cached.$3) < const Duration(minutes: 10)) {
+      return cached.$4;
     }
     final events = await loadEnrichFeedback(v.storage);
     _enrichShown.addAll(
@@ -86,8 +103,8 @@ extension _EnrichFlow on _HomeScreenState {
         v.storage,
       )).map((e) => (v, e.note, e.surface, e.entity)),
     );
-    final memory = EnrichMemory.build(currentIndex, events);
-    _enrichMemoryCache = (v, DateTime.now(), memory);
+    final memory = await compute(_buildEnrichMemory, (currentIndex, events));
+    _enrichMemoryCache = (v, currentIndexRevision, DateTime.now(), memory);
     return memory;
   }
 
@@ -104,10 +121,15 @@ extension _EnrichFlow on _HomeScreenState {
   }
 
   /// Returns suggestions only when they match the current note text.
-  Future<_EnrichView> _applyEnrichment(String path, EnrichMemory memory) async {
+  Future<_EnrichView> _applyEnrichment(
+    String path,
+    EnrichMemory memory,
+    VaultIndex currentIndex,
+    int currentIndexRevision,
+  ) async {
     const none = _noEnrich;
     final v = vault;
-    final ref = index?.notesByPath[path];
+    final ref = currentIndex.notesByPath[path];
     if (v == null || ref == null) return none;
     final mentions = await _readMentions(v, path);
     if (mentions == null) {
@@ -118,16 +140,22 @@ extension _EnrichFlow on _HomeScreenState {
         ? workspace.source
         : await v.storage.readText(path);
     // Index revisions arrive every sync poll; most change nothing here.
-    final memoKey = (path, source, mentions.contentSha, memory);
+    final memoKey = (
+      path,
+      source,
+      mentions.contentSha,
+      memory,
+      currentIndexRevision,
+    );
     if (_enrichMemo case (final key, final result) when key == memoKey) {
       return result;
     }
-    final decisions = resolveMentions(mentions, ref, memory);
-    final tags = enrichTags(mentions.keywords, index!, memory: memory);
     if (enrichContentSha(source) != mentions.contentSha) {
       _enrichTrace('$path edited-since-extraction');
       return none;
     }
+    final decisions = resolveMentions(mentions, ref, memory);
+    final tags = enrichTags(mentions.keywords, currentIndex, memory: memory);
     // Links the user typed are theirs: no chip offering to unlink them.
     final typed = scanNote(path, stripAutoEntities(source)).outgoingLinks;
     final lines = source.split('\n');
@@ -140,7 +168,7 @@ extension _EnrichFlow on _HomeScreenState {
             decision,
       ],
       tags: tags,
-      markers: enrichMarkerOffers(mentions, source, index!, memory),
+      markers: enrichMarkerOffers(mentions, source, memory),
       source: source,
     );
     _enrichMemo = (memoKey, result);
@@ -172,7 +200,13 @@ extension _EnrichFlow on _HomeScreenState {
           : enrichFeatures(ref, memory.entityIdByTarget).toList(),
     );
     await _appendEnrichLedger(v, enrichFeedbackDir, device, [event]);
-    _enrichMemoryCache = null;
+    final cache = _enrichMemoryCache;
+    if (cache != null &&
+        identical(cache.$1, v) &&
+        cache.$2 == workspace.indexRevision) {
+      cache.$4.addFeedback(event);
+      _enrichMemo = null;
+    }
   }
 
   Future<void> _recordEnrichShown(
@@ -418,7 +452,9 @@ extension _EnrichIncoming on _HomeScreenState {
       bool next = false,
       String? refreshPath,
     }) async {
+      final indexRevision = workspace.indexRevision;
       final memory = await _enrichMemory(v, currentIndex);
+      if (workspace.indexRevision != indexRevision) return {};
       if (paths == null) {
         if (!await v.storage.exists(enrichMentionsDir)) return {};
         final files = await v.storage.list(
@@ -450,7 +486,13 @@ extension _EnrichIncoming on _HomeScreenState {
         views.remove(path);
         if (!currentIndex.notesByPath.containsKey(path)) continue;
         try {
-          final view = await _applyEnrichment(path, memory);
+          final view = await _applyEnrichment(
+            path,
+            memory,
+            currentIndex,
+            indexRevision,
+          );
+          if (workspace.indexRevision != indexRevision) return {};
           if (view.decisions.isEmpty &&
               view.tags.isEmpty &&
               view.markers.isEmpty) {

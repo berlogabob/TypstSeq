@@ -519,7 +519,8 @@ Issues found:
 - [x] PF2-rest Add bounded audio and OCR review pages; share one decision snapshot per queue refresh, paginate sidecar rows, and build only the visible queue rows (audit #2, #7).
 - [ ] PF2-rest-rest Add an incrementally invalidated actionable-sidecar summary, avoid rereading changed decision ledgers, and bound sidecar input reads. Measure storage operations, readiness, heap and frames on device for sparse and dense queues, including decisions and Show older.
 - [x] PF3 Index normalized names and words once per enrichment memory, preserving matching precedence; skip marker lookup when there are no markers (audit #3).
-- [ ] PF3-rest Move enrichment memory construction and remaining large computations off the UI isolate, incrementally update feedback, cache marker IDs with correct index invalidation, and measure root CPU, frames, heap and TYLOG_ENRICH for 1/20/100 mentions across 1k/10k pages on device (audit #3, #16).
+- [x] PF3-rest Move enrichment memory construction off the UI isolate, incrementally apply newly persisted feedback, and cache marker IDs by index revision (audit #3, #16).
+- [ ] PF3-rest-rest Move per-day resolution, tag matching and link scans off the UI isolate; measure root CPU, Flutter frames, heap and TYLOG_ENRICH at 1/20/100 mentions across 1k/10k pages on device (audit #3, #16).
 - [x] PF4 Cache the sorted journal days per index to avoid sorting on every scroll and rebuild (audit #4).
 - [x] PF4-rest Index journal task rows by note and task ID (audit #5).
 - [ ] PF4-rest-rest Bound and invalidate the journal source cache without losing visible edits (audit #12), and measure journal scrolling, task rendering, and memory on device (audit #4, #5, #12).
