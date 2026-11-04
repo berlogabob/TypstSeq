@@ -378,6 +378,29 @@ class EnrichMemory {
       ),
   };
 
+  // The first three characters cover exact, prefix and stem matches; words
+  // also need a direct index because they can occur anywhere in a name.
+  late final _nameIndex = _buildNameIndex();
+
+  Map<String, Set<String>> _buildNameIndex() {
+    final result = <String, Set<String>>{};
+    for (final entry in nameKeys.entries) {
+      for (final name in entry.value.$1) {
+        for (var length = 2; length <= math.min(3, name.length); length++) {
+          (result[name.substring(0, length)] ??= {}).add(entry.key);
+        }
+      }
+      for (final word in entry.value.$2) {
+        (result['w$word'] ??= {}).add(entry.key);
+      }
+    }
+    return result;
+  }
+
+  late final _entityOrder = {
+    for (final (i, id) in entities.keys.indexed) id: i,
+  };
+
   bool isRejected(String surface, String entity) =>
       _rejected.contains('${enrichKey(surface)}\n$entity');
 
@@ -450,6 +473,21 @@ Set<String> _keys(EnrichMention mention) => {
 List<(NoteRef, bool)> _candidates(EnrichMention mention, EnrichMemory memory) {
   final keys = {..._keys(mention), for (final k in _keys(mention)) _latin(k)};
   final surfaceKey = enrichKey(mention.surface);
+  final ids = <String>{
+    for (final key in keys)
+      if (key.length >= 2)
+        ...?memory._nameIndex[key.substring(0, math.min(3, key.length))],
+    for (final key in keys) ...?memory._nameIndex['w$key'],
+    ...?memory._accepted[surfaceKey]?.keys,
+  };
+  final pool =
+      [
+        for (final id in ids)
+          if (memory.entities[id] case final entity?) entity,
+      ]..sort(
+        (a, b) =>
+            memory._entityOrder[a.id]!.compareTo(memory._entityOrder[b.id]!),
+      );
   List<(NoteRef, bool)> match(Iterable<NoteRef> pool) => [
     for (final entity in pool)
       if (_match(entity, mention, keys, surfaceKey, memory) case final exact?)
@@ -458,13 +496,10 @@ List<(NoteRef, bool)> _candidates(EnrichMention mention, EnrichMemory memory) {
   // Plain `note` pages compete unless a typed entity matches the name
   // exactly: "IADE" has an organization page and two stray notes and must
   // still link, but "Angela" must still find the boss whose page is a note.
-  final typed = match(memory.entities.values.where((e) => e.kind != 'note'));
+  final typed = match(pool.where((e) => e.kind != 'note'));
   var found = typed.any((c) => c.$2)
       ? typed
-      : [
-          ...typed,
-          ...match(memory.entities.values.where((e) => e.kind == 'note')),
-        ];
+      : [...typed, ...match(pool.where((e) => e.kind == 'note'))];
   // The model's own guess counts only when no name matched at all.
   if (found.isEmpty) {
     if (memory.entities[mention.entity] case final entity?) {
@@ -764,6 +799,7 @@ List<EnrichMarkerOffer> enrichMarkerOffers(
   VaultIndex index,
   EnrichMemory memory,
 ) {
+  if (mentions.markers.isEmpty) return const [];
   final lines = source.split('\n');
   final byId = {for (final note in index.notesByPath.values) note.id: note};
   return [

@@ -46,6 +46,29 @@ EnrichMentions mentionsOf(
 );
 
 void main() {
+  test('repeated unrelated mentions do not scan the whole vault', () {
+    final memory = EnrichMemory.build(
+      indexOf([for (var i = 0; i < 10000; i++) entity('id$i', 'Person$i')]),
+    );
+    final note = day('2026-11-04');
+    // Warm the name cache; measure candidate lookup, not memory construction.
+    resolveMentions(
+      mentionsOf([
+        const EnrichMention(surface: 'Nobody', type: 'person', line: 1),
+      ]),
+      note,
+      memory,
+    );
+    final batch = mentionsOf([
+      for (var i = 0; i < 1000; i++)
+        EnrichMention(surface: 'Unmatched$i', type: 'person', line: 1),
+    ]);
+    final watch = Stopwatch()..start();
+    final result = resolveMentions(batch, note, memory);
+    expect(result, hasLength(1000));
+    expect(watch.elapsedMilliseconds, lessThan(1000));
+  });
+
   final silva = entity('andre-silva', 'André Silva');
   final costa = entity('andre-costa', 'André Costa');
   final iade = entity('iade', 'IADE', kind: 'organization');

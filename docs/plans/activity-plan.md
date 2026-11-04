@@ -517,7 +517,8 @@ Issues found:
 - [ ] PF1-rest Fix entity board quadratic ordering, repeated hierarchy scans, and eager card layout with position-aware drop targets (audit #1, #13); measure both board types on device at 100, 1,000, and 5,000 cards, including drag and frame timings.
 - [x] PF2 Bound Incoming mention examination to seven sidecar days per page, retain results and refresh only the decided day (audit #2).
 - [ ] PF2-rest Add an incrementally invalidated actionable-sidecar summary; avoid repeated full ledger reads, paginate audio and OCR inputs and build queue rows lazily (audit #2, #7). Measure storage operations, readiness, heap and frames on device for sparse and dense queues, including decisions and Show older.
-- [ ] PF3 Mention matching per mention over all entities on UI isolate (audit #3, #16)
+- [x] PF3 Index normalized names and words once per enrichment memory, preserving matching precedence; skip marker lookup when there are no markers (audit #3).
+- [ ] PF3-rest Move enrichment memory construction and remaining large computations off the UI isolate, incrementally update feedback, cache marker IDs with correct index invalidation, and measure root CPU, frames, heap and TYLOG_ENRICH for 1/20/100 mentions across 1k/10k pages on device (audit #3, #16).
 - [ ] PF4 Journal sorts whole daily index on scroll; task rows search whole task index; source cache unbounded (audit #4, #5, #12)
 - [ ] PF5 Entity timeline computes while collapsed; merge preview reads every note (audit #6, #8)
 - [ ] PF6 Rebuild progress notifies whole workspace; startup waits for vendored package files (audit #14, #11)
