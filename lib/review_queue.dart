@@ -2,6 +2,18 @@ import 'dart:convert';
 
 import 'package:tylog_core/tylog_core.dart';
 
+enum ReviewQueueType {
+  mentions('Enrich mentions'),
+  audio('Audio proposals'),
+  ocr('OCR rows'),
+  bookings('OpenLabTwin bookings');
+
+  const ReviewQueueType(this.label);
+  final String label;
+}
+
+const reviewQueueTypes = ReviewQueueType.values;
+
 class OcrReviewRow {
   const OcrReviewRow(this.id, this.dataset, this.date, this.fields);
   final String id, dataset, date, fields;

@@ -5,6 +5,15 @@ import 'package:tylog/review_queue.dart';
 import 'package:tylog_core/tylog_core.dart';
 
 void main() {
+  test('Incoming registry lists each review section in display order', () {
+    expect(reviewQueueTypes.map((type) => type.label), [
+      'Enrich mentions',
+      'Audio proposals',
+      'OCR rows',
+      'OpenLabTwin bookings',
+    ]);
+  });
+
   test('audio proposals load and decisions hide them', () async {
     final dir = await Directory.systemTemp.createTemp('audio-review');
     addTearDown(() => dir.delete(recursive: true));

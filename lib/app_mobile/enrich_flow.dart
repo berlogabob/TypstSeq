@@ -564,171 +564,187 @@ extension _EnrichIncoming on _HomeScreenState {
                               audio.isEmpty &&
                               bookings.isEmpty)
                             const ListTile(title: Text('No suggestions')),
-                          if (views != null && views.isNotEmpty) ...[
-                            const ListTile(title: Text('Enrich mentions')),
-                            for (final entry in views.entries) ...[
-                              ListTile(
-                                title: Text(
-                                  entry.key
-                                      .split('/')
-                                      .last
-                                      .replaceFirst('.typ', ''),
+                          for (final type in reviewQueueTypes) ...[
+                            if (type == ReviewQueueType.mentions &&
+                                views != null &&
+                                views.isNotEmpty) ...[
+                              ListTile(title: Text(type.label)),
+                              for (final entry in views.entries) ...[
+                                ListTile(
+                                  title: Text(
+                                    entry.key
+                                        .split('/')
+                                        .last
+                                        .replaceFirst('.typ', ''),
+                                  ),
                                 ),
-                              ),
-                              EnrichReview(
-                                decisions: entry.value.decisions,
-                                source: entry.value.source,
-                                pages: currentIndex.notesByPath.values.toList(),
-                                tags: entry.value.tags,
-                                markers: entry.value.markers,
-                                onAcceptMarker: (offer) => decide(
-                                  () => _acceptEnrichMarker(entry.key, offer),
+                                EnrichReview(
+                                  decisions: entry.value.decisions,
+                                  source: entry.value.source,
+                                  pages: currentIndex.notesByPath.values
+                                      .toList(),
+                                  tags: entry.value.tags,
+                                  markers: entry.value.markers,
+                                  onAcceptMarker: (offer) => decide(
+                                    () => _acceptEnrichMarker(entry.key, offer),
+                                  ),
+                                  onRejectMarker: (offer) => decide(
+                                    () => _rejectEnrichMarker(entry.key, offer),
+                                  ),
+                                  onRejectTag: (tag) => decide(
+                                    () => _rejectEnrichTag(entry.key, tag),
+                                  ),
+                                  onAccept: (mention, target) => decide(
+                                    () => _acceptEnrich(
+                                      entry.key,
+                                      mention,
+                                      target,
+                                    ),
+                                  ),
+                                  onReject: (mention, target) => decide(
+                                    () => _rejectEnrich(
+                                      entry.key,
+                                      mention,
+                                      target,
+                                    ),
+                                  ),
+                                  onIgnore: (mention) => decide(
+                                    () => _ignoreEnrich(entry.key, mention),
+                                  ),
+                                  onCreate: (mention) => decide(
+                                    () => _createFromEnrich(entry.key, mention),
+                                  ),
                                 ),
-                                onRejectMarker: (offer) => decide(
-                                  () => _rejectEnrichMarker(entry.key, offer),
-                                ),
-                                onRejectTag: (tag) => decide(
-                                  () => _rejectEnrichTag(entry.key, tag),
-                                ),
-                                onAccept: (mention, target) => decide(
-                                  () =>
-                                      _acceptEnrich(entry.key, mention, target),
-                                ),
-                                onReject: (mention, target) => decide(
-                                  () =>
-                                      _rejectEnrich(entry.key, mention, target),
-                                ),
-                                onIgnore: (mention) => decide(
-                                  () => _ignoreEnrich(entry.key, mention),
-                                ),
-                                onCreate: (mention) => decide(
-                                  () => _createFromEnrich(entry.key, mention),
-                                ),
-                              ),
+                              ],
                             ],
-                          ],
-                          if (audio.isNotEmpty) ...[
-                            const ListTile(title: Text('Audio proposals')),
-                            for (final proposal in audio)
-                              ListTile(
-                                title: Text(proposal.text),
-                                subtitle: Text(
-                                  '${proposal.note}${proposal.date == null ? '' : ' · ${proposal.date}'}',
-                                ),
-                                trailing: Wrap(
-                                  children: [
-                                    ActionChip(
-                                      label: Text(
-                                        proposal.kind == 'agenda'
-                                            ? 'Add to agenda'
-                                            : 'Add task',
-                                      ),
-                                      onPressed: () => decide(
-                                        () => _decideAudioProposal(
-                                          proposal,
-                                          true,
+                            if (type == ReviewQueueType.audio &&
+                                audio.isNotEmpty) ...[
+                              ListTile(title: Text(type.label)),
+                              for (final proposal in audio)
+                                ListTile(
+                                  title: Text(proposal.text),
+                                  subtitle: Text(
+                                    '${proposal.note}${proposal.date == null ? '' : ' · ${proposal.date}'}',
+                                  ),
+                                  trailing: Wrap(
+                                    children: [
+                                      ActionChip(
+                                        label: Text(
+                                          proposal.kind == 'agenda'
+                                              ? 'Add to agenda'
+                                              : 'Add task',
                                         ),
-                                      ),
-                                    ),
-                                    IconButton(
-                                      tooltip: 'Reject audio proposal',
-                                      icon: const Icon(Icons.close),
-                                      onPressed: () => decide(
-                                        () => _decideAudioProposal(
-                                          proposal,
-                                          false,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                          ],
-                          if (rows.isNotEmpty) ...[
-                            const ListTile(title: Text('OCR rows')),
-                            for (final row in rows)
-                              ListTile(
-                                title: Text(row.dataset),
-                                subtitle: Text(row.fields),
-                                trailing: Wrap(
-                                  children: [
-                                    IconButton(
-                                      tooltip: 'Accept',
-                                      icon: const Icon(Icons.check),
-                                      onPressed: () => decide(() async {
-                                        final device = vaultRegistry?.deviceId;
-                                        if (device == null) return;
-                                        await _appendIncomingDecision(
-                                          v,
-                                          device,
-                                          Decision(
-                                            at: DateTime.now()
-                                                .toIso8601String(),
-                                            device: device,
-                                            item: row.id,
-                                            source: 'ocr',
-                                            action: 'accepted',
+                                        onPressed: () => decide(
+                                          () => _decideAudioProposal(
+                                            proposal,
+                                            true,
                                           ),
-                                        );
-                                      }),
-                                    ),
-                                    IconButton(
-                                      tooltip: 'Reject',
-                                      icon: const Icon(Icons.close),
-                                      onPressed: () => decide(() async {
-                                        final device = vaultRegistry?.deviceId;
-                                        if (device == null) return;
-                                        await _appendIncomingDecision(
-                                          v,
-                                          device,
-                                          Decision(
-                                            at: DateTime.now()
-                                                .toIso8601String(),
-                                            device: device,
-                                            item: row.id,
-                                            source: 'ocr',
-                                            action: 'rejected',
+                                        ),
+                                      ),
+                                      IconButton(
+                                        tooltip: 'Reject audio proposal',
+                                        icon: const Icon(Icons.close),
+                                        onPressed: () => decide(
+                                          () => _decideAudioProposal(
+                                            proposal,
+                                            false,
                                           ),
-                                        );
-                                      }),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                          ],
-                          if (bookings.isNotEmpty) ...[
-                            const ListTile(title: Text('OpenLabTwin bookings')),
-                            for (final booking in bookings)
-                              ListTile(
-                                title: Text(booking.title),
-                                subtitle: Text(
-                                  '${booking.date ?? ''} · ${booking.properties['places'] ?? ''}',
-                                ),
-                                trailing: Wrap(
-                                  children: [
-                                    IconButton(
-                                      tooltip: 'Accept booking',
-                                      icon: const Icon(Icons.check),
-                                      onPressed: () => decide(
-                                        () => _decideIncoming(
-                                          booking,
-                                          'accepted',
                                         ),
                                       ),
-                                    ),
-                                    IconButton(
-                                      tooltip: 'Reject booking',
-                                      icon: const Icon(Icons.close),
-                                      onPressed: () => decide(
-                                        () => _decideIncoming(
-                                          booking,
-                                          'rejected',
+                                    ],
+                                  ),
+                                ),
+                            ],
+                            if (type == ReviewQueueType.ocr &&
+                                rows.isNotEmpty) ...[
+                              ListTile(title: Text(type.label)),
+                              for (final row in rows)
+                                ListTile(
+                                  title: Text(row.dataset),
+                                  subtitle: Text(row.fields),
+                                  trailing: Wrap(
+                                    children: [
+                                      IconButton(
+                                        tooltip: 'Accept',
+                                        icon: const Icon(Icons.check),
+                                        onPressed: () => decide(() async {
+                                          final device =
+                                              vaultRegistry?.deviceId;
+                                          if (device == null) return;
+                                          await _appendIncomingDecision(
+                                            v,
+                                            device,
+                                            Decision(
+                                              at: DateTime.now()
+                                                  .toIso8601String(),
+                                              device: device,
+                                              item: row.id,
+                                              source: 'ocr',
+                                              action: 'accepted',
+                                            ),
+                                          );
+                                        }),
+                                      ),
+                                      IconButton(
+                                        tooltip: 'Reject',
+                                        icon: const Icon(Icons.close),
+                                        onPressed: () => decide(() async {
+                                          final device =
+                                              vaultRegistry?.deviceId;
+                                          if (device == null) return;
+                                          await _appendIncomingDecision(
+                                            v,
+                                            device,
+                                            Decision(
+                                              at: DateTime.now()
+                                                  .toIso8601String(),
+                                              device: device,
+                                              item: row.id,
+                                              source: 'ocr',
+                                              action: 'rejected',
+                                            ),
+                                          );
+                                        }),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                            if (type == ReviewQueueType.bookings &&
+                                bookings.isNotEmpty) ...[
+                              ListTile(title: Text(type.label)),
+                              for (final booking in bookings)
+                                ListTile(
+                                  title: Text(booking.title),
+                                  subtitle: Text(
+                                    '${booking.date ?? ''} · ${booking.properties['places'] ?? ''}',
+                                  ),
+                                  trailing: Wrap(
+                                    children: [
+                                      IconButton(
+                                        tooltip: 'Accept booking',
+                                        icon: const Icon(Icons.check),
+                                        onPressed: () => decide(
+                                          () => _decideIncoming(
+                                            booking,
+                                            'accepted',
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ],
+                                      IconButton(
+                                        tooltip: 'Reject booking',
+                                        icon: const Icon(Icons.close),
+                                        onPressed: () => decide(
+                                          () => _decideIncoming(
+                                            booking,
+                                            'rejected',
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
+                            ],
                           ],
                           if (views != null && more)
                             TextButton(

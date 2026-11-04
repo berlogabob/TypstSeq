@@ -439,7 +439,7 @@ Issues found:
 
 ## Wave 22 (2026-11-04, user OK: suggestions 1-8)
 - [x] S1 One review queue: OCR rows, OLT bookings, bot drafts land in Incoming with the same accept/reject + decision ledger
-- [ ] S1-rest Add audio proposals to Incoming when S5 is ready, and move queue types into a shared registry with seven-day paging.
+- [x] S1-rest Add audio proposals to Incoming when S5 is ready, and move queue types into a shared registry with seven-day paging.
 - [x] S2 Namespace -> structure: one-tap convert of Logseq `A/B/C` titles into parent pages + part_of
 - [x] S3a Duplicate finder (read-only)
 - [x] S3b Merge two pages (reuse rename), e.g. André Sabino x2, IADE x3
