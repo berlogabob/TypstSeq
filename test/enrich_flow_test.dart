@@ -179,6 +179,8 @@ void main() {
 
     expect(find.byKey(const ValueKey('enrich-tag-design')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('enrich-review-Катя')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('katiazhavoronkova'));
     await _pump(tester);
     final ledger = await storage.readText('$enrichFeedbackDir/dev1.jsonl');
     expect(jsonDecode(ledger.trim()), containsPair('decision', 'accept'));
@@ -224,6 +226,8 @@ void main() {
     expect(await storage.exists('$enrichFeedbackDir/dev1.jsonl'), isFalse);
     // A tap recomputes the view without re-logging the remaining offers.
     await tester.tap(find.byKey(const ValueKey('enrich-review-Катя')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('katiazhavoronkova'));
     await _pump(tester);
     expect(await shown(), hasLength(3));
     final feedback = await storage.readText('$enrichFeedbackDir/dev1.jsonl');
@@ -268,6 +272,8 @@ void main() {
     expect(await storage.readText(_dayPath), _day);
     expect(find.byKey(const ValueKey('enrich-review-Катя')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('enrich-review-Катя')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('katiazhavoronkova'));
     await _pump(tester);
     expect(home.workspace.source, contains('#tylog.ref-note("kz")[Катя]'));
     expect(home.workspace.source, contains(autoEntitiesMarker));
@@ -284,6 +290,8 @@ void main() {
     expect(home.workspace.source, _day);
     expect(find.byKey(const ValueKey('enrich-review-Катя')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('enrich-review-Катя')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('katiazhavoronkova'));
     await _pump(tester);
     expect(home.workspace.source, contains(autoEntitiesMarker));
     await tester.pumpWidget(const SizedBox());
@@ -333,7 +341,10 @@ void main() {
     final (home, storage) = await _mount(tester);
     final chip = find.byKey(const ValueKey('enrich-review-Катя'));
     await tester.tap(chip);
-    await tester.tap(chip, warnIfMissed: false);
+    await tester.pumpAndSettle();
+    final candidate = find.text('katiazhavoronkova');
+    await tester.tap(candidate);
+    await tester.tap(candidate, warnIfMissed: false);
     await _pump(tester);
     final ledger = await storage.readText('$enrichFeedbackDir/dev1.jsonl');
     expect(
@@ -390,6 +401,8 @@ void main() {
       expect(reviews, findsNWidgets(2));
       await tester.ensureVisible(reviews.last);
       await tester.tap(reviews.last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('katiazhavoronkova'));
       await _pump(tester);
       final olderSource = await tester.runAsync(() => storage.readText(older));
       expect(olderSource, contains('#tylog.ref-note("kz")[Катя]'));

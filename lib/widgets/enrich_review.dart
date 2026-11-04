@@ -11,6 +11,8 @@ class EnrichReview extends StatelessWidget {
   const EnrichReview({
     super.key,
     required this.decisions,
+    this.pages = const [],
+    this.source = '',
     this.tags = const [],
     this.markers = const [],
     this.onAcceptMarker,
@@ -22,6 +24,8 @@ class EnrichReview extends StatelessWidget {
   });
 
   final List<EnrichDecision> decisions;
+  final List<NoteRef> pages;
+  final String source;
 
   /// Tags the block adds from the day's keywords; removing one is remembered.
   final List<String> tags;
@@ -121,6 +125,97 @@ class EnrichReview extends StatelessWidget {
     if (remove == true) onRejectTag?.call(tag);
   }
 
+  Future<void> _choose(BuildContext context, EnrichDecision decision) async {
+    final mention = decision.mention;
+    final lines = source.split('\n');
+    var searching = false;
+    var query = '';
+    final chosen = await showModalBottomSheet<NoteRef>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => SafeArea(
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.viewInsetsOf(context).bottom,
+            ),
+            child: SizedBox(
+              height: MediaQuery.sizeOf(context).height * .7,
+              child: Column(
+                children: [
+                  ListTile(
+                    title: Text('Who is ${mention.surface}?'),
+                    subtitle: mention.line > 0 && mention.line <= lines.length
+                        ? Text(lines[mention.line - 1])
+                        : null,
+                  ),
+                  if (searching)
+                    TextField(
+                      autofocus: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Search pages',
+                      ),
+                      onChanged: (value) => setState(() => query = value),
+                    ),
+                  Expanded(
+                    child: ListView(
+                      children: [
+                        for (final page
+                            in searching
+                                ? pages.where(
+                                    (page) =>
+                                        isEnrichTarget(page) &&
+                                        (page.title.toLowerCase().contains(
+                                              query.toLowerCase(),
+                                            ) ||
+                                            page.aliases.any(
+                                              (alias) =>
+                                                  alias.toLowerCase().contains(
+                                                    query.toLowerCase(),
+                                                  ),
+                                            )),
+                                  )
+                                : decision.candidates.map(
+                                    (candidate) => candidate.note,
+                                  ))
+                          ListTile(
+                            leading: Icon(
+                              page.kind == 'person'
+                                  ? Icons.person_outline
+                                  : Icons.description_outlined,
+                            ),
+                            title: Text(page.title),
+                            subtitle: page.partOf.isEmpty
+                                ? null
+                                : Text(page.partOf.join(', ')),
+                            onTap: () => Navigator.pop(context, page),
+                          ),
+                        if (!searching)
+                          ListTile(
+                            title: const Text('Other page…'),
+                            onTap: () => setState(() => searching = true),
+                          ),
+                        if (!searching)
+                          ListTile(
+                            title: const Text('New page'),
+                            onTap: () {
+                              Navigator.pop(context);
+                              onCreate(mention);
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    if (chosen != null) onAccept(mention, chosen);
+  }
+
   Widget _chip(BuildContext context, EnrichDecision decision) {
     final mention = decision.mention;
     final target = decision.target;
@@ -137,10 +232,8 @@ class EnrichReview extends StatelessWidget {
         key: ValueKey('enrich-review-${mention.surface}'),
         avatar: const Icon(Icons.help_outline, size: 16),
         label: Text('${mention.surface} → ${target!.title}?'),
-        tooltip: decision.candidates.length > 1
-            ? 'Tap to link. Not them? Remove to see the next match.'
-            : 'Tap to link',
-        onPressed: () => onAccept(mention, target),
+        tooltip: 'Choose a page',
+        onPressed: () => _choose(context, decision),
         deleteIcon: const Icon(Icons.close, size: 16),
         onDeleted: () => onReject(mention, target),
         deleteButtonTooltipMessage: 'Not ${target.title}',

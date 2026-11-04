@@ -5,9 +5,15 @@ typedef _EnrichView = ({
   List<EnrichDecision> decisions,
   List<String> tags,
   List<EnrichMarkerOffer> markers,
+  String source,
 });
 
-const _EnrichView _noEnrich = (decisions: [], tags: [], markers: []);
+const _EnrichView _noEnrich = (
+  decisions: [],
+  tags: [],
+  markers: [],
+  source: '',
+);
 
 /// Day-log enrichment in the app: reads the worker's mentions files,
 /// resolves them with [EnrichMemory], writes the `// tylog:auto-entities`
@@ -170,6 +176,7 @@ extension _EnrichFlow on _HomeScreenState {
       ],
       tags: tags,
       markers: enrichMarkerOffers(mentions, source, index!, memory),
+      source: source,
     );
     // Not after a write: the rewritten note must be looked at again.
     if (!(write && updated != source)) _enrichMemo = (memoKey, result);
@@ -560,6 +567,8 @@ extension _EnrichIncoming on _HomeScreenState {
                               ),
                               EnrichReview(
                                 decisions: entry.value.decisions,
+                                source: entry.value.source,
+                                pages: currentIndex.notesByPath.values.toList(),
                                 tags: entry.value.tags,
                                 markers: entry.value.markers,
                                 onAcceptMarker: (offer) => decide(

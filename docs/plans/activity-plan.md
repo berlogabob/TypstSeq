@@ -451,4 +451,6 @@ Issues found:
 - [ ] S6-rest Move GitHub issue cards between columns (including close/reopen and doing label); resolve conflicts with GitHub winning and record them in the decision ledger.
 - [x] S7 OLT rooms tree + equipment stock levels on the whiteboard
 - [x] S8 Pack update check: weekly GitHub release check, "update available" in Extensions
+- [x] S9 Mention chooser: select a ranked candidate or search pages from Incoming and daily review.
+- [ ] S9-rest Add a durable “Not a person/ignore” decision, last-seen day, and distinct icons for all candidate kinds.
 - [ ] Re-process PTT-20261104-WA0001 after the worker fix (user, Re-process)
