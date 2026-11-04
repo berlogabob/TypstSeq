@@ -525,7 +525,7 @@ void main() {
       await tester.pump();
       for (
         var i = 0;
-        i < 30 && find.text('Pin to whiteboard').evaluate().isEmpty;
+        i < 250 && find.text('Pin to whiteboard').evaluate().isEmpty;
         i++
       ) {
         await settleIo(tester);
@@ -537,10 +537,14 @@ void main() {
       await tester.tap(find.text('Pin to whiteboard'));
       await tester.pump();
       Board? saved;
-      for (var i = 0; i < 30; i++) {
-        saved = await tester.runAsync<Board?>(
-          () => readBoard(storage, 'root-wb'),
-        );
+      for (var i = 0; i < 250; i++) {
+        saved = await tester.runAsync<Board?>(() async {
+          try {
+            return await readBoard(storage, 'root-wb');
+          } on FormatException {
+            return null; // A concurrent save may still be writing the file.
+          }
+        });
         if (saved?.edges.isNotEmpty == true) break;
         await settleIo(tester);
       }

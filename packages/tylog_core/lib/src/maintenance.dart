@@ -345,6 +345,8 @@ class VaultMaintenance {
         }) &&
         jsonEncode(previous.tasks) == jsonEncode(index.tasks) &&
         jsonEncode(previous.problems) == jsonEncode(index.problems) &&
+        jsonEncode(previous.issues) == jsonEncode(index.issues) &&
+        jsonEncode(previous.issueLines) == jsonEncode(index.issueLines) &&
         await storage.exists(TylogVaultPaths.index);
     if (unchanged) index = previous;
     stageMillis['index-check'] = stage.elapsedMilliseconds;

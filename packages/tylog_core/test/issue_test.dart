@@ -118,6 +118,39 @@ void main() {
     expect(rebuilt.issues.map((i) => i.marker), ['fixit']);
   });
 
+  test(
+    'maintenance publishes issue changes when only marker settings change',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('issue-settings');
+      addTearDown(() => dir.delete(recursive: true));
+      final storage = LocalVaultStorage(dir);
+      await storage.writeText(
+        'notes/project.typ',
+        '#show: tylog.note.with(id: "project", title: "Project", kind: "project")',
+      );
+      await storage.writeText(
+        'notes/log.typ',
+        '- fixit #tylog.ref-note("project")[Project] bug',
+      );
+      await storage.writeText(
+        '_system/settings/ai.json',
+        '{"tasks":{"enrich":{"markers":[]}}}',
+      );
+      final maintenance = VaultMaintenance(storage, publishDonor: false);
+      expect((await maintenance.buildIndex()).issues, isEmpty);
+      await storage.writeText(
+        '_system/settings/ai.json',
+        '{"tasks":{"enrich":{"markers":["fixit"]}}}',
+      );
+      expect((await maintenance.buildIndex()).issues.map((i) => i.marker), [
+        'fixit',
+      ]);
+      expect((await loadVaultIndex(storage))!.issues.map((i) => i.marker), [
+        'fixit',
+      ]);
+    },
+  );
+
   test('donor carries issue candidates for unchanged notes', () async {
     final dir = await Directory.systemTemp.createTemp('issue-donor');
     addTearDown(() => dir.delete(recursive: true));
