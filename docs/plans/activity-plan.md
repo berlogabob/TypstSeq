@@ -497,7 +497,7 @@ Issues found:
 - [ ] U1-rest Finish the UI polish and user flows round: Incoming (sections, paging, chooser sheet, ignore), remaining share chooser states and keyboard/back behaviour, daily page chip + editor toolbar, entity page (timeline, board switch, part_of), Settings > Maintenance (duplicates, merge preview, namespace), Extensions (pack update, OLT sources, GitHub sign-in), and boards (GitHub columns, OLT whiteboard). Check primary actions, empty/loading/error states, spacing tokens, 360 dp layout, duplicate surfaces, back/close behaviour, and snackbars vs dialogs; record judgment calls here.
 - [x] H1-schedule (Claude): org.tylog.health LaunchAgent nightly 03:30, niced; first run fixed 8 more headerless dailies (backups scratchpad hdrbak); vault 0 findings.
 - [x] H1-incoming Incoming shows the latest `_system/health/<date>.json` findings as a "Vault health" section (S1 registry) with Open / Open Source. Typst compilation remains below.
-- [ ] H1-incoming-rest Add Typst compile errors to the nightly health report in low-priority batches.
+- [x] H1-incoming-rest Add Typst compile errors to the nightly health report in low-priority batches.
 - [x] U1a Polish Incoming: section order, headers, chooser sheet, ignore, paging button, empty/loading/error, 360 dp fit. Slice delivered: readable and actionable audio proposals at 360 dp.
 - [ ] U1a-rest Finish Incoming polish: review section order and headers, chooser sheet and ignore flow, paging button, empty/loading/error states, and 360 dp fit for the other queue sections.
 - [x] U1b Daily suggestions chip: reserve space outside the editor and open the day's review at 360 dp.

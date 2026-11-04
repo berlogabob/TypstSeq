@@ -53,6 +53,7 @@ Future<int> _vaultHealth(List<String> args) async {
   }
   final issues = <Map<String, String>>[];
   var scanned = 0;
+  final noteFiles = <String, File>{};
   // Match the indexer's note roots; managed Typst packages are not notes.
   for (final name in [
     'daily',
@@ -72,6 +73,7 @@ Future<int> _vaultHealth(List<String> args) async {
       final path = entry.path
           .substring(root.path.length + 1)
           .replaceAll(Platform.pathSeparator, '/');
+      noteFiles[path] = entry;
       scanned++;
       String source;
       try {
@@ -91,6 +93,7 @@ Future<int> _vaultHealth(List<String> args) async {
       }
     }
   }
+  final typstCompile = await _checkTypstBatch(root, noteFiles, issues);
   issues.sort(
     (a, b) =>
         '${a['path']}/${a['code']}'.compareTo('${b['path']}/${b['code']}'),
@@ -103,7 +106,7 @@ Future<int> _vaultHealth(List<String> args) async {
   final report = File('${directory.path}/$date.json');
   final temporary = File('${report.path}.tmp');
   await temporary.writeAsString(
-    '${const JsonEncoder.withIndent('  ').convert({'date': date, 'scanned': scanned, 'issues': issues})}\n',
+    '${const JsonEncoder.withIndent('  ').convert({'date': date, 'scanned': scanned, 'typstCompile': typstCompile, 'issues': issues})}\n',
     flush: true,
   );
   await temporary.rename(report.path);
@@ -114,6 +117,74 @@ Future<int> _vaultHealth(List<String> args) async {
     stdout.writeln('${issue['code']}: ${issue['path']}');
   }
   return 0;
+}
+
+const _healthTypstBatchSize = 20;
+
+Future<Map<String, Object>> _checkTypstBatch(
+  Directory root,
+  Map<String, File> noteFiles,
+  List<Map<String, String>> issues,
+) async {
+  final paths = noteFiles.keys.toList()..sort();
+  if (paths.isEmpty) {
+    return const {'checked': 0, 'batchSize': _healthTypstBatchSize};
+  }
+  final cursor = File('${root.path}/_system/health/typst-cursor.json');
+  String? lastPath;
+  try {
+    final saved = jsonDecode(await cursor.readAsString());
+    if (saved is Map && saved['lastPath'] is String) {
+      lastPath = saved['lastPath'] as String;
+    }
+  } on FileSystemException {
+    // Start at the beginning on the first run.
+  } on FormatException {
+    // A damaged cursor is disposable; the report remains authoritative.
+  }
+  var start = lastPath == null
+      ? 0
+      : paths.indexWhere((path) => path.compareTo(lastPath!) > 0);
+  if (start < 0) start = 0;
+  final batch = paths.skip(start).take(_healthTypstBatchSize).toList();
+  final output = await Directory.systemTemp.createTemp('tylog-health-typst-');
+  var checked = 0;
+  try {
+    for (var i = 0; i < batch.length; i++) {
+      final path = batch[i];
+      try {
+        final result = await Process.run('typst', [
+          'compile',
+          '--root',
+          root.path,
+          '--diagnostic-format',
+          'short',
+          noteFiles[path]!.path,
+          '${output.path}/$i.pdf',
+        ], workingDirectory: root.path);
+        checked++;
+        if (result.exitCode != 0) {
+          issues.add({'path': path, 'code': 'typst-compile-error'});
+        }
+      } on ProcessException {
+        return {
+          'checked': checked,
+          'batchSize': _healthTypstBatchSize,
+          'available': false,
+        };
+      }
+    }
+  } finally {
+    await output.delete(recursive: true);
+  }
+  final next = batch.last;
+  await cursor.parent.create(recursive: true);
+  await cursor.writeAsString(jsonEncode({'lastPath': next}), flush: true);
+  return {
+    'checked': checked,
+    'batchSize': _healthTypstBatchSize,
+    'available': true,
+  };
 }
 
 Future<int> _migrateMentions(List<String> args) async {
