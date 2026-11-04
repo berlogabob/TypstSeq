@@ -515,7 +515,8 @@ Issues found:
 - [ ] PF0-rest Instrument and reduce scan-finalize (18.5 s after PF0), load-index, listing, validation and communities as needed to reach < 5 s total background rescan on the P30; measure before/after with TYLOG_STARTUP stageMillis.
 - [x] PF1 GitHub project columns group cards once and build them lazily (audit #15).
 - [ ] PF1-rest Fix entity board quadratic ordering, repeated hierarchy scans, and eager card layout with position-aware drop targets (audit #1, #13); measure both board types on device at 100, 1,000, and 5,000 cards, including drag and frame timings.
-- [ ] PF2 Incoming work not bounded by the 7-day limit (audit #2, #7)
+- [x] PF2 Bound Incoming mention examination to seven sidecar days per page, retain results and refresh only the decided day (audit #2).
+- [ ] PF2-rest Add an incrementally invalidated actionable-sidecar summary; avoid repeated full ledger reads, paginate audio and OCR inputs and build queue rows lazily (audit #2, #7). Measure storage operations, readiness, heap and frames on device for sparse and dense queues, including decisions and Show older.
 - [ ] PF3 Mention matching per mention over all entities on UI isolate (audit #3, #16)
 - [ ] PF4 Journal sorts whole daily index on scroll; task rows search whole task index; source cache unbounded (audit #4, #5, #12)
 - [ ] PF5 Entity timeline computes while collapsed; merge preview reads every note (audit #6, #8)

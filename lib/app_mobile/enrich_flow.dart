@@ -407,34 +407,44 @@ extension _EnrichIncoming on _HomeScreenState {
     final v = vault;
     final currentIndex = index;
     if (v == null || currentIndex == null) return;
-    // ponytail: newest days first, a page at a time; every day costs two
-    // SAF reads and a ledger write on Android.
-    var limit = 7;
+    List<String>? paths;
+    var cursor = 0;
     var more = false;
-    Future<Map<String, _EnrichView>> load() async {
+    final views = <String, _EnrichView>{};
+    Future<Map<String, _EnrichView>> load({
+      bool next = false,
+      String? refreshPath,
+    }) async {
       final memory = await _enrichMemory(v, currentIndex);
-      if (!await v.storage.exists(enrichMentionsDir)) return {};
-      final files = await v.storage.list(
-        path: enrichMentionsDir,
-        recursive: true,
-      );
-      final paths =
-          files
-              .where((f) => !f.isDirectory && f.path.endsWith('.json'))
-              .map(
-                (f) =>
-                    '${f.path.substring(enrichMentionsDir.length + 1, f.path.length - 5)}.typ',
-              )
-              .where((p) => p.startsWith('daily/') && (day == null || day == p))
-              .toList()
-            ..sort((a, b) => b.compareTo(a));
-      final views = <String, _EnrichView>{};
-      more = false;
-      for (final path in paths) {
-        if (views.length >= limit) {
-          more = true;
-          break;
-        }
+      if (paths == null) {
+        if (!await v.storage.exists(enrichMentionsDir)) return {};
+        final files = await v.storage.list(
+          path: enrichMentionsDir,
+          recursive: true,
+        );
+        paths =
+            files
+                .where((f) => !f.isDirectory && f.path.endsWith('.json'))
+                .map(
+                  (f) =>
+                      '${f.path.substring(enrichMentionsDir.length + 1, f.path.length - 5)}.typ',
+                )
+                .where(
+                  (p) => p.startsWith('daily/') && (day == null || day == p),
+                )
+                .toList()
+              ..sort((a, b) => b.compareTo(a));
+      }
+      final page = <String>[];
+      if (next) {
+        final end = (cursor + 7).clamp(0, paths!.length);
+        page.addAll(paths!.sublist(cursor, end));
+        cursor = end;
+      }
+      if (refreshPath != null) page.add(refreshPath);
+      more = cursor < paths!.length;
+      for (final path in page) {
+        views.remove(path);
         if (!currentIndex.notesByPath.containsKey(path)) continue;
         try {
           final view = await _applyEnrichment(path, memory);
@@ -449,7 +459,8 @@ extension _EnrichIncoming on _HomeScreenState {
           _enrichTrace('$path error $error');
         }
       }
-      return views;
+      final ordered = views.keys.toList()..sort((a, b) => b.compareTo(a));
+      return {for (final path in ordered) path: views[path]!};
     }
 
     Future<
@@ -460,8 +471,8 @@ extension _EnrichIncoming on _HomeScreenState {
         List<HealthFinding>,
       )
     >
-    loadQueue() async => (
-      await load(),
+    loadQueue({bool next = false, String? refreshPath}) async => (
+      await load(next: next, refreshPath: refreshPath),
       day == null
           ? await loadOcrReviewRows(
               v.storage,
@@ -474,20 +485,20 @@ extension _EnrichIncoming on _HomeScreenState {
           : <AudioProposal>[],
       day == null ? await loadHealthFindings(v.storage) : <HealthFinding>[],
     );
-    var future = loadQueue();
+    var future = loadQueue(next: true);
     if (!mounted) return;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       builder: (context) => StatefulBuilder(
         builder: (context, setSheetState) {
-          void decide(Future<void> Function() action) {
+          void decide(Future<void> Function() action, {String? path}) {
             unawaited(
               _enrichOnce(() async {
                 await action();
                 if (context.mounted) {
                   setSheetState(() {
-                    future = loadQueue();
+                    future = loadQueue(refreshPath: path);
                   });
                 }
               }),
@@ -534,7 +545,13 @@ extension _EnrichIncoming on _HomeScreenState {
                               audio.isEmpty &&
                               health.isEmpty &&
                               bookings.isEmpty)
-                            const ListTile(title: Text('No suggestions')),
+                            ListTile(
+                              title: Text(
+                                more
+                                    ? 'No suggestions in these days'
+                                    : 'No suggestions',
+                              ),
+                            ),
                           for (final type in reviewQueueTypes) ...[
                             if (type == ReviewQueueType.health &&
                                 health.isNotEmpty) ...[
@@ -588,12 +605,15 @@ extension _EnrichIncoming on _HomeScreenState {
                                   markers: entry.value.markers,
                                   onAcceptMarker: (offer) => decide(
                                     () => _acceptEnrichMarker(entry.key, offer),
+                                    path: entry.key,
                                   ),
                                   onRejectMarker: (offer) => decide(
                                     () => _rejectEnrichMarker(entry.key, offer),
+                                    path: entry.key,
                                   ),
                                   onRejectTag: (tag) => decide(
                                     () => _rejectEnrichTag(entry.key, tag),
+                                    path: entry.key,
                                   ),
                                   onAccept: (mention, target) => decide(
                                     () => _acceptEnrich(
@@ -601,6 +621,7 @@ extension _EnrichIncoming on _HomeScreenState {
                                       mention,
                                       target,
                                     ),
+                                    path: entry.key,
                                   ),
                                   onReject: (mention, target) => decide(
                                     () => _rejectEnrich(
@@ -608,12 +629,15 @@ extension _EnrichIncoming on _HomeScreenState {
                                       mention,
                                       target,
                                     ),
+                                    path: entry.key,
                                   ),
                                   onIgnore: (mention) => decide(
                                     () => _ignoreEnrich(entry.key, mention),
+                                    path: entry.key,
                                   ),
                                   onCreate: (mention) => decide(
                                     () => _createFromEnrich(entry.key, mention),
+                                    path: entry.key,
                                   ),
                                 ),
                               ],
@@ -762,10 +786,13 @@ extension _EnrichIncoming on _HomeScreenState {
                           ],
                           if (views != null && more)
                             TextButton(
-                              onPressed: () => setSheetState(() {
-                                limit += 7;
-                                future = loadQueue();
-                              }),
+                              onPressed:
+                                  snapshot.connectionState ==
+                                      ConnectionState.done
+                                  ? () => setSheetState(() {
+                                      future = loadQueue(next: true);
+                                    })
+                                  : null,
                               child: const Text('Show older'),
                             ),
                         ],

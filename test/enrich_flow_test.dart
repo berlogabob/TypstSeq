@@ -508,6 +508,46 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   }, variant: desktop);
 
+  testWidgets('Incoming pages through empty days before older suggestions', (
+    tester,
+  ) async {
+    final (home, storage) = await _mount(tester);
+    final notes = Map<String, NoteRef>.of(home.workspace.index.notesByPath);
+    for (var n = 23; n <= 29; n++) {
+      final date = '2026-10-$n';
+      final path = 'daily/2026/10/$date.typ';
+      notes[path] = _note(date, path, date, 'daily');
+      await storage.writeText(path, _day);
+      await storage.writeText(
+        enrichMentionsPath(path),
+        jsonEncode({
+          'schema': 1,
+          'note': path,
+          'content_sha': enrichContentSha(_day),
+          'mentions': [],
+          'keywords': [],
+          'markers': [],
+        }),
+      );
+    }
+    home.workspace.index = VaultIndex(
+      notesByPath: notes,
+      backlinksByTarget: const {},
+    );
+    Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
+    await _pump(tester);
+    await tester.tap(find.textContaining('More').first);
+    await _pump(tester);
+    await tester.tap(find.byKey(const ValueKey('incoming-open')));
+    await _pump(tester);
+    expect(find.byType(EnrichReview), findsNothing);
+    expect(find.text('Show older'), findsOneWidget);
+    await tester.tap(find.text('Show older'));
+    await _pump(tester);
+    expect(find.byType(EnrichReview), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  }, variant: desktop);
+
   testWidgets(
     'Incoming groups all days newest first and acts on the selected day',
     (tester) async {
