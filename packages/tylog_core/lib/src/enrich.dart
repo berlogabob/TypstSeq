@@ -688,6 +688,12 @@ String linkMentionInline(String source, EnrichMention mention, NoteRef target) {
   final line = lines[i];
   final at = line.indexOf(mention.surface);
   if (at < 0) return source;
+  if (line.trimLeft().startsWith('//') ||
+      line.substring(0, at).contains('`') ||
+      lines.take(i).join('\n').split('```').length.isEven ||
+      RegExp(r'[\[\]#\\]').hasMatch(mention.surface)) {
+    return source;
+  }
   // Already inside a call or its content? Leave it.
   final before = line.substring(0, at);
   // An argument line of a multi-line call (`  text: "..."`) or text after an
@@ -705,6 +711,12 @@ String linkMentionInline(String source, EnrichMention mention, NoteRef target) {
       '$before#tylog.ref-note(${typstString(target.id)})'
       '[${mention.surface}]${line.substring(at + mention.surface.length)}';
   return lines.join('\n');
+}
+
+/// Adds literal tags without rewriting unrelated header fields.
+String addEnrichHeaderTags(String source, String path, List<String> tags) {
+  if (tags.isEmpty) return source;
+  return updateNoteTags(source, add: tags);
 }
 
 /// Ledger `entity` for filing a line under a marker page.

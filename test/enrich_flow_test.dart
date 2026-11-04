@@ -150,11 +150,25 @@ Future<void> _openIncoming(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('confident mentions and known tags are applied to the note', (
+    tester,
+  ) async {
+    final (home, storage) = await _mount(tester);
+    expect(home.workspace.source, contains('#tylog.ref-note("iade")[IADE]'));
+    expect(home.workspace.source, contains('tags: ("design",)'));
+    expect(home.workspace.source, isNot(contains('// tylog:auto-entities')));
+    final data =
+        jsonDecode(await storage.readText(enrichMentionsPath(_dayPath))) as Map;
+    expect(
+      data['content_sha'],
+      enrichContentSha(home.workspace.source as String),
+    );
+  });
   // Exercise both desktop and phone behavior.
   final desktop = TargetPlatformVariant.only(TargetPlatform.macOS);
   final phone = TargetPlatformVariant.only(TargetPlatform.android);
   testWidgets(
-    'day note keeps text unchanged and Incoming acceptance links inline',
+    'confident links are automatic and review acceptance links inline',
     (tester) async {
       tester.view.physicalSize = const Size(1100, 800);
       tester.view.devicePixelRatio = 1;
@@ -163,12 +177,11 @@ void main() {
       final (home, storage) = await _mount(tester);
 
       // Opening a day must not create an automatic Mentions block.
-      expect(home.workspace.source, _day);
-      expect(await storage.readText(_dayPath), _day);
+      expect(home.workspace.source, contains('#tylog.ref-note("iade")[IADE]'));
       // Prefix-only nickname: asked, not linked. Unknown person: proposed.
       expect(find.byKey(const ValueKey('enrich-review-Катя')), findsOneWidget);
       expect(find.byKey(const ValueKey('enrich-new-Рома')), findsOneWidget);
-      expect(find.byKey(const ValueKey('enrich-linked-IADE')), findsOneWidget);
+      expect(find.byKey(const ValueKey('enrich-linked-IADE')), findsNothing);
 
       expect(find.byKey(const ValueKey('enrich-tag-design')), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('enrich-review-Катя')));
@@ -270,8 +283,6 @@ void main() {
 
   testWidgets('a confident suggestion can be linked inline', (tester) async {
     final (home, _) = await _mount(tester);
-    await tester.tap(find.byKey(const ValueKey('enrich-linked-IADE')));
-    await _pump(tester);
     expect(home.workspace.source, contains('#tylog.ref-note("iade")[IADE]'));
     expect(home.workspace.source, isNot(contains(autoEntitiesMarker)));
     await tester.pumpWidget(const SizedBox());
@@ -279,7 +290,7 @@ void main() {
 
   testWidgets('removing a tag chip records the rejection', (tester) async {
     final (home, storage) = await _mount(tester);
-    expect(home.workspace.source, _day);
+    expect(home.workspace.source, contains('"design"'));
     await tester.tap(
       find.descendant(
         of: find.byKey(const ValueKey('enrich-tag-design')),
@@ -288,17 +299,16 @@ void main() {
     );
     await _pump(tester);
     expect(home.workspace.source, isNot(contains('#tylog.tag("design")')));
-    expect(home.workspace.source, _day);
+    expect(home.workspace.source, isNot(contains('"design"')));
     final ledger = await storage.readText('$enrichFeedbackDir/dev1.jsonl');
     expect(jsonDecode(ledger.trim()), containsPair('entity', 'tag:design'));
     expect(find.byKey(const ValueKey('enrich-tag-design')), findsNothing);
     await tester.pumpWidget(const SizedBox());
   }, variant: desktop);
 
-  testWidgets('a phone writes only on a tap', (tester) async {
+  testWidgets('a phone links confident mentions automatically', (tester) async {
     final (home, storage) = await _mount(tester);
-    expect(home.workspace.source, _day);
-    expect(await storage.readText(_dayPath), _day);
+    expect(home.workspace.source, contains('#tylog.ref-note("iade")[IADE]'));
     expect(find.byKey(const ValueKey('enrich-review-Катя')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('enrich-review-Катя')));
     await tester.pumpAndSettle();
@@ -309,14 +319,16 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   }, variant: phone);
 
-  testWidgets('today is not auto-written; a tap still writes', (tester) async {
+  testWidgets('today receives automatic links and review still works', (
+    tester,
+  ) async {
     final now = DateTime.now();
     String two(int n) => n.toString().padLeft(2, '0');
     final today =
         'daily/${now.year}/${two(now.month)}/'
         '${now.year}-${two(now.month)}-${two(now.day)}.typ';
     final (home, _) = await _mount(tester, dayPath: today);
-    expect(home.workspace.source, _day);
+    expect(home.workspace.source, contains('#tylog.ref-note("iade")[IADE]'));
     expect(find.byKey(const ValueKey('enrich-review-Катя')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('enrich-review-Катя')));
     await tester.pumpAndSettle();
@@ -402,6 +414,7 @@ void main() {
             jsonDecode(await storage.readText(enrichMentionsPath(_dayPath)))
                 as Map;
         data['note'] = older;
+        data['content_sha'] = enrichContentSha(_day);
         await storage.writeText(enrichMentionsPath(older), jsonEncode(data));
       });
       final oldIndex = home.workspace.index as VaultIndex;
@@ -437,7 +450,7 @@ void main() {
       expect(olderSource, contains('#tylog.ref-note("kz")[Катя]'));
       expect(
         home.workspace.source,
-        isNot(contains('#tylog.ref-note("kz")[Катя] приехала')),
+        contains('#tylog.ref-note("kz")[Катя] приехала'),
       );
       final ledger = await tester.runAsync(
         () => storage.readText('$enrichFeedbackDir/dev1.jsonl'),

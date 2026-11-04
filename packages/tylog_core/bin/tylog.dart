@@ -34,10 +34,130 @@ Future<int> runTylog(List<String> arguments) async {
     'eval-links' => _evalLinks(args),
     'doctor' => _doctor(args),
     'dedupe' => _dedupe(args),
+    'migrate-mentions' => _migrateMentions(args),
     'export' => _export(args),
     'pack-validate' => _packValidate(args),
     _ => throw _UsageException('Unknown command: $command'),
   };
+}
+
+Future<int> _migrateMentions(List<String> args) async {
+  final apply = args.remove('--apply');
+  if (args.length != 1 || args.single.startsWith('--')) {
+    throw _UsageException('migrate-mentions requires <vault> [--apply]');
+  }
+  final root = Directory(args.single).absolute;
+  final storage = LocalVaultStorage(root);
+  if ((await inspectVaultStorage(storage)).kind !=
+      VaultStorageKind.validVault) {
+    throw StateError('TyLog vault marker is missing or invalid');
+  }
+  final daily = Directory('${root.path}/daily');
+  if (!await daily.exists()) return 0;
+  final files = await daily
+      .list(recursive: true, followLinks: false)
+      .where((e) => e is File && e.path.endsWith('.typ'))
+      .cast<File>()
+      .toList();
+  files.sort((a, b) => a.path.compareTo(b.path));
+  final stamp = DateTime.now().toIso8601String().replaceAll(
+    RegExp(r'[^0-9]'),
+    '',
+  );
+  for (final file in files) {
+    final relative = file.path.substring(root.path.length + 1);
+    final source = await file.readAsString();
+    final marker = RegExp(
+      r'^// tylog:auto-entities\r?\n== Mentions\r?\n',
+      multiLine: true,
+    ).firstMatch(source);
+    if (marker == null) continue;
+    final lines = source.substring(marker.end).split('\n');
+    final entries = <String>[];
+    var count = 0;
+    while (count < lines.length &&
+        (lines[count].trim().isEmpty ||
+            RegExp(
+              r'^\s*(?:[-+*]\s*)?#tylog\.(?:ref-note|tag)\(',
+            ).hasMatch(lines[count]))) {
+      entries.add(lines[count++]);
+    }
+    final tail = lines.skip(count).join('\n');
+    var body = source.substring(0, marker.start);
+    final added = <String>[],
+        dropped = <String>[],
+        moved = <String>[],
+        remaining = <String>[];
+    for (final line in entries) {
+      final link = RegExp(
+        r'^\s*[-+*]\s*#tylog\.ref-note\("([^"\\]+)"\)\[([^\[\]]+)\]\s*\r?$',
+      ).firstMatch(line);
+      final tagLine = RegExp(
+        r'^\s*(?:#tylog\.tag\("[^"\\]+"\)\s*)+\r?$',
+      ).hasMatch(line);
+      if (link != null) {
+        final id = link[1]!, surface = link[2]!;
+        if (scanNote(relative, body).outgoingLinks.contains(id)) {
+          dropped.add(id);
+          continue;
+        }
+        final target = NoteRef(
+          id: id,
+          path: '',
+          title: surface,
+          outgoingLinks: const [],
+        );
+        var next = body;
+        for (var i = 0; i < body.split('\n').length && next == body; i++) {
+          next = linkMentionInline(
+            body,
+            EnrichMention(surface: surface, type: '', line: i + 1),
+            target,
+          );
+        }
+        if (next != body) {
+          body = next;
+          added.add(id);
+          continue;
+        }
+      } else if (tagLine) {
+        final tags = RegExp(
+          r'#tylog\.tag\("([^"\\]+)"\)',
+        ).allMatches(line).map((m) => m[1]!).toList();
+        final next = addEnrichHeaderTags(body, relative, tags);
+        if (next != body ||
+            tags.every((t) => scanNote(relative, body).tags.contains(t))) {
+          body = next;
+          moved.addAll(tags);
+          continue;
+        }
+      }
+      if (line.trim().isNotEmpty) remaining.add(line);
+    }
+    final result =
+        '$body${remaining.isEmpty ? '' : '${source.substring(marker.start, marker.end)}${remaining.join('\n')}\n'}$tail';
+    stdout.writeln(
+      '$relative | links to add inline: ${added.join(', ')} | links dropped as already inline: ${dropped.join(', ')} | tags moved to header: ${moved.join(', ')} | retained: ${remaining.join('; ')}',
+    );
+    if (apply && result != source) {
+      final backup = File(
+        '${root.path}/_system/backups/mentions-$stamp/$relative',
+      );
+      await backup.parent.create(recursive: true);
+      if (await backup.exists()) {
+        throw StateError('Backup already exists: ${backup.path}');
+      }
+      if (await file.readAsString() != source) {
+        throw StateError('File changed during migration: $relative');
+      }
+      await backup.writeAsBytes(utf8.encode(source), flush: true);
+      if (await file.readAsString() != source) {
+        throw StateError('File changed during migration: $relative');
+      }
+      await file.writeAsString(result, flush: true);
+    }
+  }
+  return 0;
 }
 
 Future<int> _importContacts(List<String> args) async {
@@ -662,6 +782,7 @@ Usage:
   tylog index [vault=.] [--force]
   tylog doctor [vault=.]
   tylog dedupe <vault> [--apply]
+  tylog migrate-mentions <vault> [--apply]
   tylog export <file.typ> [output.pdf]
   tylog pack-validate <file.tylogpack>
   tylog eval-links --vault <dir> --gold <file.jsonl>

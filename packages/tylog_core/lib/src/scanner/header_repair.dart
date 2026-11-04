@@ -1,5 +1,34 @@
 part of '../scanner.dart';
 
+/// Updates literal header tags while leaving computed values untouched.
+String updateNoteTags(
+  String source, {
+  List<String> add = const [],
+  String? remove,
+}) {
+  final call = _noteHeader(source);
+  if (call == null) return source;
+  final field = _locateTopLevelField(call.source, 'tags');
+  if (field != null) {
+    final value = call.source
+        .substring(field.valueStart, field.valueEnd)
+        .trim();
+    if (!RegExp(r'^\(\s*(?:"(?:\\.|[^"\\])*"\s*,\s*)*\)$').hasMatch(value)) {
+      return source;
+    }
+  }
+  final tags = _parseList(
+    call.source,
+    'tags',
+  ).where((tag) => tag != remove).toList();
+  for (final tag in add) {
+    if (!tags.contains(tag)) tags.add(tag);
+  }
+  return replaceNoteFields(source, {
+    'tags': '(${tags.map(typstString).join(', ')}${tags.isEmpty ? '' : ','})',
+  });
+}
+
 /// Replaces selected note fields using the balanced Typst argument parser.
 String replaceNoteFields(String source, Map<String, String> values) {
   final call = _noteHeader(source);

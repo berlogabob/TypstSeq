@@ -114,7 +114,7 @@ extension _EnrichFlow on _HomeScreenState {
       _enrichTrace('$path no-mentions');
       return none;
     }
-    final source = path == note
+    var source = path == note
         ? workspace.source
         : await v.storage.readText(path);
     // Index revisions arrive every sync poll; most change nothing here.
@@ -127,6 +127,36 @@ extension _EnrichFlow on _HomeScreenState {
     if (enrichContentSha(source) != mentions.contentSha) {
       _enrichTrace('$path edited-since-extraction');
       return none;
+    }
+    var updated = source;
+    if (path == note) {
+      for (final decision in decisions) {
+        if (decision.status == EnrichStatus.linked && decision.target != null) {
+          updated = linkMentionInline(
+            updated,
+            decision.mention,
+            decision.target!,
+          );
+        }
+      }
+      updated = addEnrichHeaderTags(updated, path, tags);
+    }
+    if (updated != source &&
+        await workspace.mutateNote(
+          path,
+          (current) => current == source ? updated : current,
+        ) &&
+        (path != note || workspace.source == updated)) {
+      if (updated.split('\n').length == source.split('\n').length) {
+        final file = enrichMentionsPath(path);
+        final json = (jsonDecode(await v.storage.readText(file)) as Map)
+            .cast<String, Object?>();
+        if (json['content_sha'] == mentions.contentSha) {
+          json['content_sha'] = enrichContentSha(updated);
+          await v.storage.writeText(file, '${jsonEncode(json)}\n');
+        }
+      }
+      source = updated;
     }
     // Links the user typed are theirs: no chip offering to unlink them.
     final typed = scanNote(path, stripAutoEntities(source)).outgoingLinks;
@@ -328,6 +358,10 @@ extension _EnrichFlow on _HomeScreenState {
       enrichTagEntity(tag),
       path: path,
       accepted: false,
+    );
+    await workspace.mutateNote(
+      path,
+      (source) => updateNoteTags(source, remove: tag),
     );
     await _refreshEnrichDay(path);
   }
