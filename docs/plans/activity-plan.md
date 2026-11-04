@@ -498,7 +498,8 @@ Issues found:
 - [x] H1-schedule (Claude): org.tylog.health LaunchAgent nightly 03:30, niced; first run fixed 8 more headerless dailies (backups scratchpad hdrbak); vault 0 findings.
 - [x] H1-incoming Incoming shows the latest `_system/health/<date>.json` findings as a "Vault health" section (S1 registry) with Open / Open Source. Typst compilation remains below.
 - [ ] H1-incoming-rest Add Typst compile errors to the nightly health report in low-priority batches.
-- [ ] U1a Polish Incoming: section order, headers, chooser sheet, ignore, paging button, empty/loading/error, 360 dp fit.
+- [x] U1a Polish Incoming: section order, headers, chooser sheet, ignore, paging button, empty/loading/error, 360 dp fit. Slice delivered: readable and actionable audio proposals at 360 dp.
+- [ ] U1a-rest Finish Incoming polish: review section order and headers, chooser sheet and ignore flow, paging button, empty/loading/error states, and 360 dp fit for the other queue sections.
 - [ ] U1b Polish daily page + editor toolbar: suggestions chip, timestamp, broken-markup banner, More bar, no duplicate surfaces.
 - [ ] U1c Polish entity page: header, part_of chips, Contains, Timeline, Board switch (Kanban/Whiteboard/Tree), kind icon picker.
 - [ ] U1d Polish Settings > Maintenance: Duplicates list + merge preview, namespace convert, health report link.

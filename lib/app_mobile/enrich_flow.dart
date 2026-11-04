@@ -622,35 +622,48 @@ extension _EnrichIncoming on _HomeScreenState {
                                 audio.isNotEmpty) ...[
                               ListTile(title: Text(type.label)),
                               for (final proposal in audio)
-                                ListTile(
-                                  title: Text(proposal.text),
-                                  subtitle: Text(
-                                    '${proposal.note}${proposal.date == null ? '' : ' · ${proposal.date}'}',
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: kSpace16,
+                                    vertical: kSpace8,
                                   ),
-                                  trailing: Wrap(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      ActionChip(
-                                        label: Text(
-                                          proposal.kind == 'agenda'
-                                              ? 'Add to agenda'
-                                              : 'Add task',
-                                        ),
-                                        onPressed: () => decide(
-                                          () => _decideAudioProposal(
-                                            proposal,
-                                            true,
-                                          ),
-                                        ),
+                                      Text(proposal.text),
+                                      Text(
+                                        '${proposal.note}${proposal.date == null ? '' : ' · ${proposal.date}'}',
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.bodySmall,
                                       ),
-                                      IconButton(
-                                        tooltip: 'Reject audio proposal',
-                                        icon: const Icon(Icons.close),
-                                        onPressed: () => decide(
-                                          () => _decideAudioProposal(
-                                            proposal,
-                                            false,
+                                      Row(
+                                        children: [
+                                          ActionChip(
+                                            label: Text(
+                                              proposal.kind == 'agenda'
+                                                  ? 'Add to agenda'
+                                                  : 'Add task',
+                                            ),
+                                            onPressed: () => decide(
+                                              () => _decideAudioProposal(
+                                                proposal,
+                                                true,
+                                              ),
+                                            ),
                                           ),
-                                        ),
+                                          IconButton(
+                                            tooltip: 'Reject audio proposal',
+                                            icon: const Icon(Icons.close),
+                                            onPressed: () => decide(
+                                              () => _decideAudioProposal(
+                                                proposal,
+                                                false,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ),

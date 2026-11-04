@@ -150,6 +150,62 @@ Future<void> _openIncoming(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('audio proposals are readable and actionable at 360 dp', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final (home, storage) = await _mount(tester);
+    final oldIndex = home.workspace.index as VaultIndex;
+    home.workspace.index = VaultIndex(
+      notesByPath: {
+        ...oldIndex.notesByPath,
+        'notes/audio.typ': _note(
+          'audio',
+          'notes/audio.typ',
+          'Recording',
+          'audio',
+        ),
+      },
+      backlinksByTarget: const {},
+    );
+    await storage.writeText(
+      '_system/enrich/audio/a.json',
+      jsonEncode({
+        'note': 'notes/audio.typ',
+        'items': [
+          {
+            'id': 'audio:phone',
+            'text': 'Send the meeting notes to the whole team',
+            'kind': 'task',
+          },
+        ],
+      }),
+    );
+    Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
+    await _pump(tester);
+    await tester.tap(find.textContaining('More').first);
+    await _pump(tester);
+    await tester.tap(find.byKey(const ValueKey('incoming-open')));
+    await _pump(tester);
+    final proposal = find.text('Send the meeting notes to the whole team');
+    await tester.ensureVisible(proposal);
+    expect(tester.getSize(proposal).width, greaterThanOrEqualTo(250));
+    final reject = find.byTooltip('Reject audio proposal');
+    await tester.ensureVisible(reject);
+    await tester.tap(reject);
+    await _pump(tester);
+    expect(find.text('Send the meeting notes to the whole team'), findsNothing);
+    expect(
+      await storage.readText('_system/decisions/dev1.jsonl'),
+      contains('"action":"rejected"'),
+    );
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   for (final sourceMode in [false, true]) {
     testWidgets(
       'Incoming opens a health finding ${sourceMode ? 'in source mode' : 'as a note'}',
