@@ -96,6 +96,24 @@ void main() {
     // A stray note with the same title does not unsettle the real entity.
     expect(resolve('IADE').status, EnrichStatus.linked);
     expect(resolve('IADE').target?.id, 'iade-org');
+    // A partial name sees typed and note pages alike.
+    final angelaNote = entity('angela-s', 'Angela Silvestre', kind: 'note');
+    final angelaPerson = entity(
+      'angela-x',
+      'Анжела Хавьер',
+      aliases: ['Angela X'],
+    );
+    final both = EnrichMemory.build(indexOf([angelaNote, angelaPerson]));
+    expect(
+      resolveMentions(
+        mentionsOf([
+          const EnrichMention(surface: 'Angela', type: 'person', line: 1),
+        ]),
+        day('2026-11-04'),
+        both,
+      ).single.candidates.map((c) => c.note.id),
+      unorderedEquals(['angela-s', 'angela-x']),
+    );
   });
 
   test('first name alone is ambiguous: review, not link', () {

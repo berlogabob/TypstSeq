@@ -422,12 +422,16 @@ List<(NoteRef, bool)> _candidates(EnrichMention mention, EnrichMemory memory) {
       if (_match(entity, mention, keys, surfaceKey, memory) case final exact?)
         (entity, exact),
   ];
-  // Plain `note` pages only when no typed entity matches: "IADE" has an
-  // organization page and two stray notes, and must still link.
-  var found = match(memory.entities.values.where((e) => e.kind != 'note'));
-  if (found.isEmpty) {
-    found = match(memory.entities.values.where((e) => e.kind == 'note'));
-  }
+  // Plain `note` pages compete unless a typed entity matches the name
+  // exactly: "IADE" has an organization page and two stray notes and must
+  // still link, but "Angela" must still find the boss whose page is a note.
+  final typed = match(memory.entities.values.where((e) => e.kind != 'note'));
+  var found = typed.any((c) => c.$2)
+      ? typed
+      : [
+          ...typed,
+          ...match(memory.entities.values.where((e) => e.kind == 'note')),
+        ];
   // The model's own guess counts only when no name matched at all.
   if (found.isEmpty) {
     if (memory.entities[mention.entity] case final entity?) {
