@@ -419,3 +419,8 @@ Issues found:
 - [ ] A24 01:24: 'Sign in with GitHub' -> 'GITHUB_CLIENT_ID is not configured' (build had no --dart-define; GitDoIt id also rejects device flow). Need: user enables Device Flow / sends OAuth client id; build passes --dart-define=GITHUB_CLIENT_ID; friendlier message when missing
 - [ ] FLAKY under load (pre-release stabilization pass): workspace_controller_test 'scanned issues survive index publication' + whiteboard_test 'entity Tree opens and pins nodes and edges' (2/2 pass alone)
 - [ ] (old) Profile APK on A24 (user tests P3 whiteboard, P4 OLT/GitHub boards, P1/P2 basics) with checklist
+
+## Wave 20 (2026-11-04): one decision surface + OLT under Extensions (user OK)
+- [ ] Enrich pending suggestions only in Incoming (grouped per day, accept/reject markers/tags/mentions, decisions logged as before); daily page: no EnrichReview section, small 'N suggestions' chip -> Incoming filtered to that day
+- [ ] Auto-entities block (// tylog:auto-entities, 19 dailies) stays in files; editor renders it as one folded line 'Auto: IADE · #tag' (byte-exact round-trip, no file rewrite)
+- [ ] OpenLabTwin moved into Settings > Extensions (sign-in, status, refresh, last error); old OpenLabTwin settings entry removed; Extensions = folders, GitHub, OpenLabTwin
