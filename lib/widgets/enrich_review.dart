@@ -28,7 +28,7 @@ class EnrichReview extends StatelessWidget {
   final List<NoteRef> pages;
   final String source;
 
-  /// Tags the block adds from the day's keywords; removing one is remembered.
+  /// Suggested tags from the day's keywords; dismissing one is remembered.
   final List<String> tags;
   final ValueChanged<String>? onRejectTag;
 
@@ -96,7 +96,7 @@ class EnrichReview extends StatelessWidget {
                 key: ValueKey('enrich-tag-$tag'),
                 avatar: const Icon(Icons.tag, size: 16),
                 label: Text(tag),
-                tooltip: 'Tag added from this day',
+                tooltip: 'Suggested tag from this day',
                 onPressed: onRejectTag == null
                     ? null
                     : () => _confirmRemoveTag(context, tag),
@@ -241,7 +241,8 @@ class EnrichReview extends StatelessWidget {
         key: ValueKey('enrich-linked-${mention.surface}'),
         avatar: const Icon(Icons.link, size: 16),
         label: Text(mention.surface),
-        tooltip: 'Linked to ${target!.title}. Remove to unlink.',
+        tooltip: 'Tap to link to ${target!.title}',
+        onPressed: () => onAccept(mention, target),
         deleteIcon: const Icon(Icons.close, size: 16),
         onDeleted: () => onReject(mention, target),
       ),

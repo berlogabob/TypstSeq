@@ -16,9 +16,12 @@ const _EnrichView _noEnrich = (
 );
 
 /// Day-log enrichment in the app: reads the worker's mentions files,
-/// resolves them with [EnrichMemory], writes the `// tylog:auto-entities`
-/// block, and records the user's decisions in this device's ledger.
+/// resolves them with [EnrichMemory], and records decisions in the ledger.
 extension _EnrichFlow on _HomeScreenState {
+  bool get _enrichAutoWrite =>
+      defaultTargetPlatform != TargetPlatform.android &&
+      defaultTargetPlatform != TargetPlatform.iOS;
+
   /// Called on every workspace change; does work only when the open note or
   /// the index changed.
   void _queueEnrichRefresh() {
@@ -28,24 +31,13 @@ extension _EnrichFlow on _HomeScreenState {
     unawaited(_refreshEnrichment());
   }
 
-  /// Phones only read: a block written by the Mac and the phone at once is a
-  /// sync conflict on a day note, and a conflict pauses all auto-sync. The
-  /// phone writes only on the user's own tap.
-  bool get _enrichAutoWrite =>
-      defaultTargetPlatform != TargetPlatform.android &&
-      defaultTargetPlatform != TargetPlatform.iOS;
-
-  Future<void> _refreshEnrichment({bool userAction = false}) async {
+  Future<void> _refreshEnrichment() async {
     final v = vault;
     final currentIndex = index;
     if (v == null || currentIndex == null) return;
     final path = note;
-    // Today is still being written, maybe on another device: a block landing
-    // mid-edit is a sync conflict. It gets its block tomorrow, or on a tap.
-    final write =
-        userAction || (_enrichAutoWrite && path != await v.todayNote());
     final isDay = path != null && path.startsWith('daily/');
-    if (_enrichPassVault == v && !isDay) {
+    if (!isDay) {
       if (_enrichDecisions != null) _rebuild(() => _enrichDecisions = null);
       return;
     }
@@ -53,22 +45,9 @@ extension _EnrichFlow on _HomeScreenState {
     try {
       final memory = await _enrichMemory(v, currentIndex);
       final memoryMs = clock.elapsedMilliseconds;
-      if (_enrichPassVault != v) {
-        _enrichPassVault = v;
-        // ponytail: only the last two weeks of days get blocks written on
-        // open; older days get theirs when viewed. A full pass needs a
-        // device-local "applied sha" record to stay cheap on SAF.
-        final today = DateTime.now();
-        for (var i = 1; _enrichAutoWrite && i <= 14; i++) {
-          final path = await v.todayNote(today.subtract(Duration(days: i)));
-          await _applyEnrichment(path, memory, write: true);
-        }
-      }
-      final view = isDay
-          ? await _applyEnrichment(path, memory, write: write)
-          : _noEnrich;
+      final view = await _applyEnrichment(path, memory);
       _enrichTrace(
-        '$path write=$write decisions=${view.decisions.length} '
+        '$path decisions=${view.decisions.length} '
         'tags=${view.tags.length} markers=${view.markers.length} '
         'memoryMs=$memoryMs '
         'ms=${clock.elapsedMilliseconds}',
@@ -124,13 +103,8 @@ extension _EnrichFlow on _HomeScreenState {
     }
   }
 
-  /// Rewrites [path]'s block (when [write]) if its mentions were computed
-  /// from exactly the text it has now. Returns what the review strip shows.
-  Future<_EnrichView> _applyEnrichment(
-    String path,
-    EnrichMemory memory, {
-    required bool write,
-  }) async {
+  /// Returns suggestions only when they match the current note text.
+  Future<_EnrichView> _applyEnrichment(String path, EnrichMemory memory) async {
     const none = _noEnrich;
     final v = vault;
     final ref = index?.notesByPath[path];
@@ -144,24 +118,15 @@ extension _EnrichFlow on _HomeScreenState {
         ? workspace.source
         : await v.storage.readText(path);
     // Index revisions arrive every sync poll; most change nothing here.
-    final memoKey = (path, source, mentions.contentSha, memory, write);
+    final memoKey = (path, source, mentions.contentSha, memory);
     if (_enrichMemo case (final key, final result) when key == memoKey) {
       return result;
     }
     final decisions = resolveMentions(mentions, ref, memory);
     final tags = enrichTags(mentions.keywords, index!, memory: memory);
-    String? apply(String current) =>
-        enrichContentSha(current) == mentions.contentSha
-        ? writeAutoEntities(current, ref, decisions, tags)
-        : null;
-    final updated = apply(source);
-    if (updated == null) {
+    if (enrichContentSha(source) != mentions.contentSha) {
       _enrichTrace('$path edited-since-extraction');
       return none;
-    }
-    if (write && updated != source) {
-      // Re-checked inside: the user may have typed while we resolved.
-      await workspace.mutateNote(path, (current) => apply(current) ?? current);
     }
     // Links the user typed are theirs: no chip offering to unlink them.
     final typed = scanNote(path, stripAutoEntities(source)).outgoingLinks;
@@ -178,8 +143,7 @@ extension _EnrichFlow on _HomeScreenState {
       markers: enrichMarkerOffers(mentions, source, index!, memory),
       source: source,
     );
-    // Not after a write: the rewritten note must be looked at again.
-    if (!(write && updated != source)) _enrichMemo = (memoKey, result);
+    _enrichMemo = (memoKey, result);
     return result;
   }
 
@@ -270,15 +234,7 @@ extension _EnrichFlow on _HomeScreenState {
   }
 
   Future<void> _refreshEnrichDay(String path) async {
-    if (path == note) {
-      await _refreshEnrichment(userAction: true);
-    } else if (vault != null && index != null) {
-      await _applyEnrichment(
-        path,
-        await _enrichMemory(vault!, index!),
-        write: true,
-      );
-    }
+    if (path == note) await _refreshEnrichment();
   }
 
   Future<void> _acceptEnrich(
@@ -477,7 +433,7 @@ extension _EnrichIncoming on _HomeScreenState {
         }
         if (!currentIndex.notesByPath.containsKey(path)) continue;
         try {
-          final view = await _applyEnrichment(path, memory, write: false);
+          final view = await _applyEnrichment(path, memory);
           if (view.decisions.isEmpty &&
               view.tags.isEmpty &&
               view.markers.isEmpty) {

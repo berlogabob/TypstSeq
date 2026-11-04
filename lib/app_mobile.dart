@@ -731,7 +731,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// Last (vault, note, index revision) enrichment ran for, the vault whose
   /// recent days got their blocks, and the open day's decisions.
   Object? _enrichRevision;
-  Vault? _enrichPassVault;
   (Vault, DateTime, EnrichMemory)? _enrichMemoryCache;
   (Object, _EnrichView)? _enrichMemo;
   (String, _EnrichView)? _enrichDecisions;
