@@ -39,3 +39,24 @@ Whiteboard "Add from OpenLabTwin": places tree (part_of) as tree layout; asset c
 Incoming gets typed sections from a small registry: enrich mentions (exists), audio proposals (S5), OCR rows
 (future: rows.jsonl with review:true from tylog-form-ocr dataset mounts), OLT pending bookings (read-only info).
 Same accept/reject → decision ledger. Keep 7-days paging.
+
+## S3a Duplicate finder (read-only)
+Core function `findDuplicates(VaultIndex)` -> groups of NoteRefs (entity kinds + kind note) sharing an enrichKey of
+title/alias (packages/tylog_core/lib/src/enrich.dart enrichKey). Settings > Maintenance "Duplicates" lists groups with
+backlink counts. No writes. Unit test with AndreSabino / "André Sabino" and IADE x3 shapes.
+
+## S3b Merge two pages (reuse rename)
+From a duplicate group: choose survivor + loser. Reuse the existing rename/link-repoint code path (find it: the
+code that updates references when a page is renamed) to repoint every reference to the loser's id/title/aliases to
+the survivor. Survivor header: union aliases (+ loser title), union part_of (surgical header writers). Loser body
+appended to survivor under `== Merged from <title>` unless empty. Then delete loser. One decision-ledger line.
+Preview dialog lists files to change before writing. Tests: refs repointed, compile, nothing lost.
+
+## S9 Mention chooser (user, A24 2026-11-04)
+Today tapping a "?" mention chip in Incoming / daily review accepts the top guess at once; × only rejects it; there
+is no way to pick the right person. Change lib/widgets/enrich_review.dart + callers: tap on a review chip opens a
+sheet "Who is <surface>?" with: the line of text it came from (so context like "my boss" is visible), all ranked
+candidates (title, kind icon, part_of parents, last-seen day), "Other page…" (search over entity + note pages),
+"New page", "Not a person/ignore". Choosing calls the existing onAccept(mention, chosen) (ledger learns the
+surface -> entity); others implicitly not rejected. Linked chips keep current behaviour. Widget test: choose the
+second candidate -> onAccept gets it; Other page search -> onAccept gets that page.
