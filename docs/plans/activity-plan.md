@@ -495,3 +495,11 @@ Issues found:
 - [ ] H3 Claude: T5 Mac verify (whiteboard + OLT) on a scratch vault, at the end.
 - [x] U1 Share "From whom?" chooser: explain empty recents and unmatched searches, clarify searchable pages, and use spacing tokens.
 - [ ] U1-rest Finish the UI polish and user flows round: Incoming (sections, paging, chooser sheet, ignore), remaining share chooser states and keyboard/back behaviour, daily page chip + editor toolbar, entity page (timeline, board switch, part_of), Settings > Maintenance (duplicates, merge preview, namespace), Extensions (pack update, OLT sources, GitHub sign-in), and boards (GitHub columns, OLT whiteboard). Check primary actions, empty/loading/error states, spacing tokens, 360 dp layout, duplicate surfaces, back/close behaviour, and snackbars vs dialogs; record judgment calls here.
+- [x] H1-schedule (Claude): org.tylog.health LaunchAgent nightly 03:30, niced; first run fixed 8 more headerless dailies (backups scratchpad hdrbak); vault 0 findings.
+- [ ] H1-incoming Incoming shows the latest `_system/health/<date>.json` findings as a "Vault health" section (S1 registry) with Open / Open Source; plus Typst compile errors in the nightly report (batched, niced).
+- [ ] U1a Polish Incoming: section order, headers, chooser sheet, ignore, paging button, empty/loading/error, 360 dp fit.
+- [ ] U1b Polish daily page + editor toolbar: suggestions chip, timestamp, broken-markup banner, More bar, no duplicate surfaces.
+- [ ] U1c Polish entity page: header, part_of chips, Contains, Timeline, Board switch (Kanban/Whiteboard/Tree), kind icon picker.
+- [ ] U1d Polish Settings > Maintenance: Duplicates list + merge preview, namespace convert, health report link.
+- [ ] U1e Polish Extensions: packs + update button, OLT sources, GitHub sign-in states, mounts.
+- [ ] U1f Polish boards: GitHub repo columns, OLT whiteboard cards, empty board, add-card flows.
