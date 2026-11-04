@@ -88,6 +88,10 @@ void main() {
       onImportVault: () async {},
       onInstallModule: () async {},
     );
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(
       MaterialApp(home: MaintenancePage(settings: settings)),
     );
@@ -96,5 +100,14 @@ void main() {
     expect(find.text('AndreSabino'), findsOneWidget);
     expect(find.textContaining('2 backlinks'), findsOneWidget);
     expect(find.textContaining('notes/AndreSabino.typ'), findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, 'Merge into…').first);
+    await tester.pumpAndSettle();
+    expect(find.text('Choose a page to keep'), findsOneWidget);
+    expect(
+      find.textContaining('Page to remove:'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('notes/André Sabino.typ'), findsWidgets);
+    expect(tester.takeException(), isNull);
   });
 }

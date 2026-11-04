@@ -504,6 +504,7 @@ Issues found:
 - [ ] U1b-rest Polish timestamp, broken-markup banner, More bar and duplicate surfaces; check remaining daily/editor states and 360 dp layout.
 - [x] U1c Polish entity page: keep long part_of chips compact and actionable at 360 dp; verify opening and removing a parent and opening Contains.
 - [ ] U1c-rest Finish entity page polish: header, remaining part_of and Contains states, Timeline, Board switch (Kanban/Whiteboard/Tree), and kind icon picker; check phone layouts.
-- [ ] U1d Polish Settings > Maintenance: Duplicates list + merge preview, namespace convert, health report link.
+- [x] U1d Clarify which duplicate is removed and choose the survivor at 360 dp.
+- [ ] U1d-rest Finish Settings > Maintenance polish: duplicates list and merge preview, namespace convert, health report link, and remaining loading, error, and phone-layout states.
 - [ ] U1e Polish Extensions: packs + update button, OLT sources, GitHub sign-in states, mounts.
 - [ ] U1f Polish boards: GitHub repo columns, OLT whiteboard cards, empty board, add-card flows.

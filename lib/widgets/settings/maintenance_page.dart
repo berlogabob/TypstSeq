@@ -95,13 +95,23 @@ class _DuplicatesPageState extends State<_DuplicatesPage> {
     final survivor = await showDialog<NoteRef>(
       context: context,
       builder: (context) => SimpleDialog(
-        title: Text('Keep which page instead of ${loser.title}?'),
+        title: const Text('Choose a page to keep'),
         children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+            child: Text(
+              'Page to remove: ${loser.title} · ${loser.path}',
+            ),
+          ),
           for (final n in group.where((n) => n.path != loser.path))
             SimpleDialogOption(
               onPressed: () => Navigator.pop(context, n),
               child: Text('${n.title} · ${n.path}'),
             ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
         ],
       ),
     );
@@ -163,7 +173,7 @@ class _DuplicatesPageState extends State<_DuplicatesPage> {
                         title: Text(note.title),
                         trailing: TextButton(
                           onPressed: () => merge(groups[i], note),
-                          child: const Text('Merge…'),
+                          child: const Text('Merge into…'),
                         ),
                         subtitle: Text(
                           '${note.path} · ${(index.backlinksByTarget[note.path] ?? const []).length} backlinks',
