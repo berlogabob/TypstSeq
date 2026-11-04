@@ -454,7 +454,8 @@ Issues found:
 - [x] S5-rest Link accepted audio tasks to the From person when present.
 - [x] S6 GitHub issue sync per board: configure a repo and view its issues in kanban with pull on open and manual refresh
 - [x] S6-rest Move repository-only GitHub issue cards between todo, doing and done; stale displayed statuses defer to GitHub and enter the decision ledger.
-- [ ] S6-rest-rest Reconcile linked note-backed issue cards in both directions with GitHub winning and ledger conflicts; protect concurrent changes between a remote-card preflight and update.
+- [x] S6-rest-rest Pull GitHub status into linked note-backed issue cards, recording disagreements in the decision ledger.
+- [ ] S6-rest-rest-rest Push linked note-backed card moves to GitHub with GitHub winning conflicts; protect concurrent changes between a remote-card preflight and update.
 - [x] S7 OLT rooms tree + equipment stock levels on the whiteboard
 - [x] S8 Pack update check: weekly GitHub release check, "update available" in Extensions
 - [x] S9 Mention chooser: select a ranked candidate or search pages from Incoming and daily review.

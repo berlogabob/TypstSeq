@@ -163,18 +163,17 @@ void main() {
     client.remoteStatus = 'doing';
     await move('done');
     expect(client.remoteStatus, 'doing');
+    String? log;
     for (var i = 0; i < 20; i++) {
       await io();
-      if (await tester.runAsync(
-            () => vault.storage.exists('_system/decisions/github.jsonl'),
-          ) ==
-          true) {
-        break;
-      }
+      log = await tester.runAsync(() async {
+        const path = '_system/decisions/github.jsonl';
+        return await vault.storage.exists(path)
+            ? vault.storage.readText(path)
+            : '';
+      });
+      if (log?.contains('owner/repo#42') == true) break;
     }
-    final log = await tester.runAsync(
-      () => vault.storage.readText('_system/decisions/github.jsonl'),
-    );
     expect(log, contains('owner/repo#42'));
     expect(log, contains('conflict'));
   });
@@ -429,7 +428,11 @@ void main() {
           text: source,
           projectId: 'p',
           marker: 'fixit',
-          status: source.contains('"done"') ? 'done' : 'todo',
+          status: source.contains('"done"')
+              ? 'done'
+              : source.contains('"doing"')
+              ? 'doing'
+              : 'todo',
           githubNumber: source.contains('tylog-issue-gh') ? 123 : null,
         ),
       ],
@@ -485,15 +488,22 @@ void main() {
     });
     await tester.pump();
     expect(source, contains('"tylog-issue-status": "done"'));
+    await io();
     client.state = 'open';
+    client.linkedDoing = true;
     await tester.runAsync(() async {
       await tester.tap(find.text('Sync with GitHub'));
-      for (var i = 0; i < 200 && client.closed == null; i++) {
+      for (var i = 0; i < 200 && !source.contains('"doing"'); i++) {
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }
     });
     await tester.pump();
-    expect(client.closed, 123);
+    expect(source, contains('"tylog-issue-status": "doing"'));
+    expect(client.closed, isNull);
+    final conflicts = await tester.runAsync(
+      () => vault.storage.readText('_system/decisions/github.jsonl'),
+    );
+    expect(conflicts, contains('GitHub conflict'));
   });
 }
 
@@ -517,6 +527,7 @@ class _FakeGitHub extends GitHubClient {
   }
 
   String state = 'open';
+  bool linkedDoing = false;
   int? closed;
   List<String>? labels;
   @override
@@ -554,7 +565,12 @@ class _FakeGitHub extends GitHubClient {
             if (remoteStatus == 'doing') {'name': 'doing'},
           ],
         }
-      : {'state': state};
+      : {
+          'state': state,
+          'labels': [
+            if (linkedDoing) {'name': 'doing'},
+          ],
+        };
   @override
   Future<Map<String, dynamic>> closeIssue(String repo, int number) async {
     closed = number;

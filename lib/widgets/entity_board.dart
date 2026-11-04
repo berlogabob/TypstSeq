@@ -286,23 +286,11 @@ class _EntityBoardState extends State<EntityBoard> {
       final number = (shown['number'] as num).toInt();
       final current = await client.issue(repository, number);
       if (_remoteColumn(current) != _remoteColumn(shown)) {
-        await widget.vault.storage.createDirectory(decisionsDir);
-        await widget.vault.storage.appendBytes(
-          '$decisionsDir/github.jsonl',
-          utf8.encode(
-            encodeDecisions([
-              Decision(
-                at: DateTime.now().toIso8601String(),
-                device: 'github',
-                item: '$repository#$number',
-                source: 'issue',
-                action: 'seen',
-                target: _remoteColumn(current),
-                context:
-                    'GitHub conflict: attempted $column from ${_remoteColumn(shown)}; GitHub won',
-              ),
-            ]),
-          ),
+        await _recordConflict(
+          repository,
+          number,
+          _remoteColumn(current),
+          'attempted $column from ${_remoteColumn(shown)}',
         );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -332,6 +320,31 @@ class _EntityBoardState extends State<EntityBoard> {
     }
   }
 
+  Future<void> _recordConflict(
+    String repository,
+    int number,
+    String target,
+    String detail,
+  ) async {
+    await widget.vault.storage.createDirectory(decisionsDir);
+    await widget.vault.storage.appendBytes(
+      '$decisionsDir/github.jsonl',
+      utf8.encode(
+        encodeDecisions([
+          Decision(
+            at: DateTime.now().toIso8601String(),
+            device: 'github',
+            item: '$repository#$number',
+            source: 'issue',
+            action: 'seen',
+            target: target,
+            context: 'GitHub conflict: $detail; GitHub won',
+          ),
+        ]),
+      ),
+    );
+  }
+
   Future<void> _sync() async {
     if (busy || widget.githubClient == null) return;
     final issues = issuesForEntity(
@@ -349,15 +362,20 @@ class _EntityBoardState extends State<EntityBoard> {
       for (final issue in issues) {
         final repo = _repo(issue)!;
         final remote = await client.issue(repo, issue.githubNumber!);
-        if (remote['state'] == 'closed' && issue.status != 'done') {
+        final column = _remoteColumn(remote);
+        if (column != issue.status) {
           if (!await widget.mutateNote(
             issue.notePath,
-            (s) => setIssueStatus(s, issue, 'done'),
+            (s) => setIssueStatus(s, issue, column),
           )) {
             throw StateError('Issue could not be saved');
           }
-        } else if (remote['state'] == 'open' && issue.status == 'done') {
-          await client.closeIssue(repo, issue.githubNumber!);
+          await _recordConflict(
+            repo,
+            issue.githubNumber!,
+            column,
+            'local status ${issue.status}',
+          );
         }
       }
       final next = await widget.refreshIndex();
