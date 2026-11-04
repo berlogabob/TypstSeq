@@ -441,7 +441,7 @@ Issues found:
 - [ ] S1 One review queue: OCR rows, OLT bookings, bot drafts land in Incoming with the same accept/reject + decision ledger
 - [ ] S2 Namespace -> structure: one-tap convert of Logseq `A/B/C` titles into parent pages + part_of
 - [ ] S3 Duplicate finder + merge (same name/alias/email; links repointed), e.g. André Sabino x2, IADE x3
-- [ ] S4 Person timeline: dailies, audio, screenshots, tasks mentioning the person, by date
+- [x] S4 Person timeline: dailies, audio, screenshots, tasks mentioning the person, by date
 - [ ] S5 Audio -> task/agenda proposals in Incoming, linked to the From person
 - [ ] S6 GitHub issue sync per board: TyLog kanban shows repo issues, moving a card closes/reopens
 - [ ] S7 OLT rooms tree + equipment stock levels on the whiteboard

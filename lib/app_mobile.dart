@@ -78,6 +78,7 @@ import 'github/send_issue.dart';
 import 'widgets/kind_icon_picker.dart';
 import 'widgets/enrich_review.dart';
 import 'widgets/linked_references.dart';
+import 'widgets/entity_timeline.dart';
 import 'widgets/entity_relationships.dart';
 import 'widgets/dialogs.dart';
 import 'widgets/editor_panel.dart';
@@ -6093,6 +6094,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           if (isEntity)
             EntityHeader(
               note: currentNote,
+              onOpenTimeline: index == null
+                  ? null
+                  : () => showModalBottomSheet<void>(
+                      context: context,
+                      builder: (context) => EntityTimeline(
+                        entity: currentNote,
+                        index: index!,
+                        onOpenPath: (path) {
+                          Navigator.pop(context);
+                          _openPath(path);
+                        },
+                      ),
+                    ),
               onGithubChanged: (value) =>
                   _setNoteProperty(currentNote, 'github', value.trim()),
               relationships: EntityRelationships(

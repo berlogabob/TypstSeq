@@ -17,6 +17,7 @@ class EntityHeader extends StatelessWidget {
     this.imageResolver,
     this.onChangeKindIcon,
     this.onOpenBoard,
+    this.onOpenTimeline,
     this.relationships,
     this.onGithubChanged,
   });
@@ -25,6 +26,7 @@ class EntityHeader extends StatelessWidget {
   final Widget? relationships;
   final VoidCallback? onChangeKindIcon;
   final VoidCallback? onOpenBoard;
+  final VoidCallback? onOpenTimeline;
   final NoteRef note;
   final void Function(String url) onOpenUrl;
   final Future<Uint8List?> Function(String path)? imageResolver;
@@ -61,6 +63,12 @@ class EntityHeader extends StatelessWidget {
               builder: (context, constraints) {
                 final narrow = constraints.maxWidth < 600;
                 final actions = <Widget>[
+                  if (onOpenTimeline != null)
+                    TextButton.icon(
+                      onPressed: onOpenTimeline,
+                      icon: const Icon(Icons.timeline),
+                      label: const Text('Timeline'),
+                    ),
                   if (onOpenBoard != null)
                     TextButton.icon(
                       key: const Key('entity-board-button'),
