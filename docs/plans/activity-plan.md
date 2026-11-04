@@ -430,7 +430,8 @@ Issues found:
 - [x] Incoming freeze: per-mention NFD folding over 1356 pages (562 s) — cached; 7 days per page — 5863f60
 - [x] Audio language swap: Studio first-seconds guess (pt) beat the text — text decides — 5863f60
 - [x] A24 d651292: keyboard opens then closes = accepting a mention linked 'Angela' inside a task's text string; broken Typst makes the editor revert every edit. Daily repaired, linker guarded
-- [ ] E1 Editor: one malformed line must not silently block all edits; show 'syntax error at line N, open Source' instead
+- [x] E1 Editor: identify the task-string mention-link corruption and offer its line and Open Source for repair.
+- [ ] E1-rest Detect other malformed Typst that blocks rich edits, with accurate source lines and an Open Source action.
 - [ ] A24 "add vault" screen after freeze: unconfirmed cause, recheck on 5863f60
 - [x] T1 Share audio from WhatsApp/Telegram: "From" person picker (codex, spec 2026-11-04-wave21/t1)
 - [x] T2 Flaky tests: workspace_controller issues + whiteboard Tree (codex, t2)

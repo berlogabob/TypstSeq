@@ -1322,7 +1322,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _richEditorError(Object error) {
     if (!mounted) return;
-    showSnack(context, 'Edit kept safe: $error');
+    if (error is RichEditorSyntaxError) {
+      showSnack(
+        context,
+        '${error.toString()}. Open Source to repair it.',
+        action: SnackBarAction(
+          label: 'Open Source',
+          onPressed: () => _setEditorMode('source'),
+        ),
+      );
+    } else {
+      showSnack(context, 'Edit kept safe: $error');
+    }
   }
 
   Future<void> _tapProtected(String id) => _handleAtomSource(

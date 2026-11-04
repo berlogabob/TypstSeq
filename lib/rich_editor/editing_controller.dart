@@ -1,5 +1,29 @@
 part of '../rich_editor.dart';
 
+class RichEditorSyntaxError implements Exception {
+  const RichEditorSyntaxError(this.line);
+  final int line;
+
+  @override
+  String toString() => 'Syntax error at line $line';
+}
+
+int? _brokenTaskLinkLine(String source) {
+  // Detect the historical mention-link corruption, not arbitrary Typst errors.
+  final pattern = RegExp(
+    r'text\s*:\s*"(?:\\.|[^"\\])*#tylog\.ref-note\s*\(\s*"',
+  );
+  for (final block in parseControlledTypst(source).blocks) {
+    if (block.kind != ControlledBlockKind.task) continue;
+    final match = pattern.firstMatch(block.source);
+    if (match == null) continue;
+    final offset =
+        block.start + match.start + match.group(0)!.indexOf('#tylog.ref-note');
+    return '\n'.allMatches(source.substring(0, offset)).length + 1;
+  }
+  return null;
+}
+
 class TyLogEditingController extends TextEditingController {
   TyLogEditingController({
     required String source,
@@ -39,7 +63,10 @@ class TyLogEditingController extends TextEditingController {
     this.nextTaskId,
     this.beforeTaskDoing,
     this.foldScope,
-  ) : super(text: document.visibleText) {
+  ) : _syntaxErrorLine = _brokenTaskLinkLine(
+        document.toSource(validate: false),
+      ),
+      super(text: document.visibleText) {
     _lastValue = value;
     addListener(_handleValue);
   }
@@ -87,6 +114,7 @@ class TyLogEditingController extends TextEditingController {
   late TextEditingValue _lastValue;
   _Snapshot? _compositionStart;
   bool _updating = false;
+  int? _syntaxErrorLine;
   TyLogInlineStyle _typingStyle = const TyLogInlineStyle();
 
   bool get canUndo => _undo.isNotEmpty;
@@ -114,6 +142,7 @@ class TyLogEditingController extends TextEditingController {
     _rebaseTaskIme = null;
     searchReveal = null; // offsets belong to the previous note
     document = TyLogDocument.parse(source);
+    _syntaxErrorLine = _brokenTaskLinkLine(source);
     value = TextEditingValue(
       text: document.visibleText,
       selection: TextSelection.collapsed(offset: document.visibleText.length),
@@ -143,6 +172,13 @@ class TyLogEditingController extends TextEditingController {
       }
       _lastValue = next;
       _convertTypedTask();
+      return;
+    }
+    if (_syntaxErrorLine case final int line) {
+      _updating = true;
+      value = _lastValue;
+      _updating = false;
+      onError(RichEditorSyntaxError(line));
       return;
     }
     // Keep the undo snapshot lazy; copying the whole document on every
