@@ -506,7 +506,8 @@ Issues found:
 - [x] U1c Polish entity page: keep long part_of chips compact and actionable at 360 dp; verify opening and removing a parent and opening Contains.
 - [x] U1c-rest Finish entity page polish: header, remaining part_of and Contains states, Timeline, Board switch (Kanban/Whiteboard/Tree), and kind icon picker; check phone layouts.
 - [x] U1d Clarify which duplicate is removed and choose the survivor at 360 dp.
-- [ ] U1d-rest Finish Settings > Maintenance polish: duplicates list and merge preview, namespace convert, health report link, and remaining loading, error, and phone-layout states.
+- [x] U1d-rest Keep duplicate review reachable while indexing, show an index-unavailable state with retry after failures, and keep long duplicate titles/paths readable on phones; existing merge preview and namespace conversion remain available.
+- [ ] U1d-rest-rest Add a direct latest nightly health-report link in Maintenance and visually review namespace conversion and the merge preview at 360 dp.
 - [x] U1e Keep pack names and update buttons usable on phones in Extensions.
 - [ ] U1e-rest Polish Extensions: OLT sources, GitHub sign-in states, mounts, and remaining pack states and phone layouts.
 - [x] U1f Keep GitHub repository board controls and repository identity usable at 360 dp.

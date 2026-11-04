@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:tylog_core/tylog_core.dart' show findDuplicates, NoteRef;
+import 'package:tylog_core/tylog_core.dart'
+    show findDuplicates, NoteRef, VaultIndex;
 import '../../workspace_controller.dart';
 import '../app_icons.dart';
 import '../ds/app_tile.dart';
@@ -22,7 +23,7 @@ class MaintenancePage extends StatelessWidget {
       AppTile(
         icon: Icons.content_copy,
         title: 'Duplicates',
-        onTap: settings.workspace?.index == null
+        onTap: settings.workspace == null
             ? null
             : () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
@@ -99,9 +100,7 @@ class _DuplicatesPageState extends State<_DuplicatesPage> {
         children: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-            child: Text(
-              'Page to remove: ${loser.title} · ${loser.path}',
-            ),
+            child: Text('Page to remove: ${loser.title} · ${loser.path}'),
           ),
           for (final n in group.where((n) => n.path != loser.path))
             SimpleDialogOption(
@@ -156,33 +155,66 @@ class _DuplicatesPageState extends State<_DuplicatesPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final index = widget.workspace.index!;
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: widget.workspace,
+    builder: (context, _) {
+      final index = widget.workspace.index;
+      final failed = widget.workspace.status.startsWith(
+        'Index refresh failed:',
+      );
+      return Scaffold(
+        appBar: AppBar(title: const Text('Duplicates')),
+        body: index == null
+            ? Center(
+                child: failed
+                    ? Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('Index could not be loaded'),
+                          const SizedBox(height: 8),
+                          TextButton(
+                            onPressed: () => widget.workspace.rebuildIndex(),
+                            child: const Text('Retry'),
+                          ),
+                        ],
+                      )
+                    : widget.workspace.awaitingIndex
+                    ? const CircularProgressIndicator()
+                    : const Text('No index available'),
+              )
+            : _duplicateList(index),
+      );
+    },
+  );
+
+  Widget _duplicateList(VaultIndex index) {
     final groups = findDuplicates(index);
-    return Scaffold(
-      appBar: AppBar(title: const Text('Duplicates')),
-      body: groups.isEmpty
-          ? const Center(child: Text('No duplicates found'))
-          : ListView.builder(
-              itemCount: groups.length,
-              itemBuilder: (context, i) => Card(
-                child: Column(
-                  children: [
-                    for (final note in groups[i])
-                      ListTile(
-                        title: Text(note.title),
-                        trailing: TextButton(
-                          onPressed: () => merge(groups[i], note),
-                          child: const Text('Merge into…'),
-                        ),
-                        subtitle: Text(
-                          '${note.path} · ${(index.backlinksByTarget[note.path] ?? const []).length} backlinks',
-                        ),
-                      ),
-                  ],
+    if (groups.isEmpty) return const Center(child: Text('No duplicates found'));
+    return ListView.builder(
+      itemCount: groups.length,
+      itemBuilder: (context, i) => Card(
+        child: Column(
+          children: [
+            for (final note in groups[i])
+              ListTile(
+                title: Text(
+                  note.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: TextButton(
+                  onPressed: () => merge(groups[i], note),
+                  child: const Text('Merge into…'),
+                ),
+                subtitle: Text(
+                  '${note.path} · ${(index.backlinksByTarget[note.path] ?? const []).length} backlinks',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-            ),
+          ],
+        ),
+      ),
     );
   }
 }

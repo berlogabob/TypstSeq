@@ -103,11 +103,49 @@ void main() {
     await tester.tap(find.widgetWithText(TextButton, 'Merge into…').first);
     await tester.pumpAndSettle();
     expect(find.text('Choose a page to keep'), findsOneWidget);
-    expect(
-      find.textContaining('Page to remove:'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('Page to remove:'), findsOneWidget);
     expect(find.textContaining('notes/André Sabino.typ'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Duplicates stays reachable while the index is unavailable', (
+    tester,
+  ) async {
+    final workspace = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      reconcileTasks: (_) async {},
+    )..status = 'Index refresh failed: test';
+    addTearDown(workspace.dispose);
+    final settings = SettingsSheet(
+      workspace: workspace,
+      vaultPath: '/vault',
+      cloud: null,
+      syncing: false,
+      syncStatusSubtitle: '',
+      onNextcloud: () {},
+      vaultCount: 1,
+      themeMode: ThemeMode.system,
+      onThemeModeChanged: (_) {},
+      onManageVaults: () {},
+      onEnableReminders: () async {},
+      onMigrateEntityTypes: () async {},
+      onStripImportNoise: () async {},
+      onImportVault: () async {},
+      onInstallModule: () async {},
+    );
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(home: MaintenancePage(settings: settings)),
+    );
+
+    await tester.tap(find.text('Duplicates'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Index could not be loaded'), findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
