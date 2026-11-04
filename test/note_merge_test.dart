@@ -99,35 +99,50 @@ void main() {
     },
   );
 
-  test('refuses to delete a duplicate with body text', () async {
-    final root = await Directory.systemTemp.createTemp('merge-test-');
-    final storage = LocalVaultStorage(root);
-    final vault = Vault.withStorage(storage);
-    await vault.ensureCreated();
-    final workspace = WorkspaceController(
-      taskScheduler: TaskScheduler(),
-      reconcileTasks: (_) async {},
-    )..vault = vault;
-    addTearDown(() async {
-      workspace.dispose();
-      await root.delete(recursive: true);
-    });
-    await storage.writeText(
-      'notes/a.typ',
-      replaceNoteHeader('', const NoteMetadataDraft(id: 'a', title: 'A')),
-    );
-    await storage.writeText(
-      'notes/b.typ',
-      replaceNoteHeader(
-        'Important body',
-        const NoteMetadataDraft(id: 'b', title: 'B'),
-      ),
-    );
-    workspace.index = await scanVaultStorage(storage);
-    expect(
-      () => workspace.previewDuplicateMerge('notes/a.typ', 'notes/b.typ'),
-      throwsStateError,
-    );
-    expect(await storage.readText('notes/b.typ'), contains('Important body'));
-  });
+  test(
+    'merges a canonical duplicate with body and repoints its links',
+    () async {
+      final root = await Directory.systemTemp.createTemp('merge-test-');
+      final storage = LocalVaultStorage(root);
+      final vault = Vault.withStorage(storage);
+      await vault.ensureCreated();
+      final workspace = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        reconcileTasks: (_) async {},
+      )..vault = vault;
+      addTearDown(() async {
+        workspace.dispose();
+        await root.delete(recursive: true);
+      });
+      await storage.writeText(
+        'notes/a.typ',
+        replaceNoteHeader('', const NoteMetadataDraft(id: 'a', title: 'A')),
+      );
+      await storage.writeText(
+        'notes/b.typ',
+        replaceNoteHeader(
+          'Important body with #tylog.ref-note("b")[B].\n',
+          const NoteMetadataDraft(id: 'b', title: 'B'),
+        ),
+      );
+      workspace.index = await scanVaultStorage(storage);
+      final preview = await workspace.previewDuplicateMerge(
+        'notes/a.typ',
+        'notes/b.typ',
+      );
+      await workspace.mergeDuplicate(preview);
+      final merged = await storage.readText('notes/a.typ');
+      expect(merged, contains('== Merged from B'));
+      expect(merged, contains('Important body with #tylog.ref-note("a")[A].'));
+      expect(await storage.exists('notes/b.typ'), isFalse);
+      final compile = Process.runSync('typst', [
+        'compile',
+        '--root',
+        root.path,
+        '${root.path}/notes/a.typ',
+        '${root.path}/out.pdf',
+      ]);
+      expect(compile.exitCode, 0, reason: '${compile.stderr}');
+    },
+  );
 }

@@ -443,7 +443,8 @@ Issues found:
 - [x] S2 Namespace -> structure: one-tap convert of Logseq `A/B/C` titles into parent pages + part_of
 - [x] S3a Duplicate finder (read-only)
 - [x] S3b Merge two pages (reuse rename), e.g. André Sabino x2, IADE x3
-- [ ] S3b-rest Merge nonempty or noncanonical pages while preserving body and all metadata; repoint all other link forms and references outside indexed notes, handle ambiguous names and recover safely from partial writes.
+- [x] S3b-rest Merge canonical pages with body text in the same folder, preserving supported metadata and repointing supported references.
+- [ ] S3b-rest-rest Merge noncanonical pages and preserve all metadata; handle pages in different folders, repoint other link forms and references outside indexed notes, handle ambiguous names, and recover safely from partial writes.
 - [x] S4 Person timeline: dailies, audio, screenshots, tasks mentioning the person, by date
 - [x] S5 Audio -> task/agenda proposals in Incoming
 - [x] S5-rest Link accepted audio tasks to the From person when present.

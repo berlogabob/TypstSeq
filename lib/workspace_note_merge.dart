@@ -35,14 +35,21 @@ extension _DuplicateMerge on WorkspaceController {
     }
     final loserText = await readNote(loser);
     final draft = NoteMetadataDraft.fromNote(scanNote(loser, loserText));
-    // This first slice only removes canonical empty pages with no extra metadata.
+    final canonical = replaceNoteHeader('', draft);
+    final body = loserText.startsWith(canonical)
+        ? loserText.substring(canonical.length)
+        : null;
     if (draft.tags.isNotEmpty ||
         draft.date != null ||
         draft.project != null ||
         draft.properties.keys.any((k) => k != 'part_of') ||
-        loserText.trim() != replaceNoteHeader('', draft).trim()) {
+        (body == null && loserText.trim() != canonical.trim()) ||
+        (body != null &&
+            body.trim().isNotEmpty &&
+            survivor.substring(0, survivor.lastIndexOf('/')) !=
+                loser.substring(0, loser.lastIndexOf('/')))) {
       throw StateError(
-        'Only empty pages without additional metadata can be merged yet.',
+        'Only canonical pages without additional metadata in the same folder can be merged yet.',
       );
     }
     final resolver = LinkResolver(currentIndex.notes);
@@ -90,6 +97,22 @@ extension _DuplicateMerge on WorkspaceController {
           NoteMetadataDraft.fromNote(metadata),
           {...metadata.partOf, ...remove.partOf}.toList(),
         );
+        if (body != null && body.trim().isNotEmpty) {
+          final mergedBody = _renameReferences(
+            body,
+            targets,
+            remove.title,
+            keep.id,
+            labelTitle: keep.title,
+          );
+          if (mergedBody.contains(typstString(remove.id))) {
+            throw StateError(
+              'An unsupported reference to the page ID remains in $loser.',
+            );
+          }
+          updated =
+              '$updated\n\n== Merged from ${escapeMarkup(remove.title)}\n\n$mergedBody';
+        }
       }
       if (updated != text) {
         if (n.path.startsWith('ext/')) {
