@@ -66,3 +66,58 @@ Future<List<OcrReviewRow>> loadOcrReviewRows(
   }
   return result;
 }
+
+class AudioProposal {
+  const AudioProposal(this.id, this.note, this.text, this.kind, this.date);
+  final String id, note, text, kind;
+  final String? date;
+}
+
+Future<List<AudioProposal>> loadAudioProposals(
+  VaultStorage storage,
+  Iterable<Decision> decisions,
+) async {
+  final decided = decisions
+      .where(
+        (d) =>
+            d.source == 'audio' &&
+            (d.action == 'accepted' || d.action == 'rejected'),
+      )
+      .map((d) => d.item)
+      .toSet();
+  final result = <AudioProposal>[];
+  try {
+    for (final file in await storage.list(path: '_system/enrich/audio')) {
+      if (file.isDirectory || !file.path.endsWith('.json')) continue;
+      try {
+        final data = jsonDecode(await storage.readText(file.path)) as Map;
+        final note = data['note'];
+        if (note is! String ||
+            !note.startsWith('notes/') ||
+            !note.endsWith('.typ'))
+          continue;
+        for (final item in data['items'] as List) {
+          if (item is! Map ||
+              item['id'] is! String ||
+              item['text'] is! String ||
+              (item['text'] as String).trim().isEmpty ||
+              decided.contains(item['id']))
+            continue;
+          final date = item['date'];
+          result.add(
+            AudioProposal(
+              item['id'],
+              note,
+              item['text'],
+              item['kind'] == 'agenda' && date is String ? 'agenda' : 'task',
+              date is String && RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(date)
+                  ? date
+                  : null,
+            ),
+          );
+        }
+      } catch (_) {}
+    }
+  } catch (_) {}
+  return result;
+}

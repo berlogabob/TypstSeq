@@ -1,6 +1,40 @@
 part of '../app_mobile.dart';
 
 extension _IncomingFlow on _HomeScreenState {
+  Future<void> _decideAudioProposal(AudioProposal proposal, bool accept) async {
+    final v = vault;
+    final device = vaultRegistry?.deviceId;
+    if (v == null ||
+        device == null ||
+        index?.notesByPath[proposal.note]?.kind != 'audio')
+      return;
+    if (accept) {
+      await workspace.mutateNote(proposal.note, (source) {
+        final id = proposal.id.replaceFirst('audio:', 'audio-');
+        if (source.contains('id: ${typstString(id)}')) return source;
+        final marker = source.indexOf('// tylog:auto-entities');
+        final offset = marker < 0 ? source.length : marker;
+        final before = source.substring(0, offset);
+        final separator = before.isEmpty || before.endsWith('\n') ? '' : '\n';
+        return '$before$separator${taskSnippet(id: id, text: proposal.text, due: proposal.date)}\n${source.substring(offset)}';
+      });
+    }
+    await _appendIncomingDecision(
+      v,
+      device,
+      Decision(
+        at: DateTime.now().toIso8601String(),
+        device: device,
+        item: proposal.id,
+        source: 'audio',
+        action: accept ? 'accepted' : 'rejected',
+        target: proposal.note,
+      ),
+    );
+    if (accept)
+      unawaited(workspace.refreshIndex(updateStatus: false, always: true));
+  }
+
   Future<void> _decideIncoming(NoteRef note, String action) async {
     final v = vault;
     final device = vaultRegistry?.deviceId;

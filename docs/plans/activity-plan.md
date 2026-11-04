@@ -443,7 +443,8 @@ Issues found:
 - [x] S2 Namespace -> structure: one-tap convert of Logseq `A/B/C` titles into parent pages + part_of
 - [ ] S3 Duplicate finder + merge (same name/alias/email; links repointed), e.g. André Sabino x2, IADE x3
 - [x] S4 Person timeline: dailies, audio, screenshots, tasks mentioning the person, by date
-- [ ] S5 Audio -> task/agenda proposals in Incoming, linked to the From person
+- [x] S5 Audio -> task/agenda proposals in Incoming
+- [ ] S5-rest Link accepted audio tasks to the From person when present.
 - [x] S6 GitHub issue sync per board: configure a repo and view its issues in kanban with pull on open and manual refresh
 - [ ] S6-rest Move GitHub issue cards between columns (including close/reopen and doing label); resolve conflicts with GitHub winning and record them in the decision ledger.
 - [x] S7 OLT rooms tree + equipment stock levels on the whiteboard

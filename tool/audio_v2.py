@@ -678,7 +678,7 @@ def context_messages(context_text, target, window, song=None):
     language = worker.LANGUAGE_NAMES.get(target, target)
     schema = ('{"summary": string, "scenes": [{"line": int, "title": string}], '
               f'"glossary": [{{"heard": string, "spelling": string, "{target}": string}}], '
-              '"references": [{"line": int, "term": string, "explanation": string}]}')
+              '"references": [{"line": int, "term": string, "explanation": string}], "action_items": [{"line": int, "text": string, "date": string or null, "kind": "task" or "agenda"}]}')
     intro = "You read the transcript of one audio recording. "
     summary = "summary: 5 to 10 sentences on what the recording is and what happens in it. "
     if song is not None:
@@ -695,6 +695,7 @@ def context_messages(context_text, target, window, song=None):
         f"{target} is its rendering in {language}. "
         "references: allusions, quotations, places and names a listener may not know, with the number of the line "
         "where each occurs and a one or two sentence explanation. "
+        "action_items: explicit actions and dated appointments only; date is YYYY-MM-DD when known, otherwise null. "
         "Use only line numbers from the input. Add nothing that is neither in the transcript nor in the Context. "
         "The Context is written by the user (programme, cast, notes); use it for names and spelling."
     )
@@ -765,7 +766,16 @@ def parse_context_reply(reply, numbers, target):
         explanation = _text(item, "explanation")
         if number is not None and term and explanation:
             references.append({"line": number, "term": term, "explanation": explanation})
-    return {"summary": summary.strip(), "scenes": scenes, "glossary": glossary, "references": references}
+    actions = []
+    for item in _items(value, "action_items"):
+        number, text = _line_number(item, numbers), _text(item, "text")
+        if number is not None and text:
+            date = _text(item, "date")
+            if date and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+                date = None
+            actions.append({"line": number, "text": text, "date": date,
+                            "kind": "agenda" if item.get("kind") == "agenda" and date else "task"})
+    return {"summary": summary.strip(), "scenes": scenes, "glossary": glossary, "references": references, "action_items": actions}
 
 
 def parse_summary_reply(reply):
@@ -803,6 +813,7 @@ def context_pass(speech, context_text, target, chat, song=None):
         "scenes": sorted((s for part in parts for s in part["scenes"]), key=lambda s: s["line"]),
         "glossary": glossary,
         "references": sorted((r for part in parts for r in part["references"]), key=lambda r: r["line"]),
+        "action_items": [a for part in parts for a in part["action_items"]],
     }
 
 

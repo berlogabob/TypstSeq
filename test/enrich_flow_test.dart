@@ -406,6 +406,68 @@ void main() {
     variant: desktop,
   );
 
+  testWidgets('audio proposal is accepted into its note and recorded', (
+    tester,
+  ) async {
+    final (home, storage) = await _mount(tester);
+    const path = 'notes/audio.typ';
+    const source =
+        '#import "/_system/tylog.typ" as tylog\n#show: tylog.note.with(id: "audio-id", title: "Recording", kind: "audio")\n\n= Recording\n\nFrom: #tylog.ref-note("kz")[Katia]\n';
+    await tester.runAsync(() async {
+      await storage.writeText(path, source);
+      await storage.writeText(
+        '_system/enrich/audio/a.json',
+        jsonEncode({
+          'note': path,
+          'items': [
+            {
+              'id': 'audio:abc',
+              'text': 'Send notes',
+              'date': '2026-11-06',
+              'kind': 'agenda',
+            },
+            {'id': 'audio:def', 'text': 'Call back', 'kind': 'task'},
+          ],
+        }),
+      );
+    });
+    final oldIndex = home.workspace.index as VaultIndex;
+    home.workspace.index = VaultIndex(
+      notesByPath: {
+        ...oldIndex.notesByPath,
+        path: _note('audio-id', path, 'Recording', 'audio'),
+      },
+      backlinksByTarget: const {},
+    );
+    Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
+    await _pump(tester);
+    await tester.tap(find.textContaining('More').first);
+    await _pump(tester);
+    await tester.tap(find.byKey(const ValueKey('incoming-open')));
+    await _pump(tester);
+    await tester.ensureVisible(find.text('Add to agenda'));
+    await tester.tap(find.text('Add to agenda'));
+    await _pump(tester);
+    final saved = await tester.runAsync(() => storage.readText(path));
+    expect(saved, startsWith(source));
+    expect(saved, contains('text: "Send notes"'));
+    expect(saved, contains('due: "2026-11-06"'));
+    final reject = find.byTooltip('Reject audio proposal');
+    await tester.ensureVisible(reject);
+    await tester.tap(reject);
+    await _pump(tester);
+    final ledger = await tester.runAsync(
+      () => storage.readText('_system/decisions/dev1.jsonl'),
+    );
+    expect(ledger, contains('"action":"accepted"'));
+    expect(ledger, contains('"action":"rejected"'));
+    expect(
+      await tester.runAsync(() => storage.readText(path)),
+      isNot(contains('Call back')),
+    );
+    await tester.pumpWidget(const SizedBox());
+  }, variant: desktop);
+
   testWidgets('a note edited since extraction is left alone', (tester) async {
     final (home, storage) = await _mount(tester);
     expect(home.workspace.source, contains(autoEntitiesMarker));

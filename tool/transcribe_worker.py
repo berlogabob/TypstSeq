@@ -1324,6 +1324,12 @@ def context_stage(vault, job, note, sidecar, lines, settings, translate):
     data = audio_v2.load_sidecar(sidecar)
     data.update(context=result, context_lines=context_lines, context_translated=translated)
     audio_v2.save_sidecar(sidecar, data)
+    items = []
+    for item in result.get("action_items", []):
+        identity = json.dumps([job["note"], item], ensure_ascii=False, sort_keys=True)
+        items.append({**item, "id": "audio:" + hashlib.sha1(identity.encode("utf-8")).hexdigest()})
+    proposal = Path(vault) / "_system/enrich/audio" / (hashlib.sha1(job["note"].encode("utf-8")).hexdigest() + ".json")
+    audio_v2.save_sidecar(proposal, {"note": job["note"], "items": items})
 
 
 def _render_transcript(note, sidecar, data):

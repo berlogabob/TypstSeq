@@ -5,6 +5,26 @@ import 'package:tylog/review_queue.dart';
 import 'package:tylog_core/tylog_core.dart';
 
 void main() {
+  test('audio proposals load and decisions hide them', () async {
+    final dir = await Directory.systemTemp.createTemp('audio-review');
+    addTearDown(() => dir.delete(recursive: true));
+    final storage = LocalVaultStorage(dir);
+    await storage.writeText(
+      '_system/enrich/audio/a.json',
+      '{"note":"notes/audio.typ","items":[{"id":"audio:abc","text":"Send notes","date":"2026-11-06","kind":"task"}]}',
+    );
+    final rows = await loadAudioProposals(storage, []);
+    expect(rows.single.text, 'Send notes');
+    expect(rows.single.note, 'notes/audio.typ');
+    final decision = Decision(
+      at: 'now',
+      device: 'd',
+      item: rows.single.id,
+      source: 'audio',
+      action: 'rejected',
+    );
+    expect(await loadAudioProposals(storage, [decision]), isEmpty);
+  });
   test(
     'OCR review rows are loaded from mounts and ledger decisions hide them',
     () async {

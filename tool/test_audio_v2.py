@@ -668,3 +668,15 @@ def test_song_note_title_escapes_quotes_and_markup():
     assert header_title(text) == plain
     assert heading_line(text) == '= Guns "N" \\\\ Roses — \\*Sweet\\* \\#1 \\[live\\]'
     assert text.count("#show: tylog.note.with(") == 1 and text.count("\n)\n") == 1
+
+
+def test_context_extracts_action_and_agenda_proposals():
+    reply = json.dumps({"summary": "Meeting", "action_items": [
+        {"line": 1, "text": "Send notes", "date": "2026-11-06"},
+        {"line": 2, "text": "Meet Ada", "date": "2026-11-07", "kind": "agenda"},
+    ]})
+    result = v2.context_pass(SPEECH, "", "ru", lambda _: reply)
+    assert result["action_items"] == [
+        {"line": 1, "text": "Send notes", "date": "2026-11-06", "kind": "task"},
+        {"line": 2, "text": "Meet Ada", "date": "2026-11-07", "kind": "agenda"},
+    ]
