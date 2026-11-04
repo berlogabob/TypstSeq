@@ -618,6 +618,7 @@ extension _EnrichIncoming on _HomeScreenState {
                   workspace.mounts.map((mount) => mount.id),
                   decisions,
                   offset: ocrOffset,
+                  summary: _actionableSidecars,
                 )
               : <OcrReviewRow>[],
           day == null
@@ -625,6 +626,7 @@ extension _EnrichIncoming on _HomeScreenState {
                   v.storage,
                   decisions,
                   offset: audioOffset,
+                  summary: _actionableSidecars,
                 )
               : <AudioProposal>[],
           day == null ? await loadHealthFindings(v.storage) : <HealthFinding>[],
@@ -647,11 +649,17 @@ extension _EnrichIncoming on _HomeScreenState {
       isScrollControlled: true,
       builder: (context) => StatefulBuilder(
         builder: (context, setSheetState) {
-          void decide(Future<void> Function() action, {String? path}) {
+          void decide(
+            Future<void> Function() action, {
+            String? path,
+            Decision? decision,
+          }) {
             unawaited(
               _enrichOnce(() async {
                 await action();
-                decisionSnapshot = null;
+                if (decision case final row? when row.device.isNotEmpty) {
+                  decisionSnapshot = [...?decisionSnapshot, row];
+                }
                 if (context.mounted) {
                   setSheetState(() {
                     future = loadQueue(refreshPath: path);
@@ -839,6 +847,16 @@ extension _EnrichIncoming on _HomeScreenState {
                                                 proposal,
                                                 true,
                                               ),
+                                              decision: Decision(
+                                                at: DateTime.now()
+                                                    .toIso8601String(),
+                                                device:
+                                                    vaultRegistry?.deviceId ??
+                                                    '',
+                                                item: proposal.id,
+                                                source: 'audio',
+                                                action: 'accepted',
+                                              ),
                                             ),
                                           ),
                                           IconButton(
@@ -848,6 +866,16 @@ extension _EnrichIncoming on _HomeScreenState {
                                               () => _decideAudioProposal(
                                                 proposal,
                                                 false,
+                                              ),
+                                              decision: Decision(
+                                                at: DateTime.now()
+                                                    .toIso8601String(),
+                                                device:
+                                                    vaultRegistry?.deviceId ??
+                                                    '',
+                                                item: proposal.id,
+                                                source: 'audio',
+                                                action: 'rejected',
                                               ),
                                             ),
                                           ),
@@ -877,44 +905,66 @@ extension _EnrichIncoming on _HomeScreenState {
                                       IconButton(
                                         tooltip: 'Accept',
                                         icon: const Icon(Icons.check),
-                                        onPressed: () => decide(() async {
-                                          final device =
-                                              vaultRegistry?.deviceId;
-                                          if (device == null) return;
-                                          await _appendIncomingDecision(
-                                            v,
-                                            device,
-                                            Decision(
-                                              at: DateTime.now()
-                                                  .toIso8601String(),
-                                              device: device,
-                                              item: row.id,
-                                              source: 'ocr',
-                                              action: 'accepted',
-                                            ),
-                                          );
-                                        }),
+                                        onPressed: () => decide(
+                                          () async {
+                                            final device =
+                                                vaultRegistry?.deviceId;
+                                            if (device == null) return;
+                                            await _appendIncomingDecision(
+                                              v,
+                                              device,
+                                              Decision(
+                                                at: DateTime.now()
+                                                    .toIso8601String(),
+                                                device: device,
+                                                item: row.id,
+                                                source: 'ocr',
+                                                action: 'accepted',
+                                              ),
+                                            );
+                                          },
+                                          decision: Decision(
+                                            at: DateTime.now()
+                                                .toIso8601String(),
+                                            device:
+                                                vaultRegistry?.deviceId ?? '',
+                                            item: row.id,
+                                            source: 'ocr',
+                                            action: 'accepted',
+                                          ),
+                                        ),
                                       ),
                                       IconButton(
                                         tooltip: 'Reject',
                                         icon: const Icon(Icons.close),
-                                        onPressed: () => decide(() async {
-                                          final device =
-                                              vaultRegistry?.deviceId;
-                                          if (device == null) return;
-                                          await _appendIncomingDecision(
-                                            v,
-                                            device,
-                                            Decision(
-                                              at: DateTime.now()
-                                                  .toIso8601String(),
-                                              device: device,
-                                              item: row.id,
-                                              source: 'ocr',
-                                              action: 'rejected',
-                                            ),
-                                          );
-                                        }),
+                                        onPressed: () => decide(
+                                          () async {
+                                            final device =
+                                                vaultRegistry?.deviceId;
+                                            if (device == null) return;
+                                            await _appendIncomingDecision(
+                                              v,
+                                              device,
+                                              Decision(
+                                                at: DateTime.now()
+                                                    .toIso8601String(),
+                                                device: device,
+                                                item: row.id,
+                                                source: 'ocr',
+                                                action: 'rejected',
+                                              ),
+                                            );
+                                          },
+                                          decision: Decision(
+                                            at: DateTime.now()
+                                                .toIso8601String(),
+                                            device:
+                                                vaultRegistry?.deviceId ?? '',
+                                            item: row.id,
+                                            source: 'ocr',
+                                            action: 'rejected',
+                                          ),
+                                        ),
                                       ),
                                     ],
                                   ),

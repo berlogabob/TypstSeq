@@ -301,6 +301,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void>? _shutdownFuture;
   Future<void>? _databaseCloseFuture;
   final _mentionQueryCache = MentionQueryCache();
+  final _actionableSidecars = ActionableSidecarSummary();
   final Set<String> _reservedTaskIds = {};
   final sourceController = TextEditingController();
   final sourceEditorKey = GlobalKey<EditorState>();

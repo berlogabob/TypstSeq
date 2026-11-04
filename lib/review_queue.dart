@@ -77,7 +77,17 @@ Future<List<OcrReviewRow>> loadOcrReviewRows(
   Iterable<Decision> decisions, {
   int offset = 0,
   int limit = 20,
+  ActionableSidecarSummary? summary,
 }) async {
+  if (summary != null) {
+    return summary.ocr(
+      storage,
+      mounts,
+      decisions,
+      offset: offset,
+      limit: limit,
+    );
+  }
   final decided = decisions
       .where(
         (d) =>
@@ -139,12 +149,236 @@ class AudioProposal {
   final String? date;
 }
 
+/// Caches parsed actionable sidecars by provider identity and file metadata.
+/// Each changed input is read through a bounded stream to keep a corrupt or
+/// unexpectedly large sidecar from monopolizing the Incoming refresh.
+class ActionableSidecarSummary {
+  static const _maxSidecarBytes = 1024 * 1024;
+  final _files = <(Object, String), _CachedSidecar>{};
+
+  Future<List<AudioProposal>> audio(
+    VaultStorage storage,
+    Iterable<Decision> decisions, {
+    int offset = 0,
+    int limit = 20,
+  }) async {
+    final rows = <AudioProposal>[];
+    try {
+      for (final file in await storage.list(path: '_system/enrich/audio')) {
+        if (file.isDirectory || !file.path.endsWith('.json')) continue;
+        final cached = await _read(storage, file, () => <AudioProposal>[]);
+        rows.addAll(cached.audio);
+      }
+    } catch (_) {}
+    final decided = _decided(decisions, 'audio');
+    return _page(
+      rows.where((row) => !decided.contains(row.id)).toList(),
+      offset,
+      limit,
+    );
+  }
+
+  Future<List<OcrReviewRow>> ocr(
+    VaultStorage storage,
+    Iterable<String> mounts,
+    Iterable<Decision> decisions, {
+    int offset = 0,
+    int limit = 20,
+  }) async {
+    final rows = <OcrReviewRow>[];
+    for (final mount in mounts) {
+      try {
+        final root = 'ext/$mount';
+        final manifest = await storage.stat('$root/manifest.json');
+        final manifestText = manifest == null
+            ? ''
+            : await _readTextBounded(storage, manifest.path);
+        var template = mount;
+        var created = '';
+        try {
+          final data = jsonDecode(manifestText) as Map;
+          if (data['template_id'] is String)
+            template = data['template_id'] as String;
+          if (data['created'] is String) created = data['created'] as String;
+        } catch (_) {}
+        final file = await storage.stat('$root/rows.jsonl');
+        if (file == null || file.isDirectory) continue;
+        final cached = await _read(
+          storage,
+          file,
+          () => <OcrReviewRow>[],
+          parse: (text) => _parseOcr(text, mount, template, created),
+        );
+        rows.addAll(cached.ocr);
+      } catch (_) {}
+    }
+    final decided = _decided(decisions, 'ocr');
+    return _page(
+      rows.where((row) => !decided.contains(row.id)).toList(),
+      offset,
+      limit,
+    );
+  }
+
+  Set<String> _decided(Iterable<Decision> decisions, String source) => decisions
+      .where(
+        (d) =>
+            d.source == source &&
+            (d.action == 'accepted' || d.action == 'rejected'),
+      )
+      .map((d) => d.item)
+      .toSet();
+
+  Future<_CachedSidecar> _read<T>(
+    VaultStorage storage,
+    VaultStorageEntry file,
+    List<T> Function() empty, {
+    List<T> Function(String text)? parse,
+  }) async {
+    final key = (storage.syncIdentity, file.path);
+    final old = _files[key];
+    final cacheable = file.size != null && file.modified != null;
+    if (cacheable &&
+        old != null &&
+        old.size == file.size &&
+        old.modified == file.modified)
+      return old;
+    final text = await _readTextBounded(storage, file.path);
+    final parsed = parse == null
+        ? (file.path.endsWith('.json') ? _parseAudio(text) : empty())
+        : parse(text);
+    final value = _CachedSidecar(
+      file.size,
+      file.modified,
+      audio: parsed is List<AudioProposal> ? parsed : const [],
+      ocr: parsed is List<OcrReviewRow> ? parsed : const [],
+    );
+    if (cacheable) {
+      _files[key] = value;
+    } else {
+      _files.remove(key);
+    }
+    return value;
+  }
+}
+
+class _CachedSidecar {
+  const _CachedSidecar(
+    this.size,
+    this.modified, {
+    this.audio = const [],
+    this.ocr = const [],
+  });
+  final int? size;
+  final DateTime? modified;
+  final List<AudioProposal> audio;
+  final List<OcrReviewRow> ocr;
+}
+
+Future<String> _readTextBounded(VaultStorage storage, String path) async {
+  final stream = storage.openRead(
+    path,
+    0,
+    ActionableSidecarSummary._maxSidecarBytes,
+  );
+  if (stream == null) {
+    if ((await storage.stat(path))?.size case final size?
+        when size > ActionableSidecarSummary._maxSidecarBytes) {
+      return '';
+    }
+    final bytes = await storage.readBytes(path);
+    return utf8.decode(
+      bytes.take(ActionableSidecarSummary._maxSidecarBytes).toList(),
+      allowMalformed: true,
+    );
+  }
+  final bytes = <int>[];
+  await for (final chunk in stream) {
+    final remaining = ActionableSidecarSummary._maxSidecarBytes - bytes.length;
+    if (remaining <= 0) break;
+    bytes.addAll(chunk.take(remaining));
+    if (chunk.length > remaining) break;
+  }
+  return utf8.decode(bytes, allowMalformed: true);
+}
+
+List<AudioProposal> _parseAudio(String text) {
+  try {
+    final data = jsonDecode(text) as Map;
+    final note = data['note'];
+    if (note is! String || !note.startsWith('notes/') || !note.endsWith('.typ'))
+      return [];
+    return [
+      for (final item in data['items'] as List)
+        if (item is Map &&
+            item['id'] is String &&
+            item['text'] is String &&
+            (item['text'] as String).trim().isNotEmpty)
+          AudioProposal(
+            item['id'] as String,
+            note,
+            item['text'] as String,
+            item['kind'] == 'agenda' && item['date'] is String
+                ? 'agenda'
+                : 'task',
+            item['date'] is String &&
+                    RegExp(
+                      r'^\d{4}-\d{2}-\d{2}$',
+                    ).hasMatch(item['date'] as String)
+                ? item['date'] as String
+                : null,
+          ),
+    ];
+  } catch (_) {
+    return [];
+  }
+}
+
+List<OcrReviewRow> _parseOcr(
+  String text,
+  String mount,
+  String template,
+  String created,
+) {
+  final rows = <OcrReviewRow>[];
+  for (final line in const LineSplitter().convert(text)) {
+    try {
+      final row = jsonDecode(line) as Map;
+      final hash = row['source_photo_hash'];
+      final fields = row['fields'];
+      if (row['review'] != true ||
+          hash is! String ||
+          hash.isEmpty ||
+          fields is! Map)
+        continue;
+      rows.add(
+        OcrReviewRow(
+          'ocr:$mount:$hash',
+          template,
+          created,
+          fields.entries
+              .map(
+                (e) =>
+                    '${e.key}: ${e.value is Map ? e.value['value'] : e.value}',
+              )
+              .join('\n'),
+        ),
+      );
+    } catch (_) {}
+  }
+  return rows;
+}
+
 Future<List<AudioProposal>> loadAudioProposals(
   VaultStorage storage,
   Iterable<Decision> decisions, {
   int offset = 0,
   int limit = 20,
+  ActionableSidecarSummary? summary,
 }) async {
+  if (summary != null) {
+    return summary.audio(storage, decisions, offset: offset, limit: limit);
+  }
   final decided = decisions
       .where(
         (d) =>

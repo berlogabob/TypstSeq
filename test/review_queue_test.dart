@@ -5,6 +5,21 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/review_queue.dart';
 import 'package:tylog_core/tylog_core.dart';
 
+class _CountingStorage extends LocalVaultStorage {
+  _CountingStorage(super.root);
+  int sidecarReads = 0;
+  int sidecarBytes = 0;
+
+  @override
+  Stream<List<int>> openRead(String path, [int? start, int? end]) {
+    if (path.startsWith('_system/enrich/audio/')) {
+      sidecarReads++;
+      sidecarBytes += (end ?? 1024 * 1024) - (start ?? 0);
+    }
+    return super.openRead(path, start, end);
+  }
+}
+
 void main() {
   test('Incoming registry lists each review section in display order', () {
     expect(reviewQueueTypes.map((type) => type.label), [
@@ -54,6 +69,56 @@ void main() {
       action: 'rejected',
     );
     expect(await loadAudioProposals(storage, [decision]), isEmpty);
+  });
+
+  test(
+    'actionable sidecar summary reuses unchanged reads and invalidates edits',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('review-summary');
+      addTearDown(() => dir.delete(recursive: true));
+      final storage = _CountingStorage(dir);
+      final summary = ActionableSidecarSummary();
+      await storage.writeText(
+        '_system/enrich/audio/a.json',
+        '{"note":"notes/a.typ","items":[{"id":"a1","text":"first"}]}',
+      );
+      expect((await summary.audio(storage, [])).single.text, 'first');
+      final firstReads = storage.sidecarReads;
+      await summary.audio(storage, []);
+      expect(storage.sidecarReads, firstReads);
+      expect(
+        await summary.audio(storage, [
+          Decision(
+            at: 'now',
+            device: 'd',
+            item: 'a1',
+            source: 'audio',
+            action: 'accepted',
+          ),
+        ]),
+        isEmpty,
+      );
+      expect(storage.sidecarReads, firstReads);
+      await storage.writeText(
+        '_system/enrich/audio/a.json',
+        '{"note":"notes/a.typ","items":[{"id":"a2","text":"second"}]}',
+      );
+      expect((await summary.audio(storage, [])).single.id, 'a2');
+      expect(storage.sidecarReads, firstReads + 1);
+    },
+  );
+
+  test('actionable sidecar reads have a fixed byte ceiling', () async {
+    final dir = await Directory.systemTemp.createTemp('review-bound');
+    addTearDown(() => dir.delete(recursive: true));
+    final storage = _CountingStorage(dir);
+    final summary = ActionableSidecarSummary();
+    await storage.writeText(
+      '_system/enrich/audio/large.json',
+      '{"note":"notes/a.typ","items":[]}' + ' ' * (1024 * 1024 + 500),
+    );
+    expect(await summary.audio(storage, []), isEmpty);
+    expect(storage.sidecarBytes, 1024 * 1024);
   });
 
   test('audio and OCR sidecars return bounded pages in stable order', () async {
