@@ -2750,45 +2750,52 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     transform: migrateEntityTypeToKind,
   );
 
-  Future<void> _migrateNamespaces() async {
+  Future<void> _migrateNamespaces({String? noteId}) async {
     final v = vault;
     final ix = index;
     if (v == null || ix == null) return;
     final notes = ix.notes.toList();
-    final plan = namespacePlan(notes);
+    if (dirty && !await _save(syncAfter: false)) return;
+    final plan = namespacePlan(notes, noteId: noteId);
+    if (noteId != null && plan.changes.isEmpty) {
+      if (mounted) showSnack(context, 'This title cannot be migrated');
+      return;
+    }
     final lines = [
       for (final c in plan.changes)
         '${c.existingId == null ? "Create" : "Update"}: ${c.fullPath} → ${c.newTitle}${c.parentPath == null ? "" : " (parent: ${c.parentPath})"}',
       for (final title in plan.skipped) 'Skipped: $title',
     ];
     if (!mounted) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Migrate namespace titles'),
-        content: SizedBox(
-          width: 500,
-          child: SingleChildScrollView(
-            child: Text(
-              lines.isEmpty ? 'No changes needed.' : lines.join('\n'),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          if (plan.changes.isNotEmpty)
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Apply'),
-            ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted || vault != v) return;
-    if (dirty && !await _save(syncAfter: false)) return;
+    final confirmed =
+        noteId != null ||
+        (await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: const Text('Migrate namespace titles'),
+                content: SizedBox(
+                  width: 500,
+                  child: SingleChildScrollView(
+                    child: Text(
+                      lines.isEmpty ? 'No changes needed.' : lines.join('\n'),
+                    ),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Cancel'),
+                  ),
+                  if (plan.changes.isNotEmpty)
+                    FilledButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('Apply'),
+                    ),
+                ],
+              ),
+            )) ==
+            true;
+    if (!confirmed || !mounted || vault != v) return;
     try {
       final affected = plan.changes
           .map((c) => c.existingId)
@@ -5279,6 +5286,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 title: 'This note',
                 children: [
                   tile(_ShellAction.backlinks, AppIcons.link, 'Context'),
+                  if (_currentNoteRef()?.title.contains('/') == true)
+                    tile(
+                      _ShellAction.namespace,
+                      Icons.account_tree_outlined,
+                      'Convert namespace',
+                    ),
                   tile(_ShellAction.sharePdf, Icons.ios_share, 'Share as PDF'),
                 ],
               ),
@@ -5389,6 +5402,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           ),
         );
+      case _ShellAction.namespace:
+        final current = _currentNoteRef();
+        if (current != null) await _migrateNamespaces(noteId: current.id);
       case _ShellAction.sharePdf:
         await _sharePdf();
       case _ShellAction.settings:
@@ -6869,6 +6885,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 }
 
 enum _ShellAction {
+  namespace,
   processing,
   vaults,
   newPage,

@@ -7,6 +7,40 @@ import 'package:tylog_core/tylog_core.dart';
 import 'package:tylog_core/namespace_plan.dart';
 
 void main() {
+  test(
+    'single page plan uses existing ancestors without migrating siblings',
+    () {
+      const notes = [
+        NoteRef(id: 'parent', path: 'a.typ', title: 'A', outgoingLinks: []),
+        NoteRef(id: 'child', path: 'c.typ', title: 'A/B/C', outgoingLinks: []),
+        NoteRef(id: 'other', path: 'd.typ', title: 'A/D', outgoingLinks: []),
+      ];
+      final plan = namespacePlan(notes, noteId: 'child');
+      expect(plan.changes.map((c) => c.fullPath), ['A', 'A/B', 'A/B/C']);
+      expect(plan.changes.first.existingId, 'parent');
+    },
+  );
+
+  test('namespace migration keeps the exact original title as an alias', () {
+    const note = NoteRef(
+      id: 'child',
+      path: 'child.typ',
+      title: 'A / B',
+      outgoingLinks: [],
+    );
+    final change = namespacePlan([note], noteId: 'child').changes.last;
+    final result = scanNote(
+      'child.typ',
+      namespaceHeader(
+        '#show: tylog.note.with(id: "child", title: "A / B")',
+        note,
+        change,
+        'parent',
+      ),
+    );
+    expect(result.aliases, contains('A / B'));
+  });
+
   test('namespace header retains explicit and legacy parents', () {
     const note = NoteRef(
       id: 'child',

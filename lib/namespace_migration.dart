@@ -6,9 +6,29 @@ export 'package:tylog_core/namespace_plan.dart' show NamespacePlan;
 
 import 'vault.dart';
 
-NamespacePlan namespacePlan(Iterable<NoteRef> notes) => planNamespaces([
-  for (final n in notes) NamespacePage(n.id, n.title, n.aliases),
-]);
+NamespacePlan namespacePlan(Iterable<NoteRef> notes, {String? noteId}) {
+  final pages = [
+    for (final n in notes) NamespacePage(n.id, n.title, n.aliases),
+  ];
+  final plan = planNamespaces([
+    if (noteId != null) ...pages.where((p) => p.id == noteId),
+    ...pages.where((p) => p.id != noteId),
+  ]);
+  if (noteId == null) return plan;
+  final target = plan.changes.where((c) => c.existingId == noteId).toList();
+  if (target.isEmpty) {
+    final titles = pages.where((p) => p.id == noteId).map((p) => p.title);
+    return NamespacePlan([], plan.skipped.where(titles.contains).toList());
+  }
+  final path = target.single.fullPath.toLowerCase();
+  return NamespacePlan(
+    plan.changes.where((c) {
+      final ancestor = c.fullPath.toLowerCase();
+      return path == ancestor || path.startsWith('$ancestor/');
+    }).toList(),
+    [],
+  );
+}
 
 // Only replace the two scalar/list header fields; leave all other Typst intact.
 String namespaceHeader(
@@ -19,6 +39,7 @@ String namespaceHeader(
 ) {
   final aliases = {
     ...note.aliases,
+    if (note.title.contains('/')) note.title,
     if (change.fullPath.contains('/')) change.fullPath,
   };
   var updated = replaceNoteFields(source, {

@@ -439,7 +439,7 @@ Issues found:
 
 ## Wave 22 (2026-11-04, user OK: suggestions 1-8)
 - [ ] S1 One review queue: OCR rows, OLT bookings, bot drafts land in Incoming with the same accept/reject + decision ledger
-- [ ] S2 Namespace -> structure: one-tap convert of Logseq `A/B/C` titles into parent pages + part_of
+- [x] S2 Namespace -> structure: one-tap convert of Logseq `A/B/C` titles into parent pages + part_of
 - [ ] S3 Duplicate finder + merge (same name/alias/email; links repointed), e.g. André Sabino x2, IADE x3
 - [x] S4 Person timeline: dailies, audio, screenshots, tasks mentioning the person, by date
 - [ ] S5 Audio -> task/agenda proposals in Incoming, linked to the From person
