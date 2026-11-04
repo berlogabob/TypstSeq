@@ -330,6 +330,23 @@ class EnrichMemory {
 
   Map<String, String> get entityIdByTarget => _idByTarget;
 
+  /// entity id -> (folded names, folded single words). Folding (NFD) is the
+  /// expensive part, so it runs once per memory, not per mention.
+  late final Map<String, (Set<String>, Set<String>)> nameKeys = {
+    for (final entity in entities.values)
+      entity.id: (
+        {
+          for (final name in [entity.title, entity.id, ...entity.aliases])
+            enrichKey(name),
+        }..remove(''),
+        {
+          for (final name in [entity.title, ...entity.aliases])
+            for (final word in name.split(RegExp(r'[\s,]+')))
+              if (enrichKey(word) case final key when key.length >= 4) key,
+        },
+      ),
+  };
+
   bool isRejected(String surface, String entity) =>
       _rejected.contains('${enrichKey(surface)}\n$entity');
 
@@ -399,9 +416,10 @@ Set<String> _keys(EnrichMention mention) => {
 /// Entity notes a mention could mean, with whether the name matches exactly.
 List<(NoteRef, bool)> _candidates(EnrichMention mention, EnrichMemory memory) {
   final keys = {..._keys(mention), for (final k in _keys(mention)) _latin(k)};
+  final surfaceKey = enrichKey(mention.surface);
   List<(NoteRef, bool)> match(Iterable<NoteRef> pool) => [
     for (final entity in pool)
-      if (_match(entity, mention, keys, memory) case final exact?)
+      if (_match(entity, mention, keys, surfaceKey, memory) case final exact?)
         (entity, exact),
   ];
   // Plain `note` pages only when no typed entity matches: "IADE" has an
@@ -424,22 +442,15 @@ bool? _match(
   NoteRef entity,
   EnrichMention mention,
   Set<String> keys,
+  String surfaceKey,
   EnrichMemory memory,
 ) {
-  final names = {
-    for (final name in [entity.title, entity.id, ...entity.aliases])
-      enrichKey(name),
-  }..remove('');
+  final (names, words) = memory.nameKeys[entity.id]!;
   // Exact only on the user's own words: hints are the model's guesses
   // ("Катя" came back hinted with the surname of a known Катя), so they
-  // may find a candidate but never prove one.
-  final exact = names.contains(enrichKey(mention.surface));
-  // Single words of a name ("Sabino" in "André Sabino") find, never prove.
-  final words = {
-    for (final name in [entity.title, ...entity.aliases])
-      for (final word in name.split(RegExp(r'[\s,]+')))
-        if (enrichKey(word) case final key when key.length >= 4) key,
-  };
+  // may find a candidate but never prove one; single words of a name
+  // ("Sabino" in "André Sabino") find, never prove.
+  final exact = names.contains(surfaceKey);
   // "Катя" for "Катя Жаворонкова", "Katia" for "katiazhavoronkova".
   final prefix =
       names.any(keys.contains) ||
@@ -450,7 +461,7 @@ bool? _match(
               (key.length >= 4 && name.startsWith(key)) || _sameStem(name, key),
         ),
       );
-  return prefix || memory.acceptedCount(mention.surface, entity.id) > 0
+  return prefix || (memory._accepted[surfaceKey]?[entity.id] ?? 0) > 0
       ? exact
       : null;
 }

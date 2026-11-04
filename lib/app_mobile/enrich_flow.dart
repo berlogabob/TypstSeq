@@ -430,6 +430,10 @@ extension _EnrichIncoming on _HomeScreenState {
     final v = vault;
     final currentIndex = index;
     if (v == null || currentIndex == null) return;
+    // ponytail: newest days first, a page at a time; every day costs two
+    // SAF reads and a ledger write on Android.
+    var limit = 7;
+    var more = false;
     Future<Map<String, _EnrichView>> load() async {
       final memory = await _enrichMemory(v, currentIndex);
       if (!await v.storage.exists(enrichMentionsDir)) return {};
@@ -448,7 +452,12 @@ extension _EnrichIncoming on _HomeScreenState {
               .toList()
             ..sort((a, b) => b.compareTo(a));
       final views = <String, _EnrichView>{};
+      more = false;
       for (final path in paths) {
+        if (views.length >= limit) {
+          more = true;
+          break;
+        }
         if (!currentIndex.notesByPath.containsKey(path)) continue;
         try {
           final view = await _applyEnrichment(path, memory, write: false);
@@ -537,6 +546,14 @@ extension _EnrichIncoming on _HomeScreenState {
                             ),
                           ),
                         ],
+                      if (views != null && more)
+                        TextButton(
+                          onPressed: () => setSheetState(() {
+                            limit += 7;
+                            future = load();
+                          }),
+                          child: const Text('Show older'),
+                        ),
                     ],
                   );
                 },

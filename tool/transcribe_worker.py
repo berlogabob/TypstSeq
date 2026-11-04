@@ -1457,12 +1457,15 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
                     screenshot_translation(note, job, translate, settings)
                     updated_note = read_note(note)
                 elif kind == "transcripts" and job.get("engine") != "v1":
+                    asked = job.get("lang")
                     updated_note, sidecar_path, lines, language = transcribe_v2_job(
                         vault, job, note, model, settings)
                     finish = (sidecar_path, lines)
                     job["lang"] = language
                     job["langs"] = [language] if language else []
-                    if language is None:
+                    # Studio's detection hears the first seconds only ("Hi Andre, bom dia" came back pt for an
+                    # English message), so the transcript text decides unless the user chose the language.
+                    if not asked:
                         detect_transcript_language(job, sidecar_path, lines, settings)
                 else:
                     with note.open(encoding="utf-8", newline="") as stream:

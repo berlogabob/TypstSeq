@@ -2931,6 +2931,14 @@ def test_song_mode_keeps_repeated_chorus(sweep_vault, ffprobe, monkeypatch):
     assert "[—]" in transcript
 
 
+def test_text_decides_language_over_studio_guess(sweep_vault, monkeypatch):
+    vault = sweep_vault
+    monkeypatch.setattr(worker, "detect_language", lambda text, settings: "en")
+    job = {"lang": "pt"}
+    worker.detect_transcript_language(job, vault / "side.json", [{"kind": "speech", "text": "Hi Andre"}], {})
+    assert job["lang"] == "en" and job["langs"] == ["en"]
+
+
 def test_song_mode_context_prompt_names_song(sweep_vault, ffprobe, monkeypatch):
     vault = sweep_vault
     monkeypatch.setenv("TYLOG_LLM_URL", "https://studio.example/v1")
@@ -2940,12 +2948,13 @@ def test_song_mode_context_prompt_names_song(sweep_vault, ffprobe, monkeypatch):
     reply = json.dumps({"summary": "Uma canção sobre um amor que termina.", "scenes": [],
                         "glossary": [], "references": []})
     calls = []
-    monkeypatch.setattr(worker, "urlopen", studio_stub(iter([reply]), calls))
+    # First chat: the transcript's language from its text, then the context pass.
+    monkeypatch.setattr(worker, "urlopen", studio_stub(iter(["pt", reply]), calls))
     worker.run_once(vault, now=NOW, state_path=vault / "state.json", translate=echo_translate, probe=quiet_probe)
     assert json.loads(job_path(vault, "transcripts", audio).read_text())["status"] == "done"
     chat = [payload for url, payload in calls if url.endswith("/chat/completions")]
-    assert len(chat) == 1
-    system = chat[0]["messages"][0]["content"]
+    assert len(chat) == 2
+    system = chat[1]["messages"][0]["content"]
     assert "a song by Amy Winehouse, titled Back to Black" in system
     assert "what the song is about" in system
     sidecar = audio_v2.load_sidecar(audio_v2.sidecar_path(vault, audio))
