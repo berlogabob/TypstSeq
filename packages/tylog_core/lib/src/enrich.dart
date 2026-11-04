@@ -686,7 +686,27 @@ String linkMentionInline(String source, EnrichMention mention, NoteRef target) {
   final i = mention.line - 1;
   if (i < 0 || i >= lines.length) return source;
   final line = lines[i];
-  final at = line.indexOf(mention.surface);
+  // A whole word outside URLs, paths and handles: "hermesagent" inside
+  // reddit.com/r/hermesagent/... must stay text (a link there breaks the
+  // URL and the note stops compiling).
+  int at = -1;
+  for (var from = 0; ;) {
+    final hit = line.indexOf(mention.surface, from);
+    if (hit < 0) break;
+    final end = hit + mention.surface.length;
+    final start = line.lastIndexOf(RegExp(r'\s'), hit) + 1;
+    final stop = line.indexOf(RegExp(r'\s'), end);
+    final token = line.substring(start, stop < 0 ? line.length : stop);
+    final word = RegExp(r'[\p{L}\p{N}_]', unicode: true);
+    final bounded =
+        (hit == 0 || !word.hasMatch(line[hit - 1])) &&
+        (end == line.length || !word.hasMatch(line[end]));
+    if (bounded && !RegExp(r'[/@]|://|www\.').hasMatch(token)) {
+      at = hit;
+      break;
+    }
+    from = hit + 1;
+  }
   if (at < 0) return source;
   if (line.trimLeft().startsWith('//') ||
       line.substring(0, at).contains('`') ||

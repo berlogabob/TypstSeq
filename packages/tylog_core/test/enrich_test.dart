@@ -562,6 +562,29 @@ void main() {
       expect(writeAutoEntities(inline, note, [linked], const []), inline);
     });
 
+    test('inline link skips URLs and partial words, links the plain word', () {
+      const src =
+          '= d\n\n\\- 19:23 https://www.reddit.com/r/hermesagent/comments/x/ about hermesagent\n';
+      final target = entity('h', 'hermesagent');
+      const mention = EnrichMention(
+        surface: 'hermesagent',
+        type: 'project',
+        line: 3,
+      );
+      final out = linkMentionInline(src, mention, target);
+      expect(out, contains('/r/hermesagent/comments'));
+      expect(out, contains('about #tylog.ref-note("h")[hermesagent]'));
+      const inWord = EnrichMention(
+        surface: 'IADE',
+        type: 'organization',
+        line: 3,
+      );
+      expect(
+        linkMentionInline('= d\n\nxIADEx\n', inWord, target),
+        '= d\n\nxIADEx\n',
+      );
+    });
+
     test('inline link never lands inside a string or a call argument', () {
       const task =
           '= d\n\n#tylog.task(\n  id: "1",\n  text: "Angela. remind morning",\n  status: "done",\n)\n'
