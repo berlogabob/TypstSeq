@@ -34,6 +34,18 @@ const _source = '''#import "/_system/tylog.typ" as tylog
 ''';
 
 void main() {
+  test('exposes malformed source line for a persistent editor warning', () {
+    final controller = TyLogEditingController(
+      source: '= Day\n#emph[unfinished',
+      onSourceChanged: (_) {},
+      onError: (_) {},
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    expect(controller.syntaxErrorLine, 2);
+    controller.loadSource('= Day\nvalid text');
+    expect(controller.syntaxErrorLine, isNull);
+  });
   test('unclosed formatting reports its source line and blocks writes', () {
     const source = '= Day\n\nSome text\n#strong[unfinished';
     final errors = <Object>[];

@@ -501,7 +501,8 @@ Issues found:
 - [x] U1a Polish Incoming: section order, headers, chooser sheet, ignore, paging button, empty/loading/error, 360 dp fit. Slice delivered: readable and actionable audio proposals at 360 dp.
 - [x] U1a-rest Finish Incoming polish: review section order and headers, chooser sheet and ignore flow, paging button, empty/loading/error states, and 360 dp fit for the other queue sections.
 - [x] U1b Daily suggestions chip: reserve space outside the editor and open the day's review at 360 dp.
-- [ ] U1b-rest Polish timestamp, broken-markup banner, More bar and duplicate surfaces; check remaining daily/editor states and 360 dp layout.
+- [x] U1b-rest Keep malformed-markup repair visible in a pinned banner with an Open Source action; existing timestamp capture and daily More flows remain covered by focused widget tests.
+- [ ] U1b-rest-rest Manually review timestamp capture, daily More spacing, duplicate surfaces, and remaining editor states at 360 dp.
 - [x] U1c Polish entity page: keep long part_of chips compact and actionable at 360 dp; verify opening and removing a parent and opening Contains.
 - [ ] U1c-rest Finish entity page polish: header, remaining part_of and Contains states, Timeline, Board switch (Kanban/Whiteboard/Tree), and kind icon picker; check phone layouts.
 - [x] U1d Clarify which duplicate is removed and choose the survivor at 360 dp.

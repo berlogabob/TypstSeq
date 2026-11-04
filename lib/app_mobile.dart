@@ -1326,18 +1326,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _richEditorError(Object error) {
     if (!mounted) return;
-    if (error is RichEditorSyntaxError) {
-      showSnack(
-        context,
-        '${error.toString()}. Open Source to repair it.',
-        action: SnackBarAction(
-          label: 'Open Source',
-          onPressed: () => _setEditorMode('source'),
-        ),
-      );
-    } else {
-      showSnack(context, 'Edit kept safe: $error');
-    }
+    if (error is RichEditorSyntaxError) return;
+    showSnack(context, 'Edit kept safe: $error');
   }
 
   Future<void> _tapProtected(String id) => _handleAtomSource(
@@ -6561,13 +6551,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       builder: (context, _) {
         final openFailed = status.startsWith('Open failed:');
         final saveFailed = status.startsWith('Save failed');
-        final failed = openFailed || saveFailed;
+        final markupLine = mode == 'normal'
+            ? richController.syntaxErrorLine
+            : null;
+        final failed = openFailed || saveFailed || markupLine != null;
         final banner = failed
             ? appBanner(
-                key: const ValueKey('status-error'),
+                key: ValueKey(
+                  markupLine == null ? 'status-error' : 'markup-error',
+                ),
                 backgroundColor: Theme.of(context).colorScheme.errorContainer,
                 content: Text(
-                  saveFailed
+                  markupLine != null && !openFailed && !saveFailed
+                      ? 'This note has broken markup on line $markupLine.'
+                      : saveFailed
                       ? 'Could not save your note. Your edits are still here.'
                       : status,
                   style: TextStyle(
@@ -6577,8 +6574,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 actions: [
                   TextButton(
                     onPressed: () =>
-                        saveFailed ? unawaited(_save()) : unawaited(_open()),
-                    child: Text(saveFailed ? 'Retry Save' : 'Retry'),
+                        markupLine != null && !openFailed && !saveFailed
+                        ? _setEditorMode('source')
+                        : saveFailed
+                        ? unawaited(_save())
+                        : unawaited(_open()),
+                    child: Text(
+                      markupLine != null && !openFailed && !saveFailed
+                          ? 'Open Source'
+                          : saveFailed
+                          ? 'Retry Save'
+                          : 'Retry',
+                    ),
                   ),
                 ],
               )

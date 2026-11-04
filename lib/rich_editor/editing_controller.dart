@@ -163,6 +163,7 @@ class TyLogEditingController extends TextEditingController {
 
   bool get canUndo => _undo.isNotEmpty;
   bool get canRedo => _redo.isNotEmpty;
+  int? get syntaxErrorLine => _syntaxErrorLine;
   bool get isComposing => _isComposing(value);
   String get selectedPlainText =>
       selection.isValid ? document.plainText(selection) : '';

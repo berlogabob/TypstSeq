@@ -209,7 +209,7 @@ void main() {
       selection: TextSelection.collapsed(offset: text.length + 1),
     );
     await tester.pump();
-    expect(find.textContaining('Syntax error at line 3'), findsOneWidget);
+    expect(find.text('This note has broken markup on line 3.'), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.text('Open Source'));
     await tester.pumpAndSettle();
@@ -246,7 +246,7 @@ void main() {
       selection: TextSelection.collapsed(offset: text.length + 1),
     );
     await tester.pump();
-    expect(find.textContaining('Syntax error at line 3'), findsOneWidget);
+    expect(find.text('This note has broken markup on line 3.'), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.text('Open Source'));
     await tester.pumpAndSettle();
@@ -280,7 +280,7 @@ void main() {
       text: '$text!', selection: TextSelection.collapsed(offset: text.length + 1),
     );
     await tester.pump();
-    expect(find.textContaining('Syntax error at line 5'), findsOneWidget);
+    expect(find.text('This note has broken markup on line 5.'), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.text('Open Source'));
     await tester.pumpAndSettle();
@@ -317,7 +317,7 @@ void main() {
       selection: TextSelection.collapsed(offset: text.length + 1),
     );
     await tester.pump();
-    expect(find.textContaining('Syntax error at line 3'), findsOneWidget);
+    expect(find.text('This note has broken markup on line 3.'), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.text('Open Source'));
     await tester.pumpAndSettle();
@@ -3429,6 +3429,29 @@ void main() {
     expect(saved, matches(r'\n- \d{2}:\d{2} '));
     expect(saved, isNot(contains(r'\-')));
     expect(vault.isPendingSyncWrite(path), isTrue);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('broken markup stays visible with an Open Source action', (
+    tester,
+  ) async {
+    final storage = _FailingStorage();
+    await storage.writeText('notes/a.typ', 'A');
+    await storage.writeText('notes/broken.typ', '#emph[unfinished');
+    final (_, home) = await _mountTaskTimers(tester, existing: storage);
+    home.mode = 'normal';
+    home.primaryDestination = 0;
+    home.workspace.replaceNote('notes/broken.typ', '#emph[unfinished');
+    home.sourceController.text = '#emph[unfinished';
+    home.richController.loadSource('#emph[unfinished');
+    home.workspace.notifyListeners();
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('markup-error')), findsOneWidget);
+    expect(find.text('This note has broken markup on line 1.'), findsOneWidget);
+    await tester.tap(find.text('Open Source'));
+    await tester.pumpAndSettle();
+    expect(home.mode, 'source');
     await tester.pumpWidget(const SizedBox());
   });
 
