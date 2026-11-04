@@ -416,9 +416,9 @@ Issues found:
 - [x] UNIFY U2 (user 11-04): one Board per entity with Kanban | Whiteboard | Tree switch; one header button; Library > Boards lists every entity board (even without a saved file) + standalone whiteboards; migrate <id>-wb.board.json into the entity board file
 - [x] A24: user opened a kanban with 'all in one place' (personal+project) linked to TyLog, cannot find it again -> asked user which screen
 - [x] Screenshots not processed: org.tylog.screenshots watcher agent was not loaded (plist rewritten 11-03 14:49, cause unknown); re-bootstrapped 01:2x, processing
-- [ ] A24 01:24: 'Sign in with GitHub' -> 'GITHUB_CLIENT_ID is not configured' (build had no --dart-define; GitDoIt id also rejects device flow). Need: user enables Device Flow / sends OAuth client id; build passes --dart-define=GITHUB_CLIENT_ID; friendlier message when missing
-- [ ] FLAKY under load (pre-release stabilization pass): workspace_controller_test 'scanned issues survive index publication' + whiteboard_test 'entity Tree opens and pins nodes and edges' (2/2 pass alone)
-- [ ] (old) Profile APK on A24 (user tests P3 whiteboard, P4 OLT/GitHub boards, P1/P2 basics) with checklist
+- [x] A24 01:24: 'Sign in with GitHub' -> 'GITHUB_CLIENT_ID is not configured' (build had no --dart-define; GitDoIt id also rejects device flow). Need: user enables Device Flow / sends OAuth client id; build passes --dart-define=GITHUB_CLIENT_ID; friendlier message when missing
+- [x] FLAKY under load (pre-release stabilization pass): workspace_controller_test 'scanned issues survive index publication' + whiteboard_test 'entity Tree opens and pins nodes and edges' (2/2 pass alone)
+- [x] (old) Profile APK on A24 (user tests P3 whiteboard, P4 OLT/GitHub boards, P1/P2 basics) with checklist
 
 ## Wave 20 (2026-11-04): one decision surface + OLT under Extensions (user OK)
 - [x] Enrich pending suggestions only in Incoming (grouped per day, accept/reject markers/tags/mentions, decisions logged as before); daily page: no EnrichReview section, small 'N suggestions' chip -> Incoming filtered to that day
@@ -430,7 +430,7 @@ Issues found:
 - [x] Incoming freeze: per-mention NFD folding over 1356 pages (562 s) — cached; 7 days per page — 5863f60
 - [x] Audio language swap: Studio first-seconds guess (pt) beat the text — text decides — 5863f60
 - [x] A24 d651292: keyboard opens then closes = accepting a mention linked 'Angela' inside a task's text string; broken Typst makes the editor revert every edit. Daily repaired, linker guarded
-- [ ] Editor: one malformed line must not silently block all edits; show 'syntax error at line N, open Source' instead
+- [ ] E1 Editor: one malformed line must not silently block all edits; show 'syntax error at line N, open Source' instead
 - [ ] A24 "add vault" screen after freeze: unconfirmed cause, recheck on 5863f60
 - [x] T1 Share audio from WhatsApp/Telegram: "From" person picker (codex, spec 2026-11-04-wave21/t1)
 - [x] T2 Flaky tests: workspace_controller issues + whiteboard Tree (codex, t2)
