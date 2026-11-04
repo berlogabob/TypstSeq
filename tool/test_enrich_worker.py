@@ -47,11 +47,11 @@ def vault_with(tmp_path, mode="watch"):
     return vault, note
 
 
-def test_body_lines_skip_header_reading_and_auto_block():
+def test_body_lines_keep_text_after_legacy_marker():
     text = DAY + "\n" + enrich.AUTO_MARKER + "\n== Mentions\n- x\n"
     assert [line for _, line in enrich.body_lines(text)] == [
-        "\\- 09:14 в метро. Катя приехала.", "- 09:36 call with André about IADE."]
-    assert enrich.content_sha(text) == enrich.content_sha(DAY)
+        "\\- 09:14 в метро. Катя приехала.", "- 09:36 call with André about IADE.", "- x"]
+    assert enrich.content_sha(text) != enrich.content_sha(DAY)
 
 
 def test_parse_reply_drops_hallucinated_surfaces():
@@ -82,11 +82,11 @@ def test_run_once_writes_mentions_and_is_idempotent(tmp_path):
     out = json.loads((vault / "_system/enrich/mentions/daily/2026/10/2026-10-22.json").read_text())
     assert out["note"] == "daily/2026/10/2026-10-22.typ"
     assert out["mentions"][0]["surface"] == "Катя"
-    # The app's own block must not trigger a re-extraction.
+    # Legacy marker edits must trigger a re-extraction.
     note.write_text(DAY + enrich.AUTO_MARKER + "\n", encoding="utf-8")
     os.utime(note, (0, 0))
-    assert enrich.run_once(vault, chat=chat, state_path=tmp_path / "s.json") == 0
-    assert len(calls) == 1
+    assert enrich.run_once(vault, chat=chat, state_path=tmp_path / "s.json") == 1
+    assert len(calls) == 2
 
 
 def test_run_once_respects_off_and_settling(tmp_path):
@@ -139,7 +139,8 @@ def test_old_days_wait_for_process_now(tmp_path):
 def test_content_sha_ignores_trailing_blanks_like_the_app():
     body = "= Day\n\nв точку . \n\n\n"
     with_block = "= Day\n\nв точку .\n\n" + enrich.AUTO_MARKER + "\n"
-    assert enrich.content_sha(body) == enrich.content_sha(with_block)
+    assert enrich.content_sha(body) != enrich.content_sha(with_block)
+    assert enrich.content_sha(with_block) != enrich.content_sha(with_block + "new text\n")
     # Pinned in packages/tylog_core/test/enrich_test.dart too.
     assert enrich.content_sha(body) == "98e4ab71821ed482817f51df3f49becd38aea18e74b37327571cc5b29397e91a"
 

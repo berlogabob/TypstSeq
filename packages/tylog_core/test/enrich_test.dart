@@ -379,21 +379,29 @@ void main() {
   });
 
   test('content sha matches the Python worker', () {
-    // Same bytes as tool/test_enrich_worker.py would hash: block stripped.
+    // Same bytes as tool/test_enrich_worker.py would hash.
     const body = '= Day\n\nhello\n';
     expect(
       enrichContentSha('$body\n$autoEntitiesMarker\n== Mentions\n'),
-      enrichContentSha(body),
+      isNot(enrichContentSha(body)),
     );
     // Computed with tool/enrich_worker.py content_sha().
     expect(
       enrichContentSha('$body\n$autoEntitiesMarker\n== Mentions\n'),
-      '344c6bcf6be749a8070f7a41f49390ca2828ede86ff97ae448c35647905912ca',
+      '776a9f3cf79cb6870053b24f0fe36b06c497f8ae08cda41f730f0c8b8ef6954f',
     );
     expect(enrichContentSha(body), isNot(enrichContentSha('$body!')));
   });
 
-  test('writing the block is not an edit, even after trailing blanks', () {
+  test('content sha detects user text after a legacy marker', () {
+    const source = '= Day\n// tylog:auto-entities\n== Mentions\n';
+    expect(
+      enrichContentSha(source),
+      isNot(enrichContentSha('${source}new text\n')),
+    );
+  });
+
+  test('writing the legacy block changes the content hash', () {
     // Real vault: a day ending in "в точку . " plus blank lines lost its
     // trailing blanks to the block, and every device then saw an edit.
     const body = '= Day\n\nв точку . \n\n\n';
@@ -411,7 +419,7 @@ void main() {
     );
     final written = writeAutoEntities(body, note, [linked], const []);
     expect(written, contains(autoEntitiesMarker));
-    expect(enrichContentSha(written), enrichContentSha(body));
+    expect(enrichContentSha(written), isNot(enrichContentSha(body)));
     // Computed with tool/enrich_worker.py content_sha().
     expect(
       enrichContentSha(body),

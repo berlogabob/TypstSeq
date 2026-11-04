@@ -31,29 +31,18 @@ SETTLE_SECONDS = 300
 PROMPT_VERSION = 4
 
 
-def strip_auto_block(text):
-    index = text.find(AUTO_MARKER)
-    return text if index < 0 else text[:index].rstrip("\n") + "\n"
-
-
 def content_sha(text):
-    """Hash of the user's text; the app writing its own block must not re-trigger.
-
-    Trailing blanks are ignored: putting the block after the text normalizes
-    them, and that must not look like an edit. Same as enrichContentSha (Dart).
-    """
-    index = text.find(AUTO_MARKER)
-    body = text if index < 0 else text[:index]
-    return hashlib.sha256((body.rstrip(" \t\r\n") + "\n").encode("utf-8")).hexdigest()
+    """Hash the complete note, matching enrichContentSha (Dart)."""
+    return hashlib.sha256((text.rstrip(" \t\r\n") + "\n").encode("utf-8")).hexdigest()
 
 
 def body_lines(text):
     """(1-based line number, line) pairs of user-written text.
 
-    Drops the header, headings, the auto block and generated `- Read:` lines
+    Drops the header, headings, marker comment and generated `- Read:` lines
     (the `== Reading` section has no end marker; user text follows it).
     """
-    lines = strip_auto_block(text).split("\n")
+    lines = text.split("\n")
     kept, in_header, in_translation = [], False, False
     for number, line in enumerate(lines, 1):
         stripped = line.strip()
@@ -67,7 +56,7 @@ def body_lines(text):
         if in_header:
             in_header = stripped != ")"
             continue
-        if not stripped or stripped.startswith(("=", "- Read:")):
+        if not stripped or stripped.startswith(("=", "- Read:", "//")):
             continue
         kept.append((number, line))
     return kept

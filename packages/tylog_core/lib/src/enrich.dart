@@ -60,15 +60,11 @@ List<List<NoteRef>> findDuplicates(VaultIndex index) {
 String enrichMentionsPath(String notePath) =>
     '$enrichMentionsDir/${notePath.replaceFirst(RegExp(r'\.typ$'), '')}.json';
 
-/// Must equal `content_sha` in tool/enrich_worker.py: the note without our
-/// block, trailing blanks ignored (writing the block normalizes them, and
-/// that must not look like a user edit).
+/// Must equal `content_sha` in tool/enrich_worker.py, including legacy blocks.
 String enrichContentSha(String source) {
-  final index = source.indexOf(autoEntitiesMarker);
-  final body = index < 0 ? source : source.substring(0, index);
   return sha256
       .convert(
-        utf8.encode('${body.replaceFirst(RegExp(r'[ \t\r\n]+$'), '')}\n'),
+        utf8.encode('${source.replaceFirst(RegExp(r'[ \t\r\n]+$'), '')}\n'),
       )
       .toString();
 }
