@@ -422,5 +422,5 @@ Issues found:
 
 ## Wave 20 (2026-11-04): one decision surface + OLT under Extensions (user OK)
 - [x] Enrich pending suggestions only in Incoming (grouped per day, accept/reject markers/tags/mentions, decisions logged as before); daily page: no EnrichReview section, small 'N suggestions' chip -> Incoming filtered to that day
-- [ ] Auto-entities block (// tylog:auto-entities, 19 dailies) stays in files; editor renders it as one folded line 'Auto: IADE · #tag' (byte-exact round-trip, no file rewrite)
+- [ ] DEFERRED: Auto-entities block (// tylog:auto-entities, 19 dailies) stays in files; editor renders it as one folded line (codex declined: needs read-only block preserving offsets; base it on TyLogBlockStyle.protected, careful editor task) 'Auto: IADE · #tag' (byte-exact round-trip, no file rewrite)
 - [x] OpenLabTwin moved into Settings > Extensions (sign-in, status, refresh, last error); old OpenLabTwin settings entry removed; Extensions = folders, GitHub, OpenLabTwin
