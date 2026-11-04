@@ -523,4 +523,5 @@ Issues found:
 - [ ] PF4-rest Index task rows by note and task ID, bound and invalidate the journal source cache without losing visible edits (audit #5, #12), and measure journal scrolling, task rendering, and memory on device (audit #4, #5, #12).
 - [x] PF5 Cache entity timeline entries per index and defer rebuilding them while collapsed (audit #6).
 - [ ] PF5-rest Reuse the workspace resolver and index task references by entity; make merge preview verification scalable while preserving unsupported-reference and concurrent-change checks (audit #6, #8). Measure timeline CPU and frames, and merge preview reads, bytes, time, CPU and heap on app-local and SAF fixtures.
-- [ ] PF6 Rebuild progress notifies whole workspace; startup waits for vendored package files (audit #14, #11)
+- [x] PF6 Route manual rebuild progress through the narrow notifier and throttle updates (audit #14).
+- [ ] PF6-rest Load vendored packages after the editor is usable while preserving compile readiness and vault-switch cancellation (audit #11); measure startup and rebuild notifications, frames, and resource use on device (audit #11, #14).

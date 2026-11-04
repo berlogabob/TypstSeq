@@ -3674,6 +3674,41 @@ void main() {
   );
 
   test(
+    'manual rebuild reports progress without notifying the workspace',
+    () async {
+      final storage = _MemoryStorage();
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+      await controller.openVault(
+        const VaultEntry(id: 'progress', name: 'Progress', path: '/not-used'),
+        storage: storage,
+      );
+      await _waitUntil(() => controller.index != null && !controller.indexing);
+      for (var i = 0; i < 205; i++) {
+        await storage.writeText('notes/progress-$i.typ', '= Note $i\n');
+      }
+      var workspaceProgressEvents = 0;
+      final progress = <double?>[];
+      controller.addListener(() {
+        if (controller.status.startsWith('Rebuilding index:')) {
+          workspaceProgressEvents++;
+        }
+      });
+      controller.syncProgressTick.addListener(
+        () => progress.add(controller.rebuildProgress),
+      );
+      await controller.rebuildIndex(force: true);
+      expect(progress.whereType<double>(), isNotEmpty);
+      expect(workspaceProgressEvents, 0);
+      expect(controller.rebuildProgress, isNull);
+    },
+  );
+
+  test(
     'sync progress ticks notify syncProgressTick, not the general listener',
     () async {
       final previousOverrides = HttpOverrides.current;

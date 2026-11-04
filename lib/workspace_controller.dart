@@ -525,6 +525,20 @@ class WorkspaceController extends ChangeNotifier {
   bool rebuilding = false;
   bool cancelRebuild = false;
   double? rebuildProgress;
+  final Stopwatch _rebuildProgressClock = Stopwatch();
+
+  void _reportRebuildProgress(int complete, int total) {
+    if (_rebuildProgressClock.isRunning &&
+        _rebuildProgressClock.elapsedMilliseconds < 100 &&
+        complete != total)
+      return;
+    _rebuildProgressClock
+      ..reset()
+      ..start();
+    rebuildProgress = total == 0 ? 1 : complete / total;
+    status = 'Rebuilding index: $complete / $total';
+    syncProgressTick.notifyListeners();
+  }
 
   /// Owns the vault's indexing work on its own isolate. Null while no vault is
   /// open, and null for the whole lifetime of a controller built with an
@@ -1872,6 +1886,7 @@ class WorkspaceController extends ChangeNotifier {
       return;
     }
     rebuilding = true;
+    _rebuildProgressClock.stop();
     cancelRebuild = false;
     rebuildProgress = 0;
     status = 'Rebuilding index...';
@@ -2019,9 +2034,7 @@ class WorkspaceController extends ChangeNotifier {
           if (onProgress != null) {
             onProgress(complete, total);
           } else if (showProgress) {
-            rebuildProgress = total == 0 ? 1 : complete / total;
-            status = 'Rebuilding index: $complete / $total';
-            notifyListeners();
+            _reportRebuildProgress(complete, total);
           }
         case IndexBuiltEvent(:final index, :final fromCache):
           indexedIndex = index;
@@ -2146,9 +2159,7 @@ class WorkspaceController extends ChangeNotifier {
                   onProgress(complete, total);
                   return;
                 }
-                rebuildProgress = total == 0 ? 1 : complete / total;
-                status = 'Rebuilding index: $complete / $total';
-                notifyListeners();
+                _reportRebuildProgress(complete, total);
               },
       );
       await _projectIndexToDatabase(opened, built, generation);
