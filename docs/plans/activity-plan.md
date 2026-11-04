@@ -511,7 +511,8 @@ Issues found:
 - [x] U1f Keep GitHub repository board controls and repository identity usable at 360 dp.
 - [ ] U1f-rest Polish remaining board states and flows: GitHub repo columns, OLT whiteboard cards, empty board, and add-card flows; review loading, errors, navigation, and phone layouts.
 - [x] PERF1 Performance audit (user 2026-11-04): codex static report docs/audits/2026-11-04-performance.md (read-only) + Claude device measurements on P30 profile build (cold start TYLOG_STARTUP, index, frame jank, memory) -> ranked fix list.
-- [ ] PF0 (P30 measured, build 38b1a7d, 10067 notes) Every app start runs a background rescan of 31-37 s although only 2 notes parse: scan-finalize 18.1 s, index-check 10.9 s (jsonEncode(previous.tasks/problems/issues/issueLines) == jsonEncode(index...) over whole lists), load-index 3.9 s, list-stat 2.3 s, communities 2.2 s, validate 1.8-2.7 s. Cold start itself is fine (activity ~1 s, today readable 0.47 s). Fix index-check (compare per changed note / revision counters, never whole-list jsonEncode) and find what scan-finalize does at 18 s for 2 changed notes; target < 5 s total. Measure with TYLOG_STARTUP stageMillis on the P30 before/after.
+- [x] PF0 Reduce index-check cost by comparing reused entries by identity and rebuilt entries individually. P30, 10067 notes, 2026-11-04: index-check 6.0 s → 0.23 s and scan 39.9 s → 28.0 s, with two notes parsed in both runs (TYLOG_STARTUP stageMillis).
+- [ ] PF0-rest Instrument and reduce scan-finalize (18.5 s after PF0), load-index, listing, validation and communities as needed to reach < 5 s total background rescan on the P30; measure before/after with TYLOG_STARTUP stageMillis.
 - [ ] PF1 Board ordering quadratic + eager card layout (audit #1, #13, #15)
 - [ ] PF2 Incoming work not bounded by the 7-day limit (audit #2, #7)
 - [ ] PF3 Mention matching per mention over all entities on UI isolate (audit #3, #16)

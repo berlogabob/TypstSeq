@@ -12,6 +12,37 @@ import 'storage.dart';
 import 'validation.dart';
 import 'vault.dart';
 
+/// Compare reused entries by identity and only serialize entries rebuilt by a scan.
+bool sameIndexContents(VaultIndex previous, VaultIndex index) {
+  bool sameList<T>(List<T> a, List<T> b, Object? Function(T) encode) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (!identical(a[i], b[i]) &&
+          jsonEncode(encode(a[i])) != jsonEncode(encode(b[i]))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  return previous.version == index.version &&
+      previous.queryVersion == index.queryVersion &&
+      previous.notesByPath.length == index.notesByPath.length &&
+      index.notesByPath.entries.every((entry) {
+        final before = previous.notesByPath[entry.key];
+        return identical(before, entry.value) ||
+            (before != null && jsonEncode(before) == jsonEncode(entry.value));
+      }) &&
+      sameList(previous.tasks, index.tasks, (task) => task) &&
+      sameList(previous.problems, index.problems, (problem) => problem) &&
+      sameList(previous.issues, index.issues, (issue) => issue) &&
+      previous.issueLines.length == index.issueLines.length &&
+      index.issueLines.entries.every((entry) {
+        final before = previous.issueLines[entry.key];
+        return before != null && sameList(before, entry.value, (line) => line);
+      });
+}
+
 /// Everything a vault needs done after its files change, in one place.
 ///
 /// Four processes write this vault — the UI isolate, the worker isolate, the
@@ -332,21 +363,7 @@ class VaultMaintenance {
     // hashes alone would hide those even when the note bytes stayed equal.
     final unchanged =
         previous != null &&
-        previous.version == index.version &&
-        previous.queryVersion == index.queryVersion &&
-        previous.notesByPath.length == index.notesByPath.length &&
-        // Identity is the cheap answer; a note re-derived from cached query
-        // facts is a new but equal object (12 of 9,748 on the P30, which
-        // re-encoded the index every launch), so compare those by JSON.
-        index.notesByPath.entries.every((entry) {
-          final before = previous.notesByPath[entry.key];
-          return identical(before, entry.value) ||
-              (before != null && jsonEncode(before) == jsonEncode(entry.value));
-        }) &&
-        jsonEncode(previous.tasks) == jsonEncode(index.tasks) &&
-        jsonEncode(previous.problems) == jsonEncode(index.problems) &&
-        jsonEncode(previous.issues) == jsonEncode(index.issues) &&
-        jsonEncode(previous.issueLines) == jsonEncode(index.issueLines) &&
+        sameIndexContents(previous, index) &&
         await storage.exists(TylogVaultPaths.index);
     if (unchanged) index = previous;
     stageMillis['index-check'] = stage.elapsedMilliseconds;
