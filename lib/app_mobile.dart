@@ -5607,6 +5607,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // because each rebuild re-derived the whole vault. Null until the first
     // derivation lands; every consumer below already handles that.
     final resolver = workspace.linkResolver;
+    if (mode == 'graph' || mode == 'library') {
+      unawaited(workspace.refreshDerived());
+    }
     final communities = workspace.communities;
     // Only the graph pane consumes this, and `mode` defaults to 'normal', so
     // building it unconditionally was pure waste on every other screen.

@@ -318,8 +318,6 @@ class _VaultWorker {
 
   void _send(VaultWorkerEvent event) => _boot.events.send(event);
 
-  VaultIndex? _communitiesIndex;
-  CommunityMap? _communities;
   VaultIndex? _searchIndexSource;
 
   Future<void> _rebuild(RebuildIndexCommand command) async {
@@ -390,18 +388,6 @@ class _VaultWorker {
             _indexSent = true;
             _indexGeneration++;
             _searchIndexSource = index;
-            // Derived state is an optimization; the UI degrades to null on
-            // failure.
-            try {
-              final timer = Stopwatch()..start();
-              if (!identical(index, _communitiesIndex)) {
-                _communities = computeCommunities(index);
-                _communitiesIndex = index;
-              }
-              _vault.maintenance.stageMillis['communities'] =
-                  timer.elapsedMilliseconds;
-              _send(CommunitiesBuiltEvent(_communities!));
-            } catch (_) {}
           case MaintenanceValidated(:final report):
             _send(PkmsBuiltEvent(report));
           case MaintenanceSearchBuilt():

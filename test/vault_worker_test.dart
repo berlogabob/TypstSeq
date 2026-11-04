@@ -100,7 +100,12 @@ void main() {
     // what ran — and the worker must now say so rather than degrade in silence.
     expect(built.notesByPath['notes/Note0.typ']?.metadataSource, 'fallback');
 
-    expect(events.whereType<CommunitiesBuiltEvent>(), hasLength(1));
+    expect(
+      events.whereType<CommunitiesBuiltEvent>(),
+      isEmpty,
+      reason:
+          'startup scans should not compute communities before they are requested',
+    );
     expect(events.whereType<SearchReadyEvent>(), isEmpty);
     expect(await worker.search('unit'), isNotEmpty);
     final report = events.whereType<PkmsBuiltEvent>().single.report;

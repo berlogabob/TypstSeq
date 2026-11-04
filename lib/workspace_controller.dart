@@ -443,6 +443,7 @@ class WorkspaceController extends ChangeNotifier {
   );
 
   int _derivedRevision = -1;
+  int? _derivingRevision;
 
   /// The isolate in [refreshDerived] can land after the controller is gone —
   /// closing a vault, or a hot restart. Notifying then throws.
@@ -475,21 +476,23 @@ class WorkspaceController extends ChangeNotifier {
   /// [linkResolver] is *not* built here — it is built wherever the index is
   /// published ([_retainIndex] and [openVault]), because its consumers run inside
   /// build and cannot wait for a fire-and-forget pass to land.
-  ///
-  /// [precomputed] short-circuits the community pass for the worker path, which
-  /// already ran it next to the scan that produced the index. That matters more
-  /// than it looks: `compute()` copies the *whole* `VaultIndex` onto this
-  /// isolate to hand it to the other one, and on a 1800-note vault that copy was
-  /// itself a visible stall.
-  Future<void> refreshDerived({CommunityMap? precomputed}) async {
+  Future<void> refreshDerived() async {
     final revision = indexRevision;
     final current = index;
-    if (_disposed || current == null || _derivedRevision == revision) return;
+    if (_disposed ||
+        current == null ||
+        _derivedRevision == revision ||
+        _derivingRevision == revision) {
+      return;
+    }
+    _derivingRevision = revision;
     final CommunityMap next;
     try {
-      next = precomputed ?? await compute(computeCommunitiesIsolate, current);
+      next = await compute(computeCommunitiesIsolate, current);
     } catch (_) {
       return; // Derived state is an optimization; the UI degrades to null.
+    } finally {
+      if (_derivingRevision == revision) _derivingRevision = null;
     }
     // A newer index landed while the isolate was working — its own
     // refreshDerived call owns the result now, so drop this one.
@@ -2070,8 +2073,8 @@ class WorkspaceController extends ChangeNotifier {
           }
           notifyListeners();
           unawaited(_reconcileTasks(index.tasks));
-        case CommunitiesBuiltEvent(:final communities):
-          unawaited(refreshDerived(precomputed: communities));
+        case CommunitiesBuiltEvent():
+          break;
         case PkmsBuiltEvent(:final report):
           // No search index to copy — it stays in the worker and is reached
           // through [searchNotes].
@@ -2166,7 +2169,6 @@ class WorkspaceController extends ChangeNotifier {
       if (showProgress) {
         if (!_owns(opened, generation)) return;
         index = _retainIndex(built);
-        unawaited(refreshDerived());
         indexedRevision = revision;
         status = 'Indexed · ${built.notes.length} notes · building search…';
         notifyListeners();
@@ -2196,7 +2198,6 @@ class WorkspaceController extends ChangeNotifier {
       if (!_owns(opened, generation)) return;
       unawaited(_traceInProcessIndex(opened, built));
       index = _retainIndex(built);
-      unawaited(refreshDerived());
       validation = _retainValidation(pkms.report);
       searchIndex.replaceWith(pkms.search);
       searchReady = true;

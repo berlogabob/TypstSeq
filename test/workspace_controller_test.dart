@@ -1961,7 +1961,14 @@ void main() {
         storage: storage,
       );
       await _waitUntil(() => controller.index != null);
-      await _waitUntil(() => controller.communities != null);
+      await controller.rebuildIndex();
+      expect(
+        controller.communities,
+        isNull,
+        reason: 'indexing alone should not compute communities',
+      );
+      await controller.refreshDerived();
+      expect(controller.communities, isNotNull);
 
       final revisionAfterOpen = controller.indexRevision;
       expect(revisionAfterOpen, greaterThan(0));
@@ -1984,7 +1991,9 @@ void main() {
         isTrue,
         reason: 'the index is retained in place, so identity never changes',
       );
-      await _waitUntil(() => controller.communities != null);
+      await controller.refreshDerived();
+      expect(controller.communities, isNotNull);
+      expect(identical(controller.communities, derived), isFalse);
     },
   );
 
