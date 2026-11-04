@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -53,6 +54,45 @@ void main() {
       action: 'rejected',
     );
     expect(await loadAudioProposals(storage, [decision]), isEmpty);
+  });
+
+  test('audio and OCR sidecars return bounded pages in stable order', () async {
+    final dir = await Directory.systemTemp.createTemp('review-pages');
+    addTearDown(() => dir.delete(recursive: true));
+    final storage = LocalVaultStorage(dir);
+    await storage.writeText(
+      '_system/enrich/audio/a.json',
+      jsonEncode({
+        'note': 'notes/audio.typ',
+        'items': [
+          for (var i = 0; i < 23; i++) {'id': 'audio:$i', 'text': 'item $i'},
+        ],
+      }),
+    );
+    await storage.writeText(
+      'ext/forms/rows.jsonl',
+      [
+        for (var i = 0; i < 23; i++)
+          jsonEncode({
+            'source_photo_hash': 'hash$i',
+            'review': true,
+            'fields': {'name': 'row $i'},
+          }),
+      ].join('\n'),
+    );
+
+    final audioFirst = await loadAudioProposals(storage, [], limit: 20);
+    final audioNext = await loadAudioProposals(storage, [], offset: 20);
+    final ocrFirst = await loadOcrReviewRows(storage, ['forms'], [], limit: 20);
+    final ocrNext = await loadOcrReviewRows(storage, ['forms'], [], offset: 20);
+    expect(audioFirst, hasLength(20));
+    expect(audioNext, hasLength(3));
+    expect(ocrFirst, hasLength(20));
+    expect(ocrNext, hasLength(3));
+    expect(audioFirst.last.id, 'audio:19');
+    expect(audioNext.first.id, 'audio:20');
+    expect(ocrFirst.last.id, 'ocr:forms:hash19');
+    expect(ocrNext.first.id, 'ocr:forms:hash20');
   });
   test(
     'OCR review rows are loaded from mounts and ledger decisions hide them',

@@ -410,6 +410,9 @@ extension _EnrichIncoming on _HomeScreenState {
     List<String>? paths;
     var cursor = 0;
     var more = false;
+    var audioOffset = 0;
+    var ocrOffset = 0;
+    List<Decision>? decisionSnapshot;
     final views = <String, _EnrichView>{};
     Future<Map<String, _EnrichView>> load({
       bool next = false,
@@ -477,11 +480,16 @@ extension _EnrichIncoming on _HomeScreenState {
           ? await loadOcrReviewRows(
               v.storage,
               workspace.mounts.map((mount) => mount.id),
-              await loadDecisions(v.storage),
+              decisionSnapshot ??= await loadDecisions(v.storage),
+              offset: ocrOffset,
             )
           : <OcrReviewRow>[],
       day == null
-          ? await loadAudioProposals(v.storage, await loadDecisions(v.storage))
+          ? await loadAudioProposals(
+              v.storage,
+              decisionSnapshot ??= await loadDecisions(v.storage),
+              offset: audioOffset,
+            )
           : <AudioProposal>[],
       day == null ? await loadHealthFindings(v.storage) : <HealthFinding>[],
     );
@@ -496,6 +504,7 @@ extension _EnrichIncoming on _HomeScreenState {
             unawaited(
               _enrichOnce(() async {
                 await action();
+                decisionSnapshot = null;
                 if (context.mounted) {
                   setSheetState(() {
                     future = loadQueue(refreshPath: path);
@@ -692,6 +701,14 @@ extension _EnrichIncoming on _HomeScreenState {
                                     ],
                                   ),
                                 ),
+                              if (audio.length == 20)
+                                TextButton(
+                                  onPressed: () => setSheetState(() {
+                                    audioOffset += 20;
+                                    future = loadQueue();
+                                  }),
+                                  child: const Text('Show older audio'),
+                                ),
                             ],
                             if (type == ReviewQueueType.ocr &&
                                 rows.isNotEmpty) ...[
@@ -746,6 +763,14 @@ extension _EnrichIncoming on _HomeScreenState {
                                       ),
                                     ],
                                   ),
+                                ),
+                              if (rows.length == 20)
+                                TextButton(
+                                  onPressed: () => setSheetState(() {
+                                    ocrOffset += 20;
+                                    future = loadQueue();
+                                  }),
+                                  child: const Text('Show older OCR'),
                                 ),
                             ],
                             if (type == ReviewQueueType.bookings &&

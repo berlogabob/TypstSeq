@@ -516,7 +516,8 @@ Issues found:
 - [x] PF1 GitHub project columns group cards once and build them lazily (audit #15).
 - [x] (done: PF1b 5977272) PF1-rest Fix entity board quadratic ordering, repeated hierarchy scans, and eager card layout with position-aware drop targets (audit #1, #13); measure both board types on device at 100, 1,000, and 5,000 cards, including drag and frame timings.
 - [x] PF2 Bound Incoming mention examination to seven sidecar days per page, retain results and refresh only the decided day (audit #2).
-- [ ] PF2-rest Add an incrementally invalidated actionable-sidecar summary; avoid repeated full ledger reads, paginate audio and OCR inputs and build queue rows lazily (audit #2, #7). Measure storage operations, readiness, heap and frames on device for sparse and dense queues, including decisions and Show older.
+- [x] PF2-rest Add bounded audio and OCR review pages; share one decision snapshot per queue refresh, paginate sidecar rows, and build only the visible queue rows (audit #2, #7).
+- [ ] PF2-rest-rest Add an incrementally invalidated actionable-sidecar summary, avoid rereading changed decision ledgers, and bound sidecar input reads. Measure storage operations, readiness, heap and frames on device for sparse and dense queues, including decisions and Show older.
 - [x] PF3 Index normalized names and words once per enrichment memory, preserving matching precedence; skip marker lookup when there are no markers (audit #3).
 - [ ] PF3-rest Move enrichment memory construction and remaining large computations off the UI isolate, incrementally update feedback, cache marker IDs with correct index invalidation, and measure root CPU, frames, heap and TYLOG_ENRICH for 1/20/100 mentions across 1k/10k pages on device (audit #3, #16).
 - [x] PF4 Cache the sorted journal days per index to avoid sorting on every scroll and rebuild (audit #4).

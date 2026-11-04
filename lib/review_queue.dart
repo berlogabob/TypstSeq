@@ -74,8 +74,10 @@ class OcrReviewRow {
 Future<List<OcrReviewRow>> loadOcrReviewRows(
   VaultStorage storage,
   Iterable<String> mounts,
-  Iterable<Decision> decisions,
-) async {
+  Iterable<Decision> decisions, {
+  int offset = 0,
+  int limit = 20,
+}) async {
   final decided = decisions
       .where(
         (d) =>
@@ -128,7 +130,7 @@ Future<List<OcrReviewRow>> loadOcrReviewRows(
       }
     } catch (_) {}
   }
-  return result;
+  return _page(result, offset, limit);
 }
 
 class AudioProposal {
@@ -139,8 +141,10 @@ class AudioProposal {
 
 Future<List<AudioProposal>> loadAudioProposals(
   VaultStorage storage,
-  Iterable<Decision> decisions,
-) async {
+  Iterable<Decision> decisions, {
+  int offset = 0,
+  int limit = 20,
+}) async {
   final decided = decisions
       .where(
         (d) =>
@@ -183,5 +187,11 @@ Future<List<AudioProposal>> loadAudioProposals(
       } catch (_) {}
     }
   } catch (_) {}
-  return result;
+  return _page(result, offset, limit);
+}
+
+List<T> _page<T>(List<T> rows, int offset, int limit) {
+  final start = offset.clamp(0, rows.length);
+  final end = (start + limit.clamp(1, 100)).clamp(start, rows.length);
+  return rows.sublist(start, end);
 }
