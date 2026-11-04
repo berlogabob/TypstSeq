@@ -30,8 +30,97 @@ extension _EnrichFlow on _HomeScreenState {
   void _queueEnrichRefresh() {
     final key = (vault, note, workspace.indexRevision);
     if (_enrichRevision == key) return;
+    final previous = _enrichRevision;
     _enrichRevision = key;
+    if (_enrichAutoWrite) {
+      if (previous case (final Vault oldVault, final String? oldPath, _)
+          when identical(oldVault, vault) &&
+              oldPath != null &&
+              oldPath.startsWith('daily/') &&
+              oldPath != note) {
+        unawaited(
+          _applyClosedDayEnrichment(oldVault, oldPath, key).catchError((
+            Object error,
+            StackTrace stack,
+          ) {
+            _enrichTrace('$oldPath auto-write error $error');
+          }),
+        );
+      }
+    }
     unawaited(_refreshEnrichment());
+  }
+
+  Future<void> _applyClosedDayEnrichment(
+    Vault v,
+    String path,
+    (Vault?, String?, int) navigation,
+  ) async {
+    final currentIndex = index;
+    if (currentIndex == null ||
+        !identical(vault, v) ||
+        note == path ||
+        _enrichRevision != navigation) {
+      return;
+    }
+    final ref = currentIndex.notesByPath[path];
+    if (ref == null) return;
+    final mentions = await _readMentions(v, path);
+    if (mentions == null ||
+        !identical(vault, v) ||
+        note == path ||
+        _enrichRevision != navigation ||
+        workspace.indexRevision != navigation.$3) {
+      return;
+    }
+    final source = await v.storage.readText(path);
+    if (enrichContentSha(source) != mentions.contentSha) return;
+    final memory = await _enrichMemory(v, currentIndex);
+    if (!identical(vault, v) ||
+        note == path ||
+        _enrichRevision != navigation ||
+        workspace.indexRevision != navigation.$3) {
+      return;
+    }
+    final lines = source.split('\n');
+    final typed = scanNote(path, stripAutoEntities(source)).outgoingLinks;
+    final decisions = resolveMentions(mentions, ref, memory);
+    final links = [
+      for (final decision in decisions)
+        if (decision.status == EnrichStatus.linked)
+          if (decision.target case final target?
+              when !typed.contains(target.id) &&
+                  !enrichLinkedOnLine(decision.mention, lines))
+            decision,
+    ];
+    final tags = enrichTags(mentions.keywords, currentIndex, memory: memory);
+    if (links.isEmpty && tags.isEmpty) return;
+
+    var updated = source;
+    for (final decision in links) {
+      updated = linkMentionInline(updated, decision.mention, decision.target!);
+    }
+    updated = updateNoteTags(updated, add: tags);
+    if (updated == source) return;
+    var applied = false;
+    final saved = await workspace.mutateNote(path, (current) {
+      if (!identical(vault, v) ||
+          note == path ||
+          _enrichRevision != navigation ||
+          current != source) {
+        return current;
+      }
+      applied = true;
+      return updated;
+    });
+    if (!saved || !applied) return;
+    final file = enrichMentionsPath(path);
+    final latest = await _readMentions(v, path);
+    if (latest == null || latest.contentSha != mentions.contentSha) return;
+    final json = (jsonDecode(await v.storage.readText(file)) as Map)
+        .cast<String, Object?>();
+    json['content_sha'] = enrichContentSha(updated);
+    await v.storage.writeText(file, '${jsonEncode(json)}\n');
   }
 
   Future<void> _refreshEnrichment() async {

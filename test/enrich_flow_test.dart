@@ -281,6 +281,59 @@ void main() {
       enrichContentSha(home.workspace.source as String),
     );
   });
+
+  testWidgets('confident links and known tags apply after leaving the day', (
+    tester,
+  ) async {
+    final (home, storage) = await _mount(tester);
+    final day = home.workspace.source as String;
+    home.workspace.replaceNote(
+      'notes/iade.typ',
+      await storage.readText('notes/iade.typ'),
+    );
+    await _pump(tester);
+
+    final saved = await storage.readText(_dayPath);
+    expect(saved, contains('#tylog.ref-note("iade")[IADE]'));
+    expect(saved, contains('tags: ("design",)'));
+    expect(day, _day);
+    await tester.pumpWidget(const SizedBox());
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+  testWidgets('stale enrichment is skipped after leaving the day', (
+    tester,
+  ) async {
+    final (home, storage) = await _mount(tester);
+    const edited = 'a newer edit that the worker did not read';
+    await storage.writeText(_dayPath, '$edited\n');
+    home.workspace.replaceNote(
+      'notes/iade.typ',
+      await storage.readText('notes/iade.typ'),
+    );
+    await _pump(tester);
+
+    expect(await storage.readText(_dayPath), '$edited\n');
+    await tester.pumpWidget(const SizedBox());
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+  testWidgets('enrichment stops when navigation changes during its read', (
+    tester,
+  ) async {
+    final (home, storage) = await _mount(tester);
+    home.workspace.replaceNote(
+      'notes/iade.typ',
+      await storage.readText('notes/iade.typ'),
+    );
+    home.workspace.replaceNote(
+      'notes/kz.typ',
+      await storage.readText('notes/kz.typ'),
+    );
+    await _pump(tester);
+
+    expect(await storage.readText(_dayPath), _day);
+    await tester.pumpWidget(const SizedBox());
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
   // Exercise both desktop and phone behavior.
   final desktop = TargetPlatformVariant.only(TargetPlatform.macOS);
   final phone = TargetPlatformVariant.only(TargetPlatform.android);
