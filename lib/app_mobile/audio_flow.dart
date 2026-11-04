@@ -123,6 +123,7 @@ extension _AudioFlow on _HomeScreenState {
     null,
     source.path.split('.').last.toLowerCase(),
     source: source,
+    shared: true,
   );
 
   Future<void> _importAudioNote({bool inline = false}) async {
@@ -155,6 +156,7 @@ extension _AudioFlow on _HomeScreenState {
     bool inline = false,
     DateTime? at,
     bool open = true,
+    bool shared = false,
   }) async {
     final v = vault;
     if (v == null) return;
@@ -229,6 +231,7 @@ extension _AudioFlow on _HomeScreenState {
           index?.notesByPath[path] ??
           scanNote(path, await workspace.readNote(path));
       if (mounted) await _openAudioNote(note);
+      if (shared && mounted) unawaited(_askShareSender(path, v));
     } catch (error) {
       if (mounted) showSnack(context, 'Could not save recording: $error');
     }
@@ -337,14 +340,22 @@ extension _AudioFlow on _HomeScreenState {
   Future<void> _openAudioAsset(
     String assetPath, {
     AudioTab? tab,
+    bool open = true,
+    bool shared = false,
   }) async {
     final v = vault;
     if (v == null) return;
-    showSnack(context, 'Opening audio…');
+    final origin = workspace.note == null
+        ? null
+        : index?.notesByPath[workspace.note!];
+    if (open) showSnack(context, 'Opening audio…');
+    if (shared) await _attachTasks[assetPath];
     await _audioNoteTasks[assetPath];
+    if (!mounted || vault != v) return;
     for (final n in index?.notes ?? const <NoteRef>[]) {
       if (n.kind == 'audio' && n.attachments.any((a) => a.path == assetPath)) {
-        await _openAudioNote(n, tab: tab);
+        if (open) await _openAudioNote(n, tab: tab);
+        if (shared && mounted) unawaited(_askShareSender(n.path, v));
         return;
       }
     }
@@ -353,9 +364,6 @@ extension _AudioFlow on _HomeScreenState {
         .split('/')
         .last
         .replaceFirst(RegExp(r'\.[^.]+$'), '');
-    final origin = workspace.note == null
-        ? null
-        : index?.notesByPath[workspace.note!];
     try {
       final existed = await v.storage.exists('notes/$title.typ');
       final path = await workspace.createPage(title, kind: 'audio', id: id);
@@ -378,18 +386,48 @@ extension _AudioFlow on _HomeScreenState {
         unawaited(workspace.refreshIndex(updateStatus: false, always: true));
       }
       if (!mounted) return;
-      await _openAudioNote(
-        tab: tab,
-        NoteRef(
-          id: id,
-          path: path,
-          title: title,
-          kind: 'audio',
-          outgoingLinks: const [],
-        ),
-      );
+      if (open) {
+        await _openAudioNote(
+          tab: tab,
+          NoteRef(
+            id: id,
+            path: path,
+            title: title,
+            kind: 'audio',
+            outgoingLinks: const [],
+          ),
+        );
+      }
+      if (shared && mounted) unawaited(_askShareSender(path, v));
     } catch (error) {
       if (mounted) showSnack(context, 'Could not open audio: $error');
+    }
+  }
+
+  Future<void> _askShareSender(String path, Vault target) async {
+    final recent = await readShareRecents();
+    final notes =
+        await _pagedPickerNotes() ?? index?.notes ?? const <NoteRef>[];
+    if (!mounted || vault != target) return;
+    final person = await showModalBottomSheet<NoteRef>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => ShareFromSheet(notes: notes, recent: recent),
+    );
+    if (person == null || !mounted || vault != target) return;
+    try {
+      if (!await workspace.mutateNote(
+        path,
+        (source) => addShareSender(source, person),
+      )) {
+        throw StateError('Could not update note');
+      }
+      try {
+        await rememberSharePerson(person.id, recent);
+      } catch (_) {}
+      unawaited(workspace.refreshIndex(updateStatus: false, always: true));
+    } catch (error) {
+      if (mounted) showSnack(context, 'Could not save sender: $error');
     }
   }
 }

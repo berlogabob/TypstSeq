@@ -71,6 +71,7 @@ import 'widgets/app_version.dart';
 import 'widgets/constants.dart';
 import 'widgets/date_format.dart';
 import 'widgets/note_picker_sheet.dart';
+import 'widgets/share_from_sheet.dart';
 import 'widgets/entity_header.dart';
 import 'widgets/unified_board.dart';
 import 'github/send_issue.dart';
@@ -637,8 +638,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         final text = data['text'] ?? '';
         final article = SharedArticle.parse(text, title: data['title']);
         final targetVault = vault!;
-        final audioNote =
-            path != null && mime.startsWith('audio/') && isAudioPath(path);
+        final audioNote = path != null && isAudioPath(path);
         final choice = await showModalBottomSheet<String>(
           context: context,
           showDragHandle: false,
@@ -704,7 +704,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         } else if (choice == 'attach' && path != null) {
           if (!await _captureTimestamp()) continue;
           if (!mounted || !identical(vault, targetVault)) continue;
-          await _attachFile(File(path));
+          final asset = await _attachFile(File(path));
+          if (asset != null && isAudioPath(asset)) {
+            await _openAudioAsset(asset, open: false, shared: true);
+          }
         } else if (choice == 'today') {
           if (!await _captureTimestamp()) continue;
           if (!mounted || !identical(vault, targetVault)) continue;
@@ -5042,9 +5045,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _attachFile(File(sourcePath));
   }
 
-  Future<void> _attachFile(File source) async {
+  Future<String?> _attachFile(File source) async {
     final v = vault;
-    if (v == null) return;
+    if (v == null) return null;
     final base = source.path.split(Platform.pathSeparator).last;
     var target = 'assets/$base';
     var suffix = 2;
@@ -5073,6 +5076,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
     );
     _trackSave(base, target, importPlatformFile(v.storage, target, source));
+    return target;
   }
 
   Future<void> _createReport() async {
