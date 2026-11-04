@@ -528,4 +528,5 @@ Issues found:
 - [x] PF0b Skip issue-marker discovery when markers are configured, and skip issue matching when none exist. P30 profile cold starts, 2026-11-04, 10,067 notes and two parsed: scan 30.9 → 27.8 s; scan-finalize 19.7 → 18.0 s (single runs; timing varies).
 - [ ] PF0b-rest Make issue matching and other scan-finalize work proportional to changed notes, with correct invalidation for marker settings, discovery, project names and aliases; reduce load-index, listing and communities as needed. Measure on the P30 using TYLOG_STARTUP stageMillis; target total background scan < 8 s.
 - [x] PF1b Entity board: use linear task ordering and lazily build column cards with position-aware drop targets (audit #1).
-- [ ] PF1b-rest Measure entity board build/layout CPU and frame percentiles on device with 100, 1,000, and 5,000 tasks, including drag and release (audit #1; also tracked by PF1-rest).
+- [x] PF1b-rest Measure entity board build/layout CPU and frame percentiles on device with 100, 1,000, and 5,000 tasks, including drag and release (audit #1; also tracked by PF1-rest).
+- [ ] PF7 Remaining startup scan on the P30 (15 s from launch, off the UI isolate): list-stat 4.5 s (SAF listing of 10k files), validate 1.7 s, communities 1.4 s, sync 2-7 s. Next candidates: cached listing with directory mtimes, communities only when the graph is opened.
