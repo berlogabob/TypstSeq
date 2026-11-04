@@ -152,12 +152,30 @@ class EnrichReview extends StatelessWidget {
                         : null,
                   ),
                   if (searching)
-                    TextField(
-                      autofocus: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Search pages',
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        children: [
+                          IconButton(
+                            tooltip: 'Back to suggestions',
+                            icon: const Icon(Icons.arrow_back),
+                            onPressed: () => setState(() {
+                              searching = false;
+                              query = '';
+                            }),
+                          ),
+                          Expanded(
+                            child: TextField(
+                              autofocus: true,
+                              decoration: const InputDecoration(
+                                labelText: 'Search pages',
+                              ),
+                              onChanged: (value) =>
+                                  setState(() => query = value),
+                            ),
+                          ),
+                        ],
                       ),
-                      onChanged: (value) => setState(() => query = value),
                     ),
                   Expanded(
                     child: ListView(
@@ -190,6 +208,25 @@ class EnrichReview extends StatelessWidget {
                             subtitle: _candidateDetails(page, decision),
                             onTap: () => Navigator.pop(context, page),
                           ),
+                        if (searching && query.isEmpty)
+                          const ListTile(
+                            title: Text('Search by page title or alias'),
+                          ),
+                        if (searching &&
+                            query.isNotEmpty &&
+                            !pages.any(
+                              (page) =>
+                                  isEnrichTarget(page) &&
+                                  (page.title.toLowerCase().contains(
+                                        query.toLowerCase(),
+                                      ) ||
+                                      page.aliases.any(
+                                        (alias) => alias.toLowerCase().contains(
+                                          query.toLowerCase(),
+                                        ),
+                                      )),
+                            ))
+                          const ListTile(title: Text('No matching pages')),
                         if (!searching)
                           ListTile(
                             title: const Text('Other page…'),

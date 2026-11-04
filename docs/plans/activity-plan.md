@@ -499,7 +499,7 @@ Issues found:
 - [x] H1-incoming Incoming shows the latest `_system/health/<date>.json` findings as a "Vault health" section (S1 registry) with Open / Open Source. Typst compilation remains below.
 - [x] H1-incoming-rest Add Typst compile errors to the nightly health report in low-priority batches.
 - [x] U1a Polish Incoming: section order, headers, chooser sheet, ignore, paging button, empty/loading/error, 360 dp fit. Slice delivered: readable and actionable audio proposals at 360 dp.
-- [ ] U1a-rest Finish Incoming polish: review section order and headers, chooser sheet and ignore flow, paging button, empty/loading/error states, and 360 dp fit for the other queue sections.
+- [x] U1a-rest Finish Incoming polish: review section order and headers, chooser sheet and ignore flow, paging button, empty/loading/error states, and 360 dp fit for the other queue sections.
 - [x] U1b Daily suggestions chip: reserve space outside the editor and open the day's review at 360 dp.
 - [ ] U1b-rest Polish timestamp, broken-markup banner, More bar and duplicate surfaces; check remaining daily/editor states and 360 dp layout.
 - [x] U1c Polish entity page: keep long part_of chips compact and actionable at 360 dp; verify opening and removing a parent and opening Contains.

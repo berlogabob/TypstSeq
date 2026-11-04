@@ -84,4 +84,19 @@ void main() {
     await tester.pumpAndSettle();
     expect(accepted, other);
   });
+
+  testWidgets('empty page search explains the state and returns to choices', (
+    tester,
+  ) async {
+    await showReview(tester, (_) {});
+    await tester.tap(find.text('Other page…'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'no matching page');
+    await tester.pumpAndSettle();
+    expect(find.text('No matching pages'), findsOneWidget);
+    await tester.tap(find.byTooltip('Back to suggestions'));
+    await tester.pumpAndSettle();
+    expect(find.text('Alex A'), findsOneWidget);
+    expect(find.text('Not a person/ignore'), findsOneWidget);
+  });
 }

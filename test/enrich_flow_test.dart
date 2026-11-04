@@ -13,6 +13,7 @@ import 'package:tylog/vault_registry.dart';
 import 'package:tylog/vault_storage.dart';
 import 'package:tylog/widgets/enrich_review.dart';
 import 'package:tylog_core/enrich.dart';
+import 'package:tylog_core/tylog_core.dart';
 
 Future<void> _emptyStartup() async {}
 bool _waitForEnrichmentWorker = false;
@@ -231,6 +232,121 @@ void main() {
       await storage.readText('_system/decisions/dev1.jsonl'),
       contains('"action":"rejected"'),
     );
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('other Incoming sections fit and stay actionable at 360 dp', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final (home, storage) = await _mount(tester);
+    home.workspace.mounts = [
+      Mount(
+        id: 'forms',
+        name: 'Forms',
+        source: MountSource(kind: 'dataset'),
+        push: false,
+      ),
+    ];
+    await storage.writeText(
+      'ext/forms/rows.jsonl',
+      '{"source_photo_hash":"abc","review":true,"fields":{"name":{"value":"A very long imported value that must wrap on a phone screen"}}}\n',
+    );
+    await storage.writeText(
+      '_system/health/2026-11-04.json',
+      jsonEncode({
+        'issues': [
+          {'path': 'notes/kz.typ', 'code': 'missing-note-header'},
+        ],
+      }),
+    );
+    Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
+    await _pump(tester);
+    await tester.tap(find.textContaining('More').first);
+    await _pump(tester);
+    await tester.tap(find.byKey(const ValueKey('incoming-open')));
+    await _pump(tester);
+
+    for (final heading in ['OCR rows', 'Vault health']) {
+      final finder = find.text(heading);
+      await tester.ensureVisible(finder);
+      expect(finder, findsOneWidget);
+    }
+    final row = find.textContaining('A very long imported value');
+    await tester.ensureVisible(row);
+    expect(row, findsOneWidget);
+    final accept = find.byTooltip('Accept');
+    await tester.ensureVisible(accept);
+    expect(accept, findsOneWidget);
+    await tester.ensureVisible(find.text('missing-note-header'));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('Incoming error state can retry after a health report is fixed', (
+    tester,
+  ) async {
+    final (_, storage) = await _mount(tester);
+    await storage.writeText('_system/health/2026-11-04.json', '{broken');
+    Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
+    await _pump(tester);
+    await tester.tap(find.textContaining('More').first);
+    await _pump(tester);
+    await tester.tap(find.byKey(const ValueKey('incoming-open')));
+    await _pump(tester);
+    expect(find.text('Could not load suggestions'), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
+    await storage.writeText(
+      '_system/health/2026-11-04.json',
+      jsonEncode({
+        'issues': [
+          {'path': 'notes/kz.typ', 'code': 'missing-note-header'},
+        ],
+      }),
+    );
+    await tester.tap(find.text('Try again'));
+    await _pump(tester);
+    await tester.ensureVisible(find.text('missing-note-header'));
+    expect(find.text('Could not load suggestions'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('Incoming explains when there are no suggestions', (
+    tester,
+  ) async {
+    final (home, storage) = await _mount(tester);
+    const quietDay =
+        '#import "/_system/tylog.typ" as tylog\n'
+        '#show: tylog.note.with(id: "2026-10-22", title: "2026-10-22", kind: "daily")\n\n'
+        '= 2026-10-22\n\nA quiet day.\n';
+    await storage.writeText(_dayPath, quietDay);
+    home.workspace.replaceNote(_dayPath, quietDay);
+    home.workspace.index = VaultIndex(
+      notesByPath: home.workspace.index.notesByPath,
+      backlinksByTarget: const {},
+    );
+    await storage.writeText(
+      enrichMentionsPath(_dayPath),
+      jsonEncode({
+        'schema': 1,
+        'note': _dayPath,
+        'content_sha': enrichContentSha(_day),
+        'mentions': [],
+        'keywords': [],
+        'markers': [],
+      }),
+    );
+    Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
+    await _pump(tester);
+    await tester.tap(find.textContaining('More').first);
+    await _pump(tester);
+    await tester.tap(find.byKey(const ValueKey('incoming-open')));
+    await _pump(tester);
+    expect(find.text('No suggestions'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });

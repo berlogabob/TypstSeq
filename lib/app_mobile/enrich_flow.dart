@@ -536,6 +536,7 @@ extension _EnrichIncoming on _HomeScreenState {
     var audioOffset = 0;
     var ocrOffset = 0;
     List<Decision>? decisionSnapshot;
+    Object? loadError;
     final views = <String, _EnrichView>{};
     Future<Map<String, _EnrichView>> load({
       bool next = false,
@@ -605,25 +606,40 @@ extension _EnrichIncoming on _HomeScreenState {
         List<HealthFinding>,
       )
     >
-    loadQueue({bool next = false, String? refreshPath}) async => (
-      await load(next: next, refreshPath: refreshPath),
-      day == null
-          ? await loadOcrReviewRows(
-              v.storage,
-              workspace.mounts.map((mount) => mount.id),
-              decisionSnapshot ??= await loadDecisions(v.storage),
-              offset: ocrOffset,
-            )
-          : <OcrReviewRow>[],
-      day == null
-          ? await loadAudioProposals(
-              v.storage,
-              decisionSnapshot ??= await loadDecisions(v.storage),
-              offset: audioOffset,
-            )
-          : <AudioProposal>[],
-      day == null ? await loadHealthFindings(v.storage) : <HealthFinding>[],
-    );
+    loadQueue({bool next = false, String? refreshPath}) async {
+      try {
+        final mentions = await load(next: next, refreshPath: refreshPath);
+        final decisions = decisionSnapshot ??= await loadDecisions(v.storage);
+        return (
+          mentions,
+          day == null
+              ? await loadOcrReviewRows(
+                  v.storage,
+                  workspace.mounts.map((mount) => mount.id),
+                  decisions,
+                  offset: ocrOffset,
+                )
+              : <OcrReviewRow>[],
+          day == null
+              ? await loadAudioProposals(
+                  v.storage,
+                  decisions,
+                  offset: audioOffset,
+                )
+              : <AudioProposal>[],
+          day == null ? await loadHealthFindings(v.storage) : <HealthFinding>[],
+        );
+      } catch (error) {
+        loadError = error;
+        return (
+          <String, _EnrichView>{},
+          <OcrReviewRow>[],
+          <AudioProposal>[],
+          <HealthFinding>[],
+        );
+      }
+    }
+
     var future = loadQueue(next: true);
     if (!mounted) return;
     await showModalBottomSheet<void>(
@@ -674,9 +690,17 @@ extension _EnrichIncoming on _HomeScreenState {
                       return ListView(
                         children: [
                           const ListTile(title: Text('Incoming')),
-                          if (snapshot.hasError)
-                            const ListTile(
-                              title: Text('Could not load suggestions'),
+                          if (loadError != null || snapshot.hasError)
+                            ListTile(
+                              title: const Text('Could not load suggestions'),
+                              trailing: TextButton(
+                                onPressed: () => setSheetState(() {
+                                  decisionSnapshot = null;
+                                  loadError = null;
+                                  future = loadQueue();
+                                }),
+                                child: const Text('Try again'),
+                              ),
                             )
                           else if (views == null)
                             const Center(child: CircularProgressIndicator())
