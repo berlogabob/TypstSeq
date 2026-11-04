@@ -229,6 +229,11 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
         children: [
           if (_modules.any((m) => m.github != null))
             const ListTile(title: Text('Packs')),
+          if (!_modules.any((m) => m.github != null))
+            const ListTile(
+              title: Text('Packs'),
+              subtitle: Text('No GitHub packs installed'),
+            ),
           for (final module in _modules.where((m) => m.github != null)) ...[
             AppTile(
               icon: Icons.school_outlined,
@@ -259,7 +264,10 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
                 icon: Icons.extension_outlined,
                 title: mount.name,
                 subtitle: mount.source.kind == 'github'
-                    ? null
+                    ? [mount.source.repo, mount.source.ref, mount.source.subdir]
+                          .whereType<String>()
+                          .where((value) => value.isNotEmpty)
+                          .join(' · ')
                     : '${mount.source.path ?? mount.source.repo ?? mount.source.kind} · '
                           '${workspace.index?.notes.where((note) => note.path.startsWith('ext/${mount.id}/')).length ?? 0} notes · '
                           'Last refresh: ${_lastRefresh == null ? 'not yet' : _lastRefresh!.toLocal().toString().substring(0, 16)}',

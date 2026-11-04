@@ -509,7 +509,7 @@ Issues found:
 - [x] U1d-rest Keep duplicate review reachable while indexing, show an index-unavailable state with retry after failures, and keep long duplicate titles/paths readable on phones; existing merge preview and namespace conversion remain available.
 - [ ] U1d-rest-rest Add a direct latest nightly health-report link in Maintenance and visually review namespace conversion and the merge preview at 360 dp.
 - [x] U1e Keep pack names and update buttons usable on phones in Extensions.
-- [ ] U1e-rest Polish Extensions: OLT sources, GitHub sign-in states, mounts, and remaining pack states and phone layouts.
+- [x] U1e-rest Polish Extensions: OLT sources, GitHub sign-in states, mounts, and remaining pack states and phone layouts. GitHub mounts now show repository/ref/subdirectory; Extensions shows the empty-pack state; 360 dp regression tests cover mount details and signed-in controls. Existing OLT sign-in/cache/error and GitHub sign-in states remain available through the same page.
 - [x] U1f Keep GitHub repository board controls and repository identity usable at 360 dp.
 - [ ] U1f-rest Polish remaining board states and flows: GitHub repo columns, OLT whiteboard cards, empty board, and add-card flows; review loading, errors, navigation, and phone layouts.
 - [x] PERF1 Performance audit (user 2026-11-04): codex static report docs/audits/2026-11-04-performance.md (read-only) + Claude device measurements on P30 profile build (cold start TYLOG_STARTUP, index, frame jank, memory) -> ranked fix list.

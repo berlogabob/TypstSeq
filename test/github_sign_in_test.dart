@@ -35,6 +35,29 @@ class FakeClient extends GitHubClient {
 }
 
 void main() {
+  testWidgets('signed-in state fits a phone width', (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final auth = FakeAuth()..value = 'token';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GitHubSignIn(
+            auth: auth,
+            resolveToken: () async => null,
+            client: (_) => FakeClient(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('GitHub: octocat'), findsOneWidget);
+    expect(find.text('Sign out'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('missing client ID has a helpful message', (tester) async {
     await tester.pumpWidget(
       MaterialApp(

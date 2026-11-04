@@ -148,6 +148,55 @@ void main() {
     await tester.runAsync(() => root.delete(recursive: true));
   });
 
+  testWidgets('shows GitHub mount source details on a phone', (tester) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    late Directory root;
+    late WorkspaceController workspace;
+    await tester.runAsync(() async {
+      root = await Directory.systemTemp.createTemp('github-mount-details');
+      workspace = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _Inspector(),
+        reconcileTasks: (_) async {},
+        githubClientFactory: (_) => _GitHub(),
+        mountCacheDirectory: Directory('${root.path}/cache'),
+      );
+      await workspace.openVault(
+        VaultEntry(id: 'test', name: 'Test', path: '${root.path}/vault'),
+        storage: LocalVaultStorage(Directory('${root.path}/vault')),
+      );
+      await workspace.addMount(
+        Mount(
+          id: 'repo',
+          name: 'Research materials',
+          source: MountSource(
+            kind: 'github',
+            repo: 'owner/research-materials',
+            ref: 'release/2026',
+            subdir: 'course/notes',
+          ),
+          push: false,
+        ),
+      );
+    });
+    await tester.pumpWidget(
+      MaterialApp(home: ExtensionsPage(workspace: workspace)),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('owner/research-materials'), findsOneWidget);
+    expect(find.textContaining('release/2026'), findsOneWidget);
+    expect(find.textContaining('course/notes'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await tester.runAsync(() async {
+      workspace.dispose();
+      await root.delete(recursive: true);
+    });
+  });
+
   testWidgets('checks each GitHub pack at most weekly even offline', (
     tester,
   ) async {
