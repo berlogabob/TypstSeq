@@ -79,6 +79,65 @@ void main() {
       expect(await storage.exists('notes/c.typ'), isTrue);
     },
   );
+  test('merges emphasized text from another folder', () async {
+    final root = await Directory.systemTemp.createTemp('merge-emphasis-');
+    final storage = LocalVaultStorage(root);
+    final vault = Vault.withStorage(storage);
+    await vault.ensureCreated();
+    final workspace = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      reconcileTasks: (_) async {},
+    )..vault = vault;
+    addTearDown(() async {
+      workspace.dispose();
+      await root.delete(recursive: true);
+    });
+    await storage.createDirectory('notes/other');
+    await storage.writeText(
+      'notes/a.typ',
+      replaceNoteHeader(
+        'Original.\n',
+        const NoteMetadataDraft(id: 'a', title: 'A'),
+      ),
+    );
+    await storage.writeText(
+      'notes/other/b.typ',
+      replaceNoteHeader(
+        'A *bold* and _emphasized_ paragraph.\n',
+        const NoteMetadataDraft(id: 'b', title: 'B'),
+      ),
+    );
+    await storage.writeText(
+      'notes/ref.typ',
+      '#import "/_system/tylog.typ" as tylog\n#tylog.ref-note("b")[B]\n',
+    );
+    workspace.index = await scanVaultStorage(storage);
+    final preview = await workspace.previewDuplicateMerge(
+      'notes/a.typ',
+      'notes/other/b.typ',
+    );
+    expect(
+      preview.files,
+      containsAll(['notes/a.typ', 'notes/other/b.typ', 'notes/ref.typ']),
+    );
+    await workspace.mergeDuplicate(preview);
+    final text = await storage.readText('notes/a.typ');
+    expect(text, contains('A *bold* and _emphasized_ paragraph.'));
+    expect(
+      await storage.readText('notes/ref.typ'),
+      contains('#tylog.ref-note("a")'),
+    );
+    expect(await storage.exists('notes/other/b.typ'), isFalse);
+    expect(await loadDecisions(storage), hasLength(1));
+    final compile = Process.runSync('typst', [
+      'compile',
+      '--root',
+      root.path,
+      '${root.path}/notes/a.typ',
+      '${root.path}/out.pdf',
+    ]);
+    expect(compile.exitCode, 0, reason: '${compile.stderr}');
+  });
   test('merges a plain body from another folder', () async {
     final root = await Directory.systemTemp.createTemp('merge-folders-');
     final storage = LocalVaultStorage(root);
