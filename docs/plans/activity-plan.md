@@ -508,4 +508,5 @@ Issues found:
 - [ ] U1d-rest Finish Settings > Maintenance polish: duplicates list and merge preview, namespace convert, health report link, and remaining loading, error, and phone-layout states.
 - [x] U1e Keep pack names and update buttons usable on phones in Extensions.
 - [ ] U1e-rest Polish Extensions: OLT sources, GitHub sign-in states, mounts, and remaining pack states and phone layouts.
-- [ ] U1f Polish boards: GitHub repo columns, OLT whiteboard cards, empty board, add-card flows.
+- [x] U1f Keep GitHub repository board controls and repository identity usable at 360 dp.
+- [ ] U1f-rest Polish remaining board states and flows: GitHub repo columns, OLT whiteboard cards, empty board, and add-card flows; review loading, errors, navigation, and phone layouts.

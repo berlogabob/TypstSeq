@@ -471,7 +471,24 @@ class _EntityBoardState extends State<EntityBoard> {
     ];
     return Scaffold(
       appBar: AppBar(
-        title: Text('${widget.entity.title} Board'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '${widget.entity.title} Board',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (repo != null)
+              Text(
+                repo!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelMedium,
+              ),
+          ],
+        ),
         actions: [
           if (widget.githubClient != null)
             IconButton(
@@ -480,9 +497,10 @@ class _EntityBoardState extends State<EntityBoard> {
               icon: const Icon(Icons.settings),
             ),
           if (widget.githubClient != null)
-            TextButton(
-              onPressed: busy ? null : _sync,
-              child: const Text('Sync with GitHub'),
+            IconButton(
+              tooltip: 'Sync with GitHub',
+              onPressed: busy || loading ? null : _sync,
+              icon: const Icon(Icons.sync),
             ),
         ],
       ),

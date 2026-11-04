@@ -64,7 +64,7 @@ void main() {
       expect(find.text('Remote issue'), findsOneWidget);
       expect(client.repo, 'owner/repo');
       client.remoteTitle = 'Refreshed issue';
-      await tester.tap(find.text('Sync with GitHub'));
+      await tester.tap(find.byTooltip('Sync with GitHub'));
       await io();
       expect(find.text('Refreshed issue'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
@@ -79,6 +79,82 @@ void main() {
       expect(find.text('Refreshed issue'), findsOneWidget);
     },
   );
+
+  testWidgets('repository board controls fit and refresh at 360 dp', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(360, 640));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final dir = await tester.runAsync(
+      () => Directory.systemTemp.createTemp('phone-repo-board'),
+    );
+    if (dir == null) throw StateError('No temp directory');
+    addTearDown(() => dir.delete(recursive: true));
+    final vault = Vault(dir);
+    await tester.runAsync(
+      () => writeBoard(
+        vault.storage,
+        Board.fromJson({
+          'id': 'board',
+          'title': 'P',
+          'scopeEntity': 'p',
+          'github_repo': 'owner/repo',
+        }),
+      ),
+    );
+    const entity = NoteRef(
+      id: 'p',
+      path: 'p.typ',
+      title: 'A very long project title for a phone screen',
+      outgoingLinks: [],
+    );
+    const index = VaultIndex(
+      notesByPath: {'p.typ': entity},
+      backlinksByTarget: {},
+    );
+    final client = _FakeGitHub();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EntityBoard(
+          boardId: 'board',
+          entity: entity,
+          vault: vault,
+          index: index,
+          setStatus: (_, _) async {},
+          mutateNote: (_, _) async => false,
+          refreshIndex: () async => index,
+          githubClient: () async => client,
+        ),
+      ),
+    );
+    for (
+      var i = 0;
+      i < 20 && find.text('Remote issue').evaluate().isEmpty;
+      i++
+    ) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 80)),
+      );
+      await tester.pump();
+    }
+    expect(find.text('owner/repo'), findsOneWidget);
+    expect(find.byTooltip('Sync with GitHub'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    client.remoteTitle = 'Phone refresh';
+    await tester.tap(find.byTooltip('Sync with GitHub'));
+    for (
+      var i = 0;
+      i < 20 && find.text('Phone refresh').evaluate().isEmpty;
+      i++
+    ) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 80)),
+      );
+      await tester.pump();
+    }
+    expect(find.text('Phone refresh'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('GitHub cards move between columns and stale moves lose', (
     tester,
@@ -589,7 +665,7 @@ void main() {
     expect(client.labels, ['fixit']);
     client.state = 'closed';
     await tester.runAsync(() async {
-      await tester.tap(find.text('Sync with GitHub'));
+      await tester.tap(find.byTooltip('Sync with GitHub'));
       for (var i = 0; i < 200 && !source.contains('"done"'); i++) {
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }
@@ -600,7 +676,7 @@ void main() {
     client.state = 'open';
     client.linkedDoing = true;
     await tester.runAsync(() async {
-      await tester.tap(find.text('Sync with GitHub'));
+      await tester.tap(find.byTooltip('Sync with GitHub'));
       for (var i = 0; i < 200 && !source.contains('"doing"'); i++) {
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }
