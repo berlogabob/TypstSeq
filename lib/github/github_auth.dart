@@ -30,7 +30,13 @@ class GitHubAuth {
     FlutterSecureStorage? storage,
     Future<void> Function(Duration)? delay,
   }) : _client = client ?? HttpClient(),
-       _clientId = clientId ?? const String.fromEnvironment('GITHUB_CLIENT_ID'),
+       _clientId =
+           clientId ??
+           const String.fromEnvironment(
+             'GITHUB_CLIENT_ID',
+             // Public OAuth App id (device flow, no secret).
+             defaultValue: 'Ov23liaWEIBMqoe3CbA3',
+           ),
        _baseUri = baseUri ?? Uri.parse('https://github.com'),
        _storage = storage ?? const FlutterSecureStorage(),
        _delay = delay ?? Future<void>.delayed;
