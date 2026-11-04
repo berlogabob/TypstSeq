@@ -34,6 +34,45 @@ const _source = '''#import "/_system/tylog.typ" as tylog
 ''';
 
 void main() {
+  test('unclosed formatting reports its source line and blocks writes', () {
+    const source = '= Day\n\nSome text\n#strong[unfinished';
+    final errors = <Object>[];
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: source,
+      onSourceChanged: saved.add,
+      onError: errors.add,
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    final text = controller.text;
+    controller.value = TextEditingValue(
+      text: '$text!',
+      selection: TextSelection.collapsed(offset: text.length + 1),
+    );
+    expect(saved, isEmpty);
+    expect(errors.single.toString(), 'Syntax error at line 4');
+  });
+  test('formatting examples in raw text and comments remain editable', () {
+    const source = '= Day\n\n```typ\n\n#strong[example\n```\n\n'
+        '// #emph[example\n\nText';
+    final errors = <Object>[];
+    final saved = <String>[];
+    final controller = TyLogEditingController(
+      source: source,
+      onSourceChanged: saved.add,
+      onError: errors.add,
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    final at = controller.text.indexOf('Text') + 4;
+    controller.value = TextEditingValue(
+      text: controller.text.replaceRange(at, at, '!'),
+      selection: TextSelection.collapsed(offset: at + 1),
+    );
+    expect(errors, isEmpty);
+    expect(saved.single, contains('Text!'));
+  });
   test('unclosed table reports its original line and blocks writes', () {
     const source =
         '#import "/_system/tylog.typ" as tylog\n\n'

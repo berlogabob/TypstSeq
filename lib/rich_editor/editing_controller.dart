@@ -9,7 +9,7 @@ class RichEditorSyntaxError implements Exception {
 }
 
 int? _richSyntaxErrorLine(String source) {
-  // Detect known task corruption and unclosed task or table calls.
+  // Detect known task corruption and unclosed task, table, or formatting calls.
   final pattern = RegExp(
     r'text\s*:\s*"(?:\\.|[^"\\])*#tylog\.ref-note\s*\(\s*"',
   );
@@ -36,6 +36,34 @@ int? _richSyntaxErrorLine(String source) {
     final offset =
         block.start + match.start + match.group(0)!.indexOf('#tylog.ref-note');
     return '\n'.allMatches(source.substring(0, offset)).length + 1;
+  }
+  final blocks = parseControlledTypst(source).blocks;
+  if (blocks.isEmpty) return null;
+  for (var i = blocks.first.start; i < source.length; i++) {
+    if (source[i] == r'\') {
+      i++;
+    } else if (source.startsWith('//', i)) {
+      final end = source.indexOf('\n', i + 2);
+      i = end < 0 ? source.length : end;
+    } else if (source.startsWith('/*', i)) {
+      final end = source.indexOf('*/', i + 2);
+      i = end < 0 ? source.length : end + 1;
+    } else if (source[i] == '`') {
+      var end = i;
+      while (end < source.length && source[end] == '`') {
+        end++;
+      }
+      final close = source.indexOf(source.substring(i, end), end);
+      i = close < 0 ? source.length : close + end - i - 1;
+    } else if (source[i] == '#') {
+      final end = inlineCallEnd(source, i);
+      if (end != null) {
+        i = end - 1;
+      } else if (source.startsWith('#strong[', i) ||
+          source.startsWith('#emph[', i)) {
+        return '\n'.allMatches(source.substring(0, i)).length + 1;
+      }
+    }
   }
   return null;
 }
