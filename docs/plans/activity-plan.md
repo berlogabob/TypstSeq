@@ -405,3 +405,8 @@ Issues found:
 - [x] P4 review (docs/plans/2026-11-03-connectors/review-p4.md): 8/9 fixed (#7 -> KNOWN app-wide ledger append). Suite 1944. A1 #2 stable ids,#3 link resolver,#8,#9 perf | B #1 own projects only,#7 decision log append | A2 #4 OLT pagination,#5 cache after sign-out,#6 refresh error status
 - [ ] KNOWN (app-wide): decision ledger writers read-rewrite; concurrent decisions can drop a record. Needs an append op in VaultStorage (incl. Android SAF). Not P4-specific
 - [ ] P4 device checks (OLT live sign-in, GitHub project board live): need user
+
+## Wave 19 (2026-11-04): pre-release fixes + A24 user test
+- [ ] Decision ledger append: VaultStorage.appendBytes (local: FileMode.append; Android SAF: native append mode "wa"); all decision writers use it
+- [ ] Flaky 'worker publishes newly scanned issues' deterministic
+- [ ] Profile APK on A24 (user tests P3 whiteboard, P4 OLT/GitHub boards, P1/P2 basics) with checklist
