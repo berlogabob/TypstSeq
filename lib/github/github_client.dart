@@ -283,18 +283,31 @@ class GitHubClient {
     int number,
     String column,
     List<String> labels,
-  ) => _json(
-    'PATCH',
-    _uri('/repos/${_repo(repo)}/issues/$number'),
-    body: {
-      'state': column == 'done' ? 'closed' : 'open',
-      'labels': [
-        for (final label in labels)
-          if (label != 'doing') label,
-        if (column == 'doing') 'doing',
-      ],
-    },
-  );
+  ) async {
+    final path = '/repos/${_repo(repo)}/issues/$number';
+    final result = await _json(
+      'PATCH',
+      _uri(path),
+      body: {'state': column == 'done' ? 'closed' : 'open'},
+    );
+    if (column == 'doing' && !labels.contains('doing')) {
+      await _request(
+        'POST',
+        _uri('$path/labels'),
+        body: {
+          'labels': ['doing'],
+        },
+      );
+    } else if (column != 'doing' && labels.contains('doing')) {
+      try {
+        await _request('DELETE', _uri('$path/labels/doing'));
+      } on GitHubHttpError catch (error) {
+        if (error.statusCode != 404) rethrow;
+      }
+    }
+    return result;
+  }
+
   Future<Map<String, dynamic>> closeIssue(String repo, int number) => _json(
     'PATCH',
     _uri('/repos/${_repo(repo)}/issues/$number'),

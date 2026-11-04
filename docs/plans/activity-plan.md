@@ -460,7 +460,8 @@ Issues found:
 - [x] S6-rest Move repository-only GitHub issue cards between todo, doing and done; stale displayed statuses defer to GitHub and enter the decision ledger.
 - [x] S6-rest-rest Pull GitHub status into linked note-backed issue cards, recording disagreements in the decision ledger.
 - [x] S6-rest-rest-rest Push linked note-backed card moves to GitHub with GitHub winning conflicts detected at preflight.
-- [ ] S6-rest-rest-rest-rest Protect linked and repository-only card moves from concurrent GitHub changes between preflight and update.
+- [x] S6-rest-rest-rest-rest Preserve unrelated GitHub labels added concurrently during linked and repository-only card moves.
+- [ ] S6-rest-rest-rest-rest-rest Protect issue status and the doing label from concurrent GitHub changes between preflight and update, and recover partial moves; GitHub's issue API does not offer conditional updates, and status and label changes are separate requests.
 - [x] S7 OLT rooms tree + equipment stock levels on the whiteboard
 - [x] S8 Pack update check: weekly GitHub release check, "update available" in Extensions
 - [x] S9 Mention chooser: select a ranked candidate or search pages from Incoming and daily review.
