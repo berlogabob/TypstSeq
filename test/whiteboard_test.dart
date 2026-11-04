@@ -105,6 +105,33 @@ void main() {
     expect(saved.edges.length, 1);
   });
 
+  testWidgets('empty whiteboard guides the first add-card action', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Whiteboard(
+          board: const Board(id: 'empty', title: 'Empty', layout: 'free'),
+          storage: storage,
+          index: null,
+        ),
+      ),
+    );
+    expect(find.text('This whiteboard is empty'), findsOneWidget);
+    expect(find.text('Choose Add to place your first card.'), findsOneWidget);
+    expect(find.byTooltip('Add'), findsOneWidget);
+    await tester.tap(find.text('Add text card'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField), 'First card');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(find.text('First card'), findsOneWidget);
+  });
+
   testWidgets('Library Boards lists board titles and card counts', (
     tester,
   ) async {

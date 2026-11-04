@@ -23,6 +23,12 @@ class GitHubProjectBoard extends StatefulWidget {
 class _GitHubProjectBoardState extends State<GitHubProjectBoard> {
   late Future<ProjectBoard> future = load();
   bool busy = false;
+  void reload() {
+    setState(() {
+      future = load();
+    });
+  }
+
   Future<ProjectBoard> load() async {
     final scope = widget.board.scopeExtra['github_project'] as Map;
     return GitHubProjects(await widget.client()).fetchProjectBoardFromGitHub(
@@ -89,7 +95,7 @@ class _GitHubProjectBoardState extends State<GitHubProjectBoard> {
       title: Text(widget.board.title),
       actions: [
         IconButton(
-          onPressed: busy ? null : () => setState(() => future = load()),
+          onPressed: busy ? null : reload,
           icon: const Icon(Icons.refresh),
           tooltip: 'Refresh',
         ),
@@ -100,7 +106,21 @@ class _GitHubProjectBoardState extends State<GitHubProjectBoard> {
       builder: (context, snapshot) {
         if (snapshot.hasError) {
           return Center(
-            child: Text('Could not load project: ${snapshot.error}'),
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Could not load project: ${snapshot.error}'),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: reload,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
           );
         }
         if (!snapshot.hasData) {
@@ -152,48 +172,59 @@ class _GitHubProjectBoardState extends State<GitHubProjectBoard> {
                                             : Theme.of(
                                                 context,
                                               ).colorScheme.primaryContainer,
-                                        child: ListView.builder(
-                                          itemCount:
-                                              itemsByStatus[column.id]
-                                                  ?.length ??
-                                              0,
-                                          itemBuilder: (context, index) {
-                                            final item =
-                                                itemsByStatus[column
-                                                    .id]![index];
-                                            final card = Card(
-                                              child: ListTile(
-                                                title: Text(item.title),
-                                                subtitle: Text(
-                                                  [
-                                                    if (item.number != null)
-                                                      '#${item.number}',
-                                                    if (item.repo != null)
-                                                      item.repo!,
-                                                  ].join(' · '),
-                                                ),
+                                        child:
+                                            (itemsByStatus[column.id]
+                                                    ?.isEmpty ??
+                                                true)
+                                            ? const Center(
+                                                child: Text('No cards'),
+                                              )
+                                            : ListView.builder(
+                                                itemCount:
+                                                    itemsByStatus[column.id]!
+                                                        .length,
+                                                itemBuilder: (context, index) {
+                                                  final item =
+                                                      itemsByStatus[column
+                                                          .id]![index];
+                                                  final card = Card(
+                                                    child: ListTile(
+                                                      title: Text(item.title),
+                                                      subtitle: Text(
+                                                        [
+                                                          if (item.number !=
+                                                              null)
+                                                            '#${item.number}',
+                                                          if (item.repo != null)
+                                                            item.repo!,
+                                                        ].join(' · '),
+                                                      ),
+                                                    ),
+                                                  );
+                                                  if (!board.canMove)
+                                                    return card;
+                                                  return LongPressDraggable<
+                                                    ProjectItem
+                                                  >(
+                                                    data: item,
+                                                    feedback: Material(
+                                                      child: SizedBox(
+                                                        width: 240,
+                                                        child: ListTile(
+                                                          title: Text(
+                                                            item.title,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    childWhenDragging:
+                                                        const SizedBox(
+                                                          height: 48,
+                                                        ),
+                                                    child: card,
+                                                  );
+                                                },
                                               ),
-                                            );
-                                            if (!board.canMove) return card;
-                                            return LongPressDraggable<
-                                              ProjectItem
-                                            >(
-                                              data: item,
-                                              feedback: Material(
-                                                child: SizedBox(
-                                                  width: 240,
-                                                  child: ListTile(
-                                                    title: Text(item.title),
-                                                  ),
-                                                ),
-                                              ),
-                                              childWhenDragging: const SizedBox(
-                                                height: 48,
-                                              ),
-                                              child: card,
-                                            );
-                                          },
-                                        ),
                                       ),
                                 ),
                               ),

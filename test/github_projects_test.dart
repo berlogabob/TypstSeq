@@ -10,6 +10,7 @@ import 'package:tylog_core/tylog_core.dart';
 class FakeGraphQL extends GitHubClient {
   final calls = <Map<String, dynamic>>[];
   bool fail = false;
+  bool failLoad = false;
   String viewer = 'a';
   bool canUpdate = false;
   int? itemCount;
@@ -19,6 +20,9 @@ class FakeGraphQL extends GitHubClient {
     Map<String, dynamic> variables,
   ) async {
     calls.add({'query': query, ...variables});
+    if (failLoad && !query.contains('mutation')) {
+      throw StateError('offline');
+    }
     if (query.contains('mutation')) {
       if (fail) throw StateError('offline');
       return {};
@@ -132,6 +136,60 @@ void main() {
       ),
     );
     expect(find.text('Card 99'), findsOneWidget);
+  });
+  testWidgets('empty GitHub columns explain their state', (tester) async {
+    final dir = await tester.runAsync(
+      () => Directory.systemTemp.createTemp('github-board-empty'),
+    );
+    addTearDown(() => dir!.delete(recursive: true));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GitHubProjectBoard(
+          board: const Board(
+            id: 'b',
+            title: 'Board',
+            scopeExtra: {
+              'github_project': {'owner': 'a', 'number': 1},
+            },
+          ),
+          storage: Vault(dir!).storage,
+          client: () async => FakeGraphQL()..itemCount = 0,
+          deviceId: 'test',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('No cards'), findsAtLeastNWidgets(1));
+  });
+
+  testWidgets('project load errors offer retry', (tester) async {
+    final dir = await tester.runAsync(
+      () => Directory.systemTemp.createTemp('github-board-retry'),
+    );
+    addTearDown(() => dir!.delete(recursive: true));
+    final client = FakeGraphQL()..failLoad = true;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: GitHubProjectBoard(
+          board: const Board(
+            id: 'b',
+            title: 'Board',
+            scopeExtra: {
+              'github_project': {'owner': 'a', 'number': 1},
+            },
+          ),
+          storage: Vault(dir!).storage,
+          client: () async => client,
+          deviceId: 'test',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Retry'), findsOneWidget);
+    client.failLoad = false;
+    await tester.tap(find.text('Retry'));
+    await tester.pumpAndSettle();
+    expect(find.text('Todo'), findsOneWidget);
   });
   test('status options, paginated items and mutation', () async {
     final client = FakeGraphQL();

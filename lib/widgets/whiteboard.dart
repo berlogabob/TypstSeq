@@ -1225,6 +1225,38 @@ class _WhiteboardState extends State<Whiteboard> {
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
+                  if (!treeMode && board.cards.isEmpty)
+                    Positioned(
+                      left:
+                          centre.dx -
+                          math.min(size.width - 32, 360) / 2 +
+                          origin,
+                      top: centre.dy - 80 + origin,
+                      width: math.min(size.width - 32, 360),
+                      child: Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'This whiteboard is empty',
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 4),
+                              const Text(
+                                'Choose Add to place your first card.',
+                              ),
+                              TextButton.icon(
+                                onPressed: () => add('Text'),
+                                icon: const Icon(Icons.add),
+                                label: const Text('Add text card'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   for (final frame in displayBoard.frames)
                     Positioned(
                       left: frame.x.toDouble() + origin,
