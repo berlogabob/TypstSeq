@@ -242,7 +242,9 @@ class AndroidTreeVaultStorage extends VaultStorage {
         ),
         'append',
       );
-    } on PlatformException {
+    } on PlatformException catch (error) {
+      // The native append may still complete after the Dart watchdog expires.
+      if (error.code == 'saf_timeout') rethrow;
       // ponytail: some document providers reject "wa"; read+write keeps the
       // line (not atomic across devices, same as before append existed).
       await super.appendBytes(path, bytes);

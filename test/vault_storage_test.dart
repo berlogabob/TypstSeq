@@ -198,6 +198,46 @@ void main() {
   );
 
   test(
+    'a timed-out SAF append does not retry an operation still in flight',
+    () async {
+      final originalTimeout = AndroidTreeVaultStorage.safCallTimeout;
+      AndroidTreeVaultStorage.safCallTimeout = const Duration(milliseconds: 50);
+      addTearDown(
+        () => AndroidTreeVaultStorage.safCallTimeout = originalTimeout,
+      );
+      final calls = <String>[];
+      final pending = Completer<Object?>();
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(AndroidTreeVaultStorage.channel, (
+        call,
+      ) {
+        calls.add(call.method);
+        return call.method == 'append' ? pending.future : Future.value(null);
+      });
+      addTearDown(
+        () => messenger.setMockMethodCallHandler(
+          AndroidTreeVaultStorage.channel,
+          null,
+        ),
+      );
+
+      final storage = AndroidTreeVaultStorage(
+        uri: 'content://test/tree',
+        name: 'Test',
+      );
+      await expectLater(
+        storage.appendBytes('logs/events.jsonl', utf8.encode('row\n')),
+        throwsA(
+          isA<PlatformException>().having((e) => e.code, 'code', 'saf_timeout'),
+        ),
+      );
+      expect(calls, ['append']);
+      pending.complete();
+    },
+  );
+
+  test(
     'storage contract sees external edits and preserves binary files',
     () async {
       for (final simulatedSaf in [false, true]) {
