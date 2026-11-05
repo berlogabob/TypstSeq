@@ -39,8 +39,7 @@ extension _DuplicateMerge on WorkspaceController {
     final body = loserText.startsWith(canonical)
         ? loserText.substring(canonical.length)
         : null;
-    if (draft.properties.keys.any((k) => k != 'part_of') ||
-        (body == null && loserText.trim() != canonical.trim()) ||
+    if ((body == null && loserText.trim() != canonical.trim()) ||
         (body != null &&
             body.trim().isNotEmpty &&
             survivor.substring(0, survivor.lastIndexOf('/')) !=
@@ -50,7 +49,7 @@ extension _DuplicateMerge on WorkspaceController {
               unicode: true,
             ).hasMatch(body))) {
       throw StateError(
-        'Only canonical pages without other properties can be merged; bodies moved between folders must contain only text, web URLs, emphasis, headings and lists.',
+        'Only canonical pages can be merged; bodies moved between folders must contain only text, web URLs, emphasis, headings and lists.',
       );
     }
     final resolver = LinkResolver(currentIndex.notes);
@@ -104,6 +103,28 @@ extension _DuplicateMerge on WorkspaceController {
                   metadata.project != null &&
                   draft.project != metadata.project)) {
             throw StateError('The pages have conflicting dates or projects.');
+          }
+          final custom = Map.of(draft.properties)..remove('part_of');
+          if (draft.kind != metadata.kind) {
+            throw StateError('The pages have different kinds.');
+          }
+          if (custom.isNotEmpty) {
+            if (!text.startsWith(
+              replaceNoteHeader(
+                '',
+                NoteMetadataDraft.fromNote(scanNote(survivor, text)),
+              ),
+            )) {
+              throw StateError(
+                'Custom properties require a canonical survivor header.',
+              );
+            }
+            for (final entry in custom.entries) {
+              if (metadata.properties.containsKey(entry.key)) {
+                throw StateError('Both pages have the property ${entry.key}.');
+              }
+              updated = replaceNoteProperty(updated, entry.key, entry.value);
+            }
           }
           final aliases = {...metadata.aliases, remove.title, ...remove.aliases}
             ..remove(metadata.title);

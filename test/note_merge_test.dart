@@ -29,6 +29,87 @@ class _DelayedStorage extends LocalVaultStorage {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('merges canonical custom properties and refuses conflicts', () async {
+    final root = await Directory.systemTemp.createTemp('merge-properties-');
+    final storage = LocalVaultStorage(root);
+    final vault = Vault.withStorage(storage);
+    await vault.ensureCreated();
+    final workspace = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      reconcileTasks: (_) async {},
+    )..vault = vault;
+    addTearDown(() async {
+      workspace.dispose();
+      await root.delete(recursive: true);
+    });
+    await storage.writeText(
+      'notes/a.typ',
+      replaceNoteHeader(
+        'Keep.\n',
+        const NoteMetadataDraft(
+          id: 'a',
+          title: 'A',
+          properties: {'existing': 'kept'},
+        ),
+      ),
+    );
+    await storage.writeText(
+      'notes/b.typ',
+      replaceNoteHeader(
+        'Other.\n',
+        const NoteMetadataDraft(
+          id: 'b',
+          title: 'B',
+          properties: {'custom': 'value', 'count': 3},
+        ),
+      ),
+    );
+    workspace.index = await scanVaultStorage(storage);
+    final preview = await workspace.previewDuplicateMerge(
+      'notes/a.typ',
+      'notes/b.typ',
+    );
+    await workspace.mergeDuplicate(preview);
+    final text = await storage.readText('notes/a.typ');
+    expect(
+      scanNote('notes/a.typ', text).properties,
+      containsPair('existing', 'kept'),
+    );
+    expect(
+      scanNote('notes/a.typ', text).properties,
+      containsPair('custom', 'value'),
+    );
+    expect(scanNote('notes/a.typ', text).properties, containsPair('count', 3));
+    expect(text, contains('Other.'));
+    expect(await storage.exists('notes/b.typ'), isFalse);
+    expect(await loadDecisions(storage), hasLength(1));
+    final compile = Process.runSync('typst', [
+      'compile',
+      '--root',
+      root.path,
+      '${root.path}/notes/a.typ',
+      '${root.path}/out.pdf',
+    ]);
+    expect(compile.exitCode, 0, reason: '${compile.stderr}');
+    await storage.writeText(
+      'notes/c.typ',
+      replaceNoteHeader(
+        '',
+        const NoteMetadataDraft(
+          id: 'c',
+          title: 'C',
+          properties: {'custom': 'different'},
+        ),
+      ),
+    );
+    workspace.index = await scanVaultStorage(storage);
+    await expectLater(
+      workspace.previewDuplicateMerge('notes/a.typ', 'notes/c.typ'),
+      throwsStateError,
+    );
+    expect(await storage.exists('notes/c.typ'), isTrue);
+    expect(await storage.readText('notes/a.typ'), text);
+  });
   test('merge preview reads candidate notes concurrently', () async {
     final root = await Directory.systemTemp.createTemp('merge-parallel-');
     final storage = _DelayedStorage(root);
