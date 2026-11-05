@@ -5,6 +5,22 @@ import 'package:tylog_core/tylog_core.dart';
 
 const _tools = [
   {
+    'name': 'backlinks',
+    'description': 'List notes linking to a uniquely identified note.',
+    'inputSchema': {
+      'type': 'object',
+      'properties': {
+        'id': {'type': 'string', 'minLength': 1},
+      },
+      'required': ['id'],
+    },
+  },
+  {
+    'name': 'list_tasks',
+    'description': 'List tasks in the vault.',
+    'inputSchema': {'type': 'object', 'properties': {}},
+  },
+  {
     'name': 'search',
     'description':
         'Search note source text, ignoring case; returns up to 50 matches.',
@@ -109,6 +125,38 @@ Future<Object> _call(Directory root, Object? params) async {
   final name = params['name'];
   final args = params['arguments'] as Map;
   final value = args[name == 'search' ? 'query' : 'id'];
+  if (name == 'list_tasks' || name == 'backlinks') {
+    if (name == 'backlinks' && (value is! String || value.trim().isEmpty)) {
+      return reply('Invalid arguments', error: true);
+    }
+    try {
+      final index = await scanVaultStorage(
+        ReadOnlyVaultStorage(LocalVaultStorage(root)),
+      );
+      if (name == 'list_tasks') {
+        return reply(
+          jsonEncode([for (final task in index.tasks) task.toJson()]),
+        );
+      }
+      final targets = index.notes.where((note) => note.id == value).toList();
+      if (targets.length != 1) {
+        return reply(
+          targets.isEmpty ? 'Note not found' : 'Note ID is ambiguous',
+          error: true,
+        );
+      }
+      return reply(
+        jsonEncode([
+          for (final path
+              in index.backlinksByTarget[targets.single.path] ?? <String>[])
+            if (index.notesByPath[path] case final note?)
+              {'id': note.id, 'title': note.title, 'path': note.path},
+        ]),
+      );
+    } catch (error) {
+      return reply('Unable to read vault: $error', error: true);
+    }
+  }
   if ((name != 'search' && name != 'get_note') ||
       value is! String ||
       value.trim().isEmpty) {

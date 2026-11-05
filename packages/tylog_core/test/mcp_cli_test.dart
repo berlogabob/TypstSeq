@@ -15,6 +15,10 @@ void main() {
     const source =
         '#show: tylog.note.with(id: "a", title: "Apple")\n= Apple\nOrchard\n';
     await note.writeAsString(source);
+    final linked = File('${vault.path}/notes/b.typ');
+    await linked.writeAsString(
+      '#show: tylog.note.with(id: "b", title: "Bee")\n#tylog.ref-note("a")[Apple]\n#tylog.task(id: "t1", text: "Call", status: "todo")\n',
+    );
     final process = await Process.start(Platform.resolvedExecutable, [
       'run',
       'bin/tylog.dart',
@@ -66,18 +70,47 @@ void main() {
         'arguments': {'id': '../.tylog/settings.json'},
       },
     });
+    for (final call in [
+      {
+        'id': 6,
+        'name': 'backlinks',
+        'arguments': {'id': 'a'},
+      },
+      {'id': 7, 'name': 'list_tasks', 'arguments': <String, Object>{}},
+      {
+        'id': 8,
+        'name': 'backlinks',
+        'arguments': {'id': 'missing'},
+      },
+    ]) {
+      send({
+        'jsonrpc': '2.0',
+        'id': call['id'],
+        'method': 'tools/call',
+        'params': {'name': call['name'], 'arguments': call['arguments']},
+      });
+    }
     await process.stdin.close();
     expect(await process.exitCode, 0);
     await done;
-    expect(rows.map((r) => r['id']), [1, 2, 3, 4, 5]);
+    expect(rows.map((r) => r['id']), [1, 2, 3, 4, 5, 6, 7, 8]);
     expect(rows[0]['result']['protocolVersion'], '2024-11-05');
     expect(
       (rows[1]['result']['tools'] as List).map((t) => t['name']),
-      containsAll(['search', 'get_note']),
+      containsAll(['search', 'get_note', 'backlinks', 'list_tasks']),
     );
     expect(rows[2]['result']['content'][0]['text'], contains('Apple'));
     expect(rows[3]['result']['content'][0]['text'], source);
     expect(rows[4]['result']['isError'], true);
+    final backlinks =
+        jsonDecode(rows[5]['result']['content'][0]['text'] as String) as List;
+    expect(backlinks.single['id'], 'b');
+    expect(backlinks.single['path'], 'notes/b.typ');
+    final tasks =
+        jsonDecode(rows[6]['result']['content'][0]['text'] as String) as List;
+    expect(tasks.single['id'], 't1');
+    expect(tasks.single['text'], 'Call');
+    expect(rows[7]['result']['isError'], true);
     expect(await note.readAsString(), source);
   });
 }

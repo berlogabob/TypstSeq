@@ -2,7 +2,7 @@
 
 TyLog exposes a local, read-only Model Context Protocol (MCP) server over
 standard input and output. It lets an MCP client search note source text and
-read a note by its TyLog ID. It does not open a network listener or change the
+read a note by its TyLog ID, list its backlinks, and list tasks. It does not open a network listener or change the
 vault.
 
 ## Requirements and launch command
@@ -27,15 +27,15 @@ startup to fail.
 | --- | --- | --- |
 | `search` | `query`: non-empty string | Case-insensitive search of note source text. Returns up to 50 matches sorted by vault-relative path; each match contains `id`, `title`, and `path`. |
 | `get_note` | `id`: non-empty string | Returns the complete source of the note with that TyLog ID. |
+| `backlinks` | `id`: non-empty string | Returns linking notes as JSON objects with `id`, `title`, and `path`. The target ID must be unique. |
+| `list_tasks` | None | Returns tasks as JSON objects, including their note paths, statuses, and dates. |
 
 Search checks `.typ` files recursively in `daily/`, `notes/`, `projects/`,
 `articles/`, `screenshots/`, and `ext/`. `get_note` reports an error when no
 note has the requested ID or when more than one note has that ID. Tool errors
 are returned as MCP results with `isError: true`.
 
-These are the tools implemented today. Backlinks, tasks, Incoming, daily
-append, mention proposals, and health reports are not available in this
-read-only slice.
+Backlinks and tasks use the vault scanner’s source-based fallback, without Typst inspection; metadata generated only by Typst evaluation may be absent. Incoming, daily append, mention proposals, and health reports are not available in this read-only slice.
 
 ## Claude Code
 
@@ -90,7 +90,7 @@ mcp_servers:
 
 Hermes starts local stdio servers as subprocesses. Start a new Hermes session
 or reload its MCP connections after editing the config, then check its startup
-status for the TyLog server and its two tools.
+status for the TyLog server and its tools.
 
 ## References
 
