@@ -550,7 +550,8 @@ Issues found:
 - [x] PF1b-rest Measure entity board build/layout CPU and frame percentiles on device with 100, 1,000, and 5,000 tasks, including drag and release (audit #1; also tracked by PF1-rest).
 - [x] PF7 Defer community detection until the graph or Library needs it.
 - [x] PF7-rest Derive requested communities beside the worker-owned index so the UI isolate does not serialize the full index. P30 profile, 2026-11-04, 10,067 notes: cold startup scan done 20.278 s (list-stat 7.064 s, validate 0.378 s), sync done 20.920 s; opening Library triggered a scan done at 36.678 s (list-stat 6.545 s).
-- [ ] PF7-rest-rest Reduce and measure P30 SAF list-stat and startup-sync time; measure community view-opening latency and frames on the real vault, including cold and repeated opens.
+- [x] PF7-rest-rest Add a runnable P30 `.profiletest` community-derivation diagnostic. On the 10,067-note synthetic profile index, cold derivation took 81 ms and a repeated Library/Graph refresh reused the result in 0 ms.
+- [ ] PF7-rest-rest-rest Reduce and measure P30 SAF list-stat and startup-sync time; measure community view-opening latency and frames on the real vault, including cold and repeated opens. The isolated `.profiletest` install still needs a grant to the exact real-vault folder; the available Android Nextcloud roots were unavailable during this run.
 - [x] K4 Self-heal legacy `// tylog:auto-entities` blocks on every `.typ` note write: remove the marker and `== Mentions` heading, keep link items as plain lines, and move generated tags into header tags. The editor buffer stays unchanged while the persisted note is healed, preventing a stale device copy from restoring the block. Regression coverage verifies save behavior, idempotence, and Typst compilation.
 
 ## Wave 25 (overnight 2026-11-04/05): P2P sync options (user OK)
