@@ -483,7 +483,7 @@ Issues found:
 - [x] M3-rest Identify the historical source of the M2 CamelCase pages using vault evidence; address any remaining creation flows, including editor mention creation, that produce generic notes for people. Read-only vault revisions show initial generic notes with CamelCase titles, and daily references include both literal CamelCase targets and later allocated IDs. The historical unresolved-link creation and editor autocomplete paths both created generic notes from those titles; the stored revisions do not identify which UI path created each page. Unresolved links now offer a person choice (M3), and editor autocomplete offers person or note for both triggers.
 - [x] M4 (done 2026-11-04: 1 link repointed, aliases kept, kind person, empty page removed; backup scratchpad m4bak) Merge AndreSabino + "André Sabino" (Settings > Duplicates once M2 runs); Анжела Хавьер is a different person, not a duplicate.
 - [ ] M5 PT pack 1.3.1 blocked: Studio GPU full even with Ornith unloaded (Chatterbox 400); user: nvidia-smi on Studio or allow CPU TTS.
-- [ ] M6 P6 bot vaults: no freeze; design doc first (bot <-> TyLog folder contract, 5 open questions), user approves before code.
+- [ ] M6 (codex: write docs/plans/2026-11-05-bot-vaults/design.md only, no code; read ~/Documents/GitHub/Amadora-News-Bot docs/2026-10-31-architecture-tylog-brain.md + PLAN.md and LuzDoBot-repo read-only; answer the 5 open questions as proposals marked for user decision) P6 bot vaults: no freeze; design doc first (bot <-> TyLog folder contract, 5 open questions), user approves before code.
 - [x] M7 Build policy: one APK at plan end (user 2026-11-04); exception only for blocking bugs.
 
 ## Wave 24 (2026-11-04 evening, A24 final-build findings)
