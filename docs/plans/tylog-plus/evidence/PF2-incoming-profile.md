@@ -62,10 +62,15 @@ the SAF bridge.
 
 Added `integration_test/pf2_incoming_sheet_profile_test.dart`. It mounts the
 production `TyLogApp` in the isolated profile package, requires its already
-registered Android-tree vault, opens the real Incoming sheet, and records
+registered app-local P2P6 vault, opens the real Incoming sheet, and records
 readiness time, visible mention/audio/OCR rows, sheet frame timings, retained
 Dart heap and RSS. It also times Show older and an OCR accept when those
 controls are present. It does not synthesize sidecars or select a folder.
+
+The P2P6 follow-up changed the harness guard from `android-tree` to `app-local`
+and waits until the Incoming sheet header is present and its queue spinner has
+cleared. This matches the transferred copy's real storage kind and includes
+the sheet transition and queue load in its readiness timing.
 
 The P30 run was attempted with
 `flutter drive --no-pub --no-dds --profile -PtylogProfileSuffix=.profiletest
@@ -104,5 +109,64 @@ ticket. Per the device instructions, no Mac GUI action, alternate transfer, or
 vault selection was attempted. The actual-sheet harness therefore did not run
 and no performance numbers are claimed. The focused tests
 `test/review_queue_test.dart` and `test/enrich_flow_test.dart` passed; the full
-`flutter test` suite passed with 2,080 tests and 10 skips. Continue under the
-new plan follow-up when the Mac sender UI is available.
+`flutter test` suite passed with 2,080 tests and 10 skips. The blocked attempt
+was later superseded by the successful P2P6 transfer and profile run below.
+
+## PF2-rest-rest-rest-rest-rest-rest-rest-rest-rest actual P30 slice (2026-11-05)
+
+Created a read-only APFS clone of `~/Nextcloud/TyLogVault` at
+`/tmp/typstseq-p2p6-source` and transferred it with the P2P6 Mac sender to
+Huawei P30 `XPH0219904001750`, only in `org.tylog.tylog.profiletest`. The clone
+contained 25,210 files. The receiver reported SHA-256-verified completion of
+2,453,423,313 bytes in 274,477 ms and stored the copy at
+`/data/user/0/org.tylog.tylog.profiletest/files/p2p6-received`. The source clone
+was read-only during transfer. Production `org.tylog.tylog` continued to report
+`firstInstallTime=2026-11-05 15:27:02`.
+
+Opening the received copy on the P30 published its cached 10,085-note index
+35.562 s after startup began; the scan reported 34.201 s and parsed three
+notes. The profile run used `flutter drive --no-pub --no-dds --profile
+-PtylogProfileSuffix=.profiletest -d XPH0219904001750
+--driver=test_driver/integration_test.dart
+--target=integration_test/pf2_incoming_sheet_profile_test.dart
+--dart-define=P2P_HARNESS=true`.
+
+| Measurement | Result |
+| --- | ---: |
+| Incoming sheet readiness | 4,484 ms |
+| Storage kind | `app-local` |
+| Visible mention / audio / OCR rows | 0 / 0 / 0 |
+| Mention computation (`daily/2026/11/2026-11-05.typ`) | 782 ms total; 780 ms building enrichment memory; 0 decisions, tags, or markers |
+| Sheet `FrameTiming.totalSpan` samples | 32; median 12.881 ms; maximum 499.338 ms; 9 over 16.7 ms |
+| Dart heap before / after / delta | 23,428,960 / 161,259,488 / +137,830,528 bytes |
+| Process RSS after sheet load | 430,157,824 bytes |
+| Decision append / Show older | Unavailable: the actual queue had no eligible rows or older page |
+
+This is a single profile sample from the real app-local received copy, not a
+SAF-backed queue measurement or a repeatable percentile. The Home screenshot
+strip is separate from the review sheet; the measured mention/audio/OCR queues
+were empty. No decision was made and no source vault was written. The new plan
+follow-up repeats the sheet profile when an authorized received copy contains
+eligible rows so those actions can be measured without fabricating proposals.
+
+## Post-profile package cleanup and P2P6 restoration (2026-11-05)
+
+After `flutter drive` completed, Android's package log recorded
+`PACKAGE_REMOVED` for `org.tylog.tylog` at 20:53:15 and
+`org.tylog.tylog.profiletest` at 20:58:53. No explicit `adb uninstall` or
+`pm clear` command was issued. Production had last been observed with
+`firstInstallTime=2026-11-05 15:27:02` before its removal; it is absent now, so
+that timestamp cannot be rechecked or restored. No production reinstall was
+attempted.
+
+To leave the requested test copy installed with data, recreated the read-only
+APFS clone and repeated only the P2P transfer and open flow, without another
+integration-driver run. The receiver verified 2,453,423,714 bytes in 238,268
+ms. `.profiletest` was installed at 21:05:34, then updated with `adb install
+-r`; its first-install time remained 21:05:34. The received copy is active at
+`/data/user/0/org.tylog.tylog.profiletest/files/p2p6-received`. The final open
+published its 10,085-note index 34.145 s after startup, with a 32.657 s scan.
+The P30 was left with `.profiletest` running and its received copy intact. The
+temporary clone and JNI staging were removed. The test-driver package cleanup
+and production-install recovery remain unresolved; do not rerun `flutter
+drive` as part of this follow-up.

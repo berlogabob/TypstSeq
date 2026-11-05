@@ -38,8 +38,8 @@ void main() {
     expect(registry.entries, isNotEmpty, reason: 'profile vault copy missing');
     expect(
       registry.active.storageKind,
-      'android-tree',
-      reason: 'profile vault copy is not SAF-backed',
+      'app-local',
+      reason: 'P2P6 received copy is not active',
     );
 
     final frames = <FrameTiming>[];
@@ -65,9 +65,13 @@ void main() {
 
     final openFrames = frames.length;
     final readyWatch = Stopwatch()..start();
+    await tester.ensureVisible(incomingOpen);
     await tester.tap(incomingOpen);
+    await tester.pump();
     final sheetDeadline = DateTime.now().add(const Duration(minutes: 2));
-    while (find.byType(CircularProgressIndicator).evaluate().isNotEmpty &&
+    final sheetTitle = find.text('Incoming');
+    while ((sheetTitle.evaluate().isEmpty ||
+            find.byType(CircularProgressIndicator).evaluate().isNotEmpty) &&
         DateTime.now().isBefore(sheetDeadline)) {
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 50)),
@@ -75,7 +79,7 @@ void main() {
       await tester.pump();
     }
     readyWatch.stop();
-    expect(find.text('Incoming'), findsOneWidget);
+    expect(sheetTitle, findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
     await tester.pump(const Duration(milliseconds: 100));
 
@@ -114,6 +118,7 @@ void main() {
     // ignore: avoid_print
     print(
       'PF2_INCOMING_SHEET readyMs=${readyWatch.elapsedMilliseconds} '
+      'storageKind=${registry.active.storageKind} '
       'mentions=$mentionRows audio=$audioRows ocr=$ocrRows '
       'showOlderMs=$olderMs decisionMs=$decisionMs '
       'frameUs=${sheetFrames.map((f) => f.totalSpan.inMicroseconds).toList()} '
