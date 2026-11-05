@@ -29,12 +29,31 @@ read no sidecars. Four rendered-frame `totalSpan` samples were 30.808, 44.450,
 build/raster percentiles. Heap came from VM service; RSS includes native
 memory. Fixture creation and app cold-start are outside queue timings.
 
-## Scope limit
+## P30 SAF-backed queue loader slice (2026-11-05)
 
-This reproducible vertical slice measures the production audio and OCR
-loaders and renders their queue rows. It does not open the complete Incoming
-bottom sheet, include enrichment mention computation, or use a SAF-backed
-fixture. A real sheet readiness/row-frame/mention run and SAF-backed decision
-and sidecar measurements remain in PF2-rest-rest-rest-rest-rest. A real SAF
-grant could not be established because the Mac screen was locked. The P30 run
-does not imply observations about an external vault or provider.
+Huawei P30 (`XPH0219904001750`), Android profile build, installed and run only
+as `org.tylog.tylog.profiletest` with `PF2_SAF_ONLY=true`. The selected tree
+was the dedicated `Downloads/PF2-profile-fixture`; it held 50 audio JSON
+sidecars and 25 OCR rows (6,874 bytes read during the measured first page).
+No production package or vault was targeted. The harness writes fixture data
+through `AndroidTreeVaultStorage` and cleans up those files and directories in
+teardown.
+
+| Measurement | Result |
+| --- | ---: |
+| Audio/OCR first pages | 20 / 20 rows |
+| First queue load | 574 ms |
+| First load storage operations | 4 lists, 53 stats, 51 reads, 6,874 bytes |
+| Show older audio | 20 rows, 19 ms, 2 lists, 0 stats, 0 reads |
+| Decision write | 1 ledger append; refreshed page retained 20 rows |
+| Retained Dart heap delta | +91,152 bytes |
+| Rendered list frame `totalSpan` samples | 50.690 ms, 16.217 ms |
+
+These are single diagnostic samples, not percentiles. Frame timings are for a
+profile `ListView` of the returned queue rows; they do not represent opening
+the actual Incoming bottom sheet. The harness does not measure enrichment
+mention computation, actual sheet readiness, or actual sheet decision and
+Show older interaction. Those measurements remain in
+PF2-rest-rest-rest-rest-rest-rest. Device RSS and native SAF provider query
+counts were not measured; the storage operation counts are Dart calls into
+the SAF bridge.
