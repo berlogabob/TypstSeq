@@ -438,6 +438,119 @@ void main() {
       await root.delete(recursive: true);
     });
   }, timeout: const Timeout(Duration(seconds: 30)));
+  testWidgets('mounts and reads a versioned bot vault without changing it', (
+    tester,
+  ) async {
+    late Directory root;
+    late Directory bot;
+    late WorkspaceController workspace;
+    await tester.runAsync(() async {
+      root = await Directory.systemTemp.createTemp('bot-vault');
+      bot = await Directory('${root.path}/Bot').create();
+      await File('${bot.path}/bot-vault.json').writeAsString('{"schema":1}');
+      await File(
+        '${bot.path}/item.typ',
+      ).writeAsString('= Bot item\nOriginal text');
+      final vault = Directory('${root.path}/vault');
+      workspace = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _Inspector(),
+        reconcileTasks: (_) async {},
+      );
+      await workspace.openVault(
+        VaultEntry(id: 'test', name: 'Test', path: vault.path),
+        storage: LocalVaultStorage(vault),
+      );
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ExtensionsPage(
+          workspace: workspace,
+          pickDirectory: () async => bot.path,
+        ),
+      ),
+    );
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Add bot vault'));
+      final deadline = DateTime.now().add(const Duration(seconds: 10));
+      while (workspace.index?.notesByPath['ext/bot/item.typ'] == null) {
+        if (DateTime.now().isAfter(deadline)) {
+          throw TimeoutException('bot item not indexed');
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+    });
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 200)),
+    );
+    await tester.pump();
+    expect(workspace.mounts.single.push, isFalse);
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Bot'));
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    await tester.pumpAndSettle();
+    expect(find.text('item'), findsOneWidget);
+    await tester.runAsync(() async {
+      await tester.tap(find.text('item'));
+      await tester.pump();
+      await Future<void>.delayed(const Duration(seconds: 2));
+    });
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<SelectableText>(find.byType(SelectableText)).data,
+      contains('Original text'),
+    );
+    expect(
+      await tester.runAsync(() => File('${bot.path}/item.typ').readAsString()),
+      '= Bot item\nOriginal text',
+    );
+    await tester.pumpWidget(const SizedBox());
+    await tester.runAsync(() async {
+      workspace.dispose();
+      await root.delete(recursive: true);
+    });
+  });
+
+  testWidgets('rejects a bot vault requiring a newer TyLog', (tester) async {
+    late Directory root;
+    late WorkspaceController workspace;
+    await tester.runAsync(() async {
+      root = await Directory.systemTemp.createTemp('new-bot-vault');
+      await File('${root.path}/bot-vault.json').writeAsString('{"schema":2}');
+      final vault = Directory('${root.path}/vault');
+      workspace = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _Inspector(),
+        reconcileTasks: (_) async {},
+      );
+      await workspace.openVault(
+        VaultEntry(id: 'test', name: 'Test', path: vault.path),
+        storage: LocalVaultStorage(vault),
+      );
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ExtensionsPage(
+          workspace: workspace,
+          pickDirectory: () async => root.path,
+        ),
+      ),
+    );
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Add bot vault'));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    });
+    await tester.pump();
+    expect(find.textContaining('needs newer TyLog'), findsOneWidget);
+    expect(workspace.mounts, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+    await tester.runAsync(() async {
+      workspace.dispose();
+      await root.delete(recursive: true);
+    });
+  });
+
   testWidgets('adds and removes a folder, showing its indexed notes', (
     tester,
   ) async {

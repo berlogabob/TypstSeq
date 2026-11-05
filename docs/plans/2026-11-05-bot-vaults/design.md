@@ -36,3 +36,7 @@ The source architecture note has a sixth open question: whether IoT_News joins t
 4. Measure baseline coverage and decision metrics before migrating another bot or expanding to more channels.
 
 No code, data migration, bot deployment, or vault write is included in M6.
+
+## TyLog read-only mount slice (schema 1)
+
+On desktop, Extensions → Add bot vault selects a folder containing `bot-vault.json` with `{"schema": 1}`. TyLog mounts it read-only using the existing folder mount and lists indexed Typst notes when the mount is opened; an item opens as read-only source. A higher schema is rejected with “needs newer TyLog”. The manifest is checked again when opening the mount. Existing folder indexing makes these notes visible in ordinary search; isolation is tracked in P6a-rest. This minimal manifest does not define a draft or decision protocol, and does not claim interoperability with a bot producer.

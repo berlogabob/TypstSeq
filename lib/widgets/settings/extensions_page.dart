@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -86,10 +87,11 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
     }
   }
 
-  Future<void> _addFolder() => _run(() async {
+  Future<void> _addFolder({bool bot = false}) => _run(() async {
     final path =
         await (widget.pickDirectory?.call() ?? FilePicker.getDirectoryPath());
     if (path == null) return;
+    if (bot) await _checkBotManifest(path);
     final workspace = widget.workspace!;
     final segments = Directory(
       path,
@@ -110,8 +112,95 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
       Mount(
         id: id,
         name: name,
-        source: MountSource(kind: 'folder', path: path),
+        source: MountSource(
+          kind: 'folder',
+          path: path,
+          extra: bot ? {'botVault': true} : const {},
+        ),
         push: false,
+      ),
+    );
+  });
+
+  Future<void> _checkBotManifest(String path) async {
+    final file = File('$path/bot-vault.json');
+    if (!await file.exists()) {
+      throw const FormatException('Missing bot-vault.json');
+    }
+    final manifest = jsonDecode(await file.readAsString());
+    if (manifest is! Map ||
+        manifest['schema'] is! int ||
+        manifest['schema'] < 1) {
+      throw const FormatException('Invalid bot vault manifest');
+    }
+    if (manifest['schema'] > 1) {
+      throw const FormatException('Bot vault needs newer TyLog');
+    }
+  }
+
+  Future<void> _showBotItems(Mount mount) => _run(() async {
+    await _checkBotManifest(mount.source.path!);
+    if (!mounted) return;
+    final workspace = widget.workspace!;
+    final notes =
+        workspace.index?.notes
+            .where((note) => note.path.startsWith('ext/${mount.id}/'))
+            .toList() ??
+        [];
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(mount.name),
+        content: SizedBox(
+          width: 500,
+          child: notes.isEmpty
+              ? const Text('No items found')
+              : ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final note in notes)
+                      ListTile(
+                        title: Text(note.title),
+                        onTap: () async {
+                          try {
+                            final text = await workspace.vault!.storage
+                                .readText(note.path);
+                            if (!context.mounted) return;
+                            await showDialog<void>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: Text(note.title),
+                                content: SingleChildScrollView(
+                                  child: SelectableText(text),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text('Close'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          } catch (error) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Could not read item: $error'),
+                                ),
+                              );
+                            }
+                          }
+                        },
+                      ),
+                  ],
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
       ),
     );
   });
@@ -263,6 +352,9 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
               AppTile(
                 icon: Icons.extension_outlined,
                 title: mount.name,
+                onTap: mount.source.extra['botVault'] == true && !_busy
+                    ? () => _showBotItems(mount)
+                    : null,
                 subtitle: mount.source.kind == 'github'
                     ? [mount.source.repo, mount.source.ref, mount.source.subdir]
                           .whereType<String>()
@@ -338,6 +430,14 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
                 },
               ),
             ],
+          if (Platform.isLinux || Platform.isMacOS || Platform.isWindows)
+            AppTile(
+              icon: Icons.smart_toy_outlined,
+              title: 'Add bot vault',
+              onTap: workspace == null || _busy
+                  ? null
+                  : () => _addFolder(bot: true),
+            ),
           if (Platform.isLinux || Platform.isMacOS || Platform.isWindows)
             AppTile(
               icon: Icons.create_new_folder_outlined,
