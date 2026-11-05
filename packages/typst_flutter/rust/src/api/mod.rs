@@ -6,4 +6,4 @@ pub mod vault_import;
 pub mod p2p_harness;
 
 #[cfg(feature = "p2p-harness")]
-mod p2p_folder;
+pub(crate) mod p2p_folder;

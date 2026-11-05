@@ -1,6 +1,6 @@
 use sha2::{Digest, Sha256};
 use std::{
-    io::{Read, Write},
+    io::{Read, Seek, SeekFrom, Write},
     path::{Component, Path, PathBuf},
 };
 
@@ -86,10 +86,23 @@ async fn send_file(
     recv.read_exact(&mut id).await.map_err(|e| e.to_string())?;
     let index = usize::try_from(u64::from_be_bytes(id)).map_err(|e| e.to_string())?;
     let (name, size, expected) = entries.get(index).ok_or("Invalid file index")?;
-    let mut file = std::fs::File::open(safe_path(&root, name)?).map_err(|e| e.to_string())?;
+    let mut offset = [0; 8];
+    recv.read_exact(&mut offset)
+        .await
+        .map_err(|e| e.to_string())?;
+    let offset = u64::from_be_bytes(offset);
+    if offset > *size {
+        return Err("Invalid offset".into());
+    }
+    let path = safe_path(&root, name)?;
+    if hash(&path)? != (*size, expected.clone()) {
+        return Err("Source changed".into());
+    }
+    let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
+    file.seek(SeekFrom::Start(offset))
+        .map_err(|e| e.to_string())?;
     let mut buf = vec![0; CHUNK];
-    let mut hash = Sha256::new();
-    let mut count = 0;
+    let mut count = offset;
     loop {
         let n = file.read(&mut buf).map_err(|e| e.to_string())?;
         if n == 0 {
@@ -99,10 +112,9 @@ async fn send_file(
         if count > *size {
             return Err("Source changed".into());
         }
-        hash.update(&buf[..n]);
         send.write_all(&buf[..n]).await.map_err(|e| e.to_string())?;
     }
-    if count != *size || format!("{:x}", hash.finalize()) != *expected {
+    if count != *size {
         return Err("Source changed".into());
     }
     send.finish().map_err(|e| e.to_string())?;
@@ -152,49 +164,67 @@ pub(super) fn start(path: String) -> Result<String, String> {
                 return;
             }
             let _ = tokio::time::timeout(std::time::Duration::from_secs(300), async {
-                let conn = endpoint
-                    .accept()
-                    .await
-                    .ok_or("Closed")?
-                    .await
-                    .map_err(|e| e.to_string())?;
-                let (mut send, mut recv) = conn.accept_bi().await.map_err(|e| e.to_string())?;
-                let mut hello = [0; 1];
-                recv.read_exact(&mut hello)
-                    .await
-                    .map_err(|e| e.to_string())?;
-                if hello != [1] {
-                    return Err("Invalid protocol".into());
-                }
-                send.write_all(&manifest).await.map_err(|e| e.to_string())?;
-                send.finish().map_err(|e| e.to_string())?;
-                let mut count = [0; 8];
-                recv.read_exact(&mut count)
-                    .await
-                    .map_err(|e| e.to_string())?;
-                let count = u64::from_be_bytes(count);
-                if count > entries.len() as u64 {
-                    return Err("Invalid count".to_string());
-                }
-                let entries = std::sync::Arc::new(entries);
-                let mut tasks = tokio::task::JoinSet::new();
-                for _ in 0..count {
-                    if tasks.len() == 4 {
-                        tasks
-                            .join_next()
+                loop {
+                    let conn = endpoint
+                        .accept()
+                        .await
+                        .ok_or("Closed")?
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    let result: Result<(), String> = async {
+                        let (mut send, mut recv) =
+                            conn.accept_bi().await.map_err(|e| e.to_string())?;
+                        let mut hello = [0; 1];
+                        recv.read_exact(&mut hello)
                             .await
-                            .unwrap()
-                            .map_err(|e| e.to_string())??;
+                            .map_err(|e| e.to_string())?;
+                        if hello != [1] {
+                            return Err("Invalid protocol".into());
+                        }
+                        send.write_all(&manifest).await.map_err(|e| e.to_string())?;
+                        send.finish().map_err(|e| e.to_string())?;
+                        let mut count = [0; 8];
+                        recv.read_exact(&mut count)
+                            .await
+                            .map_err(|e| e.to_string())?;
+                        let count = u64::from_be_bytes(count);
+                        if count > entries.len() as u64 {
+                            return Err("Invalid count".to_string());
+                        }
+                        let entries = std::sync::Arc::new(entries.clone());
+                        let mut tasks = tokio::task::JoinSet::new();
+                        for _ in 0..count {
+                            if tasks.len() == 4 {
+                                tasks
+                                    .join_next()
+                                    .await
+                                    .unwrap()
+                                    .map_err(|e| e.to_string())??;
+                            }
+                            let c = conn.clone();
+                            let root = root.clone();
+                            let entries = entries.clone();
+                            tasks.spawn(async move { send_file(c, root, entries).await });
+                        }
+                        while let Some(result) = tasks.join_next().await {
+                            result.map_err(|e| e.to_string())??;
+                        }
+                        let mut done = [0];
+                        recv.read_exact(&mut done)
+                            .await
+                            .map_err(|e| e.to_string())?;
+                        if done != [1] {
+                            return Err("Invalid completion".into());
+                        }
+                        Ok(())
                     }
-                    let c = conn.clone();
-                    let root = root.clone();
-                    let entries = entries.clone();
-                    tasks.spawn(async move { send_file(c, root, entries).await });
+                    .await;
+                    if result.is_ok() {
+                        conn.closed().await;
+                        break;
+                    }
+                    conn.close(1u32.into(), b"transfer interrupted");
                 }
-                while let Some(result) = tasks.join_next().await {
-                    result.map_err(|e| e.to_string())??;
-                }
-                conn.closed().await;
                 Ok::<(), String>(())
             })
             .await;
@@ -209,33 +239,63 @@ async fn receive_one(
     root: PathBuf,
     index: usize,
     entry: Entry,
+    transferred: std::sync::Arc<std::sync::atomic::AtomicU64>,
 ) -> Result<u64, String> {
     let (mut send, mut recv) = conn.open_bi().await.map_err(|e| e.to_string())?;
+    let temp_file = safe_path(&temp, &index.to_string())?;
+    let mut file = std::fs::OpenOptions::new()
+        .read(true)
+        .append(true)
+        .create(true)
+        .open(&temp_file)
+        .map_err(|e| e.to_string())?;
+    let offset = file.metadata().map_err(|e| e.to_string())?.len();
+    if offset > entry.1 {
+        return Err("Partial file too large".into());
+    }
     send.write_all(&(index as u64).to_be_bytes())
         .await
         .map_err(|e| e.to_string())?;
+    send.write_all(&offset.to_be_bytes())
+        .await
+        .map_err(|e| e.to_string())?;
     send.finish().map_err(|e| e.to_string())?;
-    let temp_file = temp.join(index.to_string());
-    let mut file = std::fs::File::create(&temp_file).map_err(|e| e.to_string())?;
-    let mut hash = Sha256::new();
-    let mut remaining = entry.1;
+    let mut remaining = entry.1 - offset;
     let mut buf = vec![0; CHUNK];
     while remaining > 0 {
         let n = remaining.min(CHUNK as u64) as usize;
-        recv.read_exact(&mut buf[..n])
+        let n = recv
+            .read(&mut buf[..n])
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| e.to_string())?
+            .ok_or("Unexpected end of file")?;
         file.write_all(&buf[..n]).map_err(|e| e.to_string())?;
-        hash.update(&buf[..n]);
         remaining -= n as u64;
+        transferred.fetch_add(n as u64, std::sync::atomic::Ordering::Relaxed);
+        #[cfg(test)]
+        if remaining <= entry.1 / 2 && remaining > 0 && {
+            let mut target = INTERRUPT.lock().unwrap();
+            if target.as_ref() == Some(&root) {
+                *target = None;
+                RESUME_OFFSET.store(entry.1 - remaining, std::sync::atomic::Ordering::SeqCst);
+                true
+            } else {
+                false
+            }
+        } {
+            conn.close(1u32.into(), b"test interruption");
+            return Err("Test interruption".into());
+        }
     }
     if recv
         .read(&mut buf[..1])
         .await
         .map_err(|e| e.to_string())?
         .is_some()
-        || format!("{:x}", hash.finalize()) != entry.2
+        || hash(&temp_file)? != (entry.1, entry.2.clone())
     {
+        drop(file);
+        let _ = std::fs::remove_file(&temp_file);
         return Err("File hash or length mismatch".into());
     }
     file.flush().map_err(|e| e.to_string())?;
@@ -244,8 +304,13 @@ async fn receive_one(
     std::fs::create_dir_all(target.parent().ok_or("Invalid path")?).map_err(|e| e.to_string())?;
     safe_path(&root, &entry.0)?;
     std::fs::rename(temp_file, target).map_err(|e| e.to_string())?;
-    Ok(entry.1)
+    Ok(entry.1 - offset)
 }
+#[cfg(test)]
+pub(crate) static INTERRUPT: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+#[cfg(test)]
+pub(crate) static RESUME_OFFSET: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
 pub(super) fn receive(
     ticket: String,
     path: String,
@@ -271,83 +336,90 @@ pub(super) fn receive(
             .await
             .map_err(|e| e.to_string())?;
         let result = tokio::time::timeout(std::time::Duration::from_secs(300), async {
-            let conn = endpoint
-                .connect(addr, ALPN)
-                .await
-                .map_err(|e| e.to_string())?;
-            let (mut send, mut recv) = conn.open_bi().await.map_err(|e| e.to_string())?;
-            send.write_all(&[1]).await.map_err(|e| e.to_string())?;
-            let manifest = recv.read_to_end(LIMIT).await.map_err(|e| e.to_string())?;
-            let entries: Vec<Entry> =
-                serde_json::from_slice(&manifest).map_err(|e| e.to_string())?;
-            let mut seen = std::collections::HashSet::new();
-            let mut needed = Vec::new();
-            for (i, entry) in entries.into_iter().enumerate() {
-                let dest = safe_path(&root, &entry.0)?;
-                if !seen.insert(entry.0.clone())
-                    || entry.2.len() != 64
-                    || !entry
-                        .2
-                        .bytes()
-                        .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
-                {
-                    return Err("Invalid manifest".into());
-                }
-                if hash(&dest).ok() != Some((entry.1, entry.2.clone())) {
-                    needed.push((i, entry));
-                }
-            }
-            let temp = loop {
-                let name = format!(
-                    ".p2p-{}-{}",
-                    std::process::id(),
-                    std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map_err(|e| e.to_string())?
-                        .as_nanos()
-                );
-                let dir = root.join(name);
-                match std::fs::create_dir(&dir) {
-                    Ok(()) => break dir,
-                    Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
-                    Err(e) => return Err(e.to_string()),
-                }
-            };
-            struct Cleanup(PathBuf);
-            impl Drop for Cleanup {
-                fn drop(&mut self) {
-                    let _ = std::fs::remove_dir_all(&self.0);
-                }
-            }
-            let _cleanup = Cleanup(temp.clone());
-            send.write_all(&(needed.len() as u64).to_be_bytes())
-                .await
-                .map_err(|e| e.to_string())?;
-            send.finish().map_err(|e| e.to_string())?;
-            let mut tasks = tokio::task::JoinSet::new();
-            let mut bytes = 0;
-            for (index, entry) in needed {
-                if tasks.len() == 4 {
-                    bytes += tasks
-                        .join_next()
+            let transferred = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+            loop {
+                let conn = endpoint
+                    .connect(addr.clone(), ALPN)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let attempt: Result<_, String> = async {
+                    let (mut send, mut recv) = conn.open_bi().await.map_err(|e| e.to_string())?;
+                    send.write_all(&[1]).await.map_err(|e| e.to_string())?;
+                    let manifest = recv.read_to_end(LIMIT).await.map_err(|e| e.to_string())?;
+                    let entries: Vec<Entry> =
+                        serde_json::from_slice(&manifest).map_err(|e| e.to_string())?;
+                    let mut seen = std::collections::HashSet::new();
+                    let mut needed = Vec::new();
+                    for (i, entry) in entries.into_iter().enumerate() {
+                        let dest = safe_path(&root, &entry.0)?;
+                        if !seen.insert(entry.0.clone())
+                            || entry.2.len() != 64
+                            || !entry
+                                .2
+                                .bytes()
+                                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+                        {
+                            return Err("Invalid manifest".into());
+                        }
+                        if hash(&dest).ok() != Some((entry.1, entry.2.clone())) {
+                            needed.push((i, entry));
+                        }
+                    }
+                    let temp_name = format!(".p2p-{:x}", Sha256::digest(&manifest));
+                    let temp = safe_path(&root, &temp_name)?;
+                    match std::fs::create_dir(&temp) {
+                        Ok(()) => (),
+                        Err(e)
+                            if e.kind() == std::io::ErrorKind::AlreadyExists && temp.is_dir() =>
+                        {
+                            ()
+                        }
+                        Err(e) => return Err(e.to_string()),
+                    }
+                    send.write_all(&(needed.len() as u64).to_be_bytes())
                         .await
-                        .unwrap()
-                        .map_err(|e| e.to_string())??;
+                        .map_err(|e| e.to_string())?;
+                    let mut tasks = tokio::task::JoinSet::new();
+                    let mut bytes = 0;
+                    for (index, entry) in needed {
+                        if tasks.len() == 4 {
+                            bytes += tasks
+                                .join_next()
+                                .await
+                                .unwrap()
+                                .map_err(|e| e.to_string())??;
+                        }
+                        let c = conn.clone();
+                        let t = temp.clone();
+                        let r = root.clone();
+                        let transferred = transferred.clone();
+                        tasks.spawn(async move {
+                            receive_one(c, t, r, index, entry, transferred).await
+                        });
+                    }
+                    while let Some(result) = tasks.join_next().await {
+                        bytes += result.map_err(|e| e.to_string())??;
+                    }
+                    send.write_all(&[1]).await.map_err(|e| e.to_string())?;
+                    send.finish().map_err(|e| e.to_string())?;
+                    send.stopped().await.map_err(|e| e.to_string())?;
+                    std::fs::remove_dir(temp).map_err(|e| e.to_string())?;
+                    Ok(bytes)
                 }
-                let c = conn.clone();
-                let t = temp.clone();
-                let r = root.clone();
-                tasks.spawn(async move { receive_one(c, t, r, index, entry).await });
+                .await;
+                match attempt {
+                    Ok(_bytes) => {
+                        conn.close(0u32.into(), b"done");
+                        break Ok(super::p2p_harness::FileTransfer {
+                            bytes: transferred.load(std::sync::atomic::Ordering::Relaxed),
+                            elapsed_ms: start.elapsed().as_millis() as u64,
+                            sha256: String::new(),
+                        });
+                    }
+                    Err(_e) if conn.close_reason().is_some() => continue,
+                    Err(e) => return Err(e),
+                }
             }
-            while let Some(result) = tasks.join_next().await {
-                bytes += result.map_err(|e| e.to_string())??;
-            }
-            conn.close(0u32.into(), b"done");
-            Ok(super::p2p_harness::FileTransfer {
-                bytes,
-                elapsed_ms: start.elapsed().as_millis() as u64,
-                sha256: String::new(),
-            })
         })
         .await
         .map_err(|_| "Transfer timed out".to_string());

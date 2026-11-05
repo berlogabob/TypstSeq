@@ -123,3 +123,34 @@ fn folder_incremental_loopback() {
     );
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn folder_resumes_after_disconnect() {
+    use crate::api::{
+        p2p_folder::{INTERRUPT, RESUME_OFFSET},
+        p2p_harness::{receive_file, start_file},
+    };
+    use std::sync::atomic::Ordering;
+    let dir = std::env::temp_dir().join(format!("p2p-resume-test-{}", std::process::id()));
+    let source = dir.join("source");
+    let dest = dir.join("dest");
+    std::fs::create_dir_all(&source).unwrap();
+    let data: Vec<u8> = (0..20 * 1024 * 1024)
+        .map(|i| ((i * 73 + i / 251) % 256) as u8)
+        .collect();
+    std::fs::write(source.join("payload"), &data).unwrap();
+    let ticket = start_file(source.to_string_lossy().into_owned()).unwrap();
+    *INTERRUPT.lock().unwrap() = Some(dest.clone());
+    let result = receive_file(ticket, dest.to_string_lossy().into_owned()).unwrap();
+    let offset = RESUME_OFFSET.load(Ordering::SeqCst);
+    assert!(offset >= data.len() as u64 / 2 && offset < data.len() as u64);
+    assert_eq!(result.bytes, data.len() as u64);
+    assert_eq!(std::fs::read(dest.join("payload")).unwrap(), data);
+    println!(
+        "resume loopback: {} bytes in {} ms; {:.2} MB/s",
+        result.bytes,
+        result.elapsed_ms,
+        result.bytes as f64 / 1000.0 / result.elapsed_ms.max(1) as f64
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}
