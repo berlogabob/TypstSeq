@@ -3,6 +3,55 @@ import 'dart:io';
 import 'package:test/test.dart';
 
 void main() {
+  test('migrates marked notes outside daily folders', () async {
+    final vault = await Directory.systemTemp.createTemp('tylog_mentions_');
+    addTearDown(() => vault.delete(recursive: true));
+    final settings = File('${vault.path}/.tylog/settings.json');
+    await settings.parent.create(recursive: true);
+    await settings.writeAsString('{"version":5}');
+    const source =
+        '''#show: tylog.note.with(id: "shot", title: "Shot", kind: "screenshot")
+= Shot
+Alice met #tylog.ref-note("bob")[Bob].
+
+// tylog:auto-entities
+== Mentions
+- #tylog.ref-note("alice")[Alice]
+''';
+    final paths = ['screenshots/shot.typ', 'archive/other.typ'];
+    for (final path in paths) {
+      final note = File('${vault.path}/$path');
+      await note.parent.create(recursive: true);
+      await note.writeAsString(source);
+    }
+    Future<ProcessResult> run(List<String> args) => Process.run(
+      Platform.resolvedExecutable,
+      ['run', 'bin/tylog.dart', 'migrate-mentions', vault.path, ...args],
+    );
+
+    final preview = await run([]);
+    expect(preview.exitCode, 0, reason: '${preview.stderr}');
+    for (final path in paths) {
+      expect(preview.stdout, contains(path));
+      expect(await File('${vault.path}/$path').readAsString(), source);
+    }
+    expect(await Directory('${vault.path}/_system/backups').exists(), isFalse);
+
+    final applied = await run(['--apply']);
+    expect(applied.exitCode, 0, reason: '${applied.stderr}');
+    for (final path in paths) {
+      final migrated = await File('${vault.path}/$path').readAsString();
+      expect(migrated, contains('#tylog.ref-note("alice")[Alice]'));
+      expect(migrated, isNot(contains('// tylog:auto-entities')));
+    }
+    expect(
+      await Directory(
+        '${vault.path}/_system/backups',
+      ).list(recursive: true).where((entry) => entry is File).length,
+      2,
+    );
+  });
+
   test('previews and backs up a migrated daily note', () async {
     final vault = await Directory.systemTemp.createTemp('tylog_mentions_');
     addTearDown(() => vault.delete(recursive: true));

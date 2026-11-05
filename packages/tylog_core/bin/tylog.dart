@@ -214,11 +214,15 @@ Future<int> _migrateMentions(List<String> args) async {
       VaultStorageKind.validVault) {
     throw StateError('TyLog vault marker is missing or invalid');
   }
-  final daily = Directory('${root.path}/daily');
-  if (!await daily.exists()) return 0;
-  final files = await daily
+  final files = await root
       .list(recursive: true, followLinks: false)
-      .where((e) => e is File && e.path.endsWith('.typ'))
+      .where((e) {
+        if (e is! File || !e.path.endsWith('.typ')) return false;
+        final relative = e.path.substring(root.path.length + 1);
+        return !relative
+            .split(Platform.pathSeparator)
+            .any((part) => part.startsWith('_system') || part.startsWith('.'));
+      })
       .cast<File>()
       .toList();
   files.sort((a, b) => a.path.compareTo(b.path));
