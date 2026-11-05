@@ -12,6 +12,10 @@ import 'package:tylog/vault_registry.dart';
 import 'package:tylog/vault_storage.dart';
 import 'package:tylog/voronoi_view.dart';
 
+// On P30, run with:
+// flutter drive --no-pub --no-dds --profile -PtylogProfileSuffix=.profiletest \
+//   -d XPH0219904001750 --driver=test_driver/integration_test.dart \
+//   --target=integration_test/pf7_real_vault_communities_profile_test.dart
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
