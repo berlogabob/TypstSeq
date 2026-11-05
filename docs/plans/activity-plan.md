@@ -554,6 +554,6 @@ Issues found:
 - [x] K4 Self-heal legacy `// tylog:auto-entities` blocks on every `.typ` note write: remove the marker and `== Mentions` heading, keep link items as plain lines, and move generated tags into header tags. The editor buffer stays unchanged while the persisted note is healed, preventing a stale device copy from restoring the block. Regression coverage verifies save behavior, idempotence, and Typst compilation.
 
 ## Wave 25 (overnight 2026-11-04/05): P2P sync options (user OK)
-- [ ] P2P1 Options report (spec docs/plans/2026-11-05-p2p/README.md)
+- [x] P2P1 Options report (docs/research-p2p-sync-options.md)
 - [ ] P2P2 In-app iroh harness (debug-only, scratch vault, .profiletest builds only)
 - [ ] P2P3 Go/no-go decision written into the plan
