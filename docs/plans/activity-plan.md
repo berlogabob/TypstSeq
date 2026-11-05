@@ -527,7 +527,8 @@ Issues found:
 - [x] PF2 Bound Incoming mention examination to seven sidecar days per page, retain results and refresh only the decided day (audit #2).
 - [x] PF2-rest Add bounded audio and OCR review pages; share one decision snapshot per queue refresh, paginate sidecar rows, and build only the visible queue rows (audit #2, #7).
 - [x] PF2-rest-rest Add an incrementally invalidated actionable-sidecar summary, avoid rereading changed decision ledgers, and bound sidecar input reads. Audio and OCR sidecars are metadata-cached, decision snapshots update in memory, and changed inputs are read in bounded 1 MiB streams.
-- [ ] PF2-rest-rest-rest Measure sparse and dense Incoming queues on device: storage operations, readiness, heap and frames, including decisions and Show older.
+- [x] PF2-rest-rest-rest Measure sparse and dense Incoming queues on device: storage operations, readiness, heap and frames, including decisions and Show older. P30 app-private synthetic audio sidecars (1,000 files) measured; see [PF2 Incoming profile](tylog-plus/evidence/PF2-incoming-profile.md).
+- [ ] PF2-rest-rest-rest-rest Measure the full Incoming sheet on P30 with mention and OCR queues plus a SAF-backed fixture: capture actual sheet readiness and row frames, ledger decision writes, Show older, and retained heap; record fixture sizes and profiler limits.
 - [x] PF3 Index normalized names and words once per enrichment memory, preserving matching precedence; skip marker lookup when there are no markers (audit #3).
 - [x] PF3-rest Move enrichment memory construction off the UI isolate, incrementally apply newly persisted feedback, and cache marker IDs by index revision (audit #3, #16).
 - [x] PF3-rest-rest Move per-day resolution, tag matching and link scans off the UI isolate; (audit #3, #16).
