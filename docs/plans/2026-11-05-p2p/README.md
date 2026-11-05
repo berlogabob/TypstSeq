@@ -224,3 +224,16 @@ with `-PtylogProfileSuffix=.profiletest` and the Android harness library staged
 as above. The entry point checks the native `.profiletest` guard, requires the
 existing `p2p6-received` directory and selects it without removing other vault
 registrations. It must only be installed over the isolated test package.
+
+## P2P6-rest-rest-rest restart investigation (2026-11-05)
+The folder sender previously waited for the active connection to finish before
+accepting another. A receiver process disappearing can therefore leave a new
+connection waiting behind the old one until the transport detects its loss.
+The harness now accepts a replacement connection and closes the old one. A
+synthetic loopback test holds the first connection open after reading the
+manifest and verifies a second receiver completes with the same ticket; it
+failed by timeout before the change. This reproduces a plausible stall, not a
+measurement of the earlier phone failure. An actual process-kill retry, path
+instrumentation and unplugged battery measurement remain in the follow-up.
+The P30 reported AC power, so no battery consumption is claimed. The Mac GUI
+was locked and was not used. P2P3 remains no-go.

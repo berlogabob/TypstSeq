@@ -165,14 +165,15 @@ pub(super) fn start(path: String) -> Result<String, String> {
                 return;
             }
             let _ = tokio::time::timeout(std::time::Duration::from_secs(TRANSFER_TIMEOUT_SECS), async {
+                let mut conn = endpoint
+                    .accept()
+                    .await
+                    .ok_or("Closed")?
+                    .await
+                    .map_err(|e| e.to_string())?;
                 loop {
-                    let conn = endpoint
-                        .accept()
-                        .await
-                        .ok_or("Closed")?
-                        .await
-                        .map_err(|e| e.to_string())?;
-                    let result: Result<(), String> = async {
+                    let result: Result<(), String> = tokio::select! {
+                        result = async {
                         let (mut send, mut recv) =
                             conn.accept_bi().await.map_err(|e| e.to_string())?;
                         let mut hello = [0; 1];
@@ -218,13 +219,21 @@ pub(super) fn start(path: String) -> Result<String, String> {
                             return Err("Invalid completion".into());
                         }
                         Ok(())
-                    }
-                    .await;
+                        } => result,
+                        incoming = endpoint.accept() => {
+                            // A killed receiver may leave its connection alive until QUIC times out.
+                            let next = incoming.ok_or("Closed")?.await.map_err(|e| e.to_string())?;
+                            conn.close(1u32.into(), b"receiver reconnected");
+                            conn = next;
+                            continue;
+                        }
+                    };
                     if result.is_ok() {
                         conn.closed().await;
                         break;
                     }
                     conn.close(1u32.into(), b"transfer interrupted");
+                    conn = endpoint.accept().await.ok_or("Closed")?.await.map_err(|e| e.to_string())?;
                 }
                 Ok::<(), String>(())
             })
@@ -432,6 +441,43 @@ pub(super) fn receive(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn new_receiver_can_resume_while_old_connection_is_still_open() {
+        let dir = std::env::temp_dir().join(format!("p2p-stale-test-{}", std::process::id()));
+        let source = dir.join("source");
+        let dest = dir.join("dest");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("note"), b"resume").unwrap();
+        let ticket = start(source.to_string_lossy().into_owned()).unwrap();
+        let addr: iroh::EndpointAddr = serde_json::from_value(
+            serde_json::from_str::<serde_json::Value>(&ticket).unwrap()["folder"].clone(),
+        )
+        .unwrap();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let endpoint = iroh::Endpoint::builder(iroh::endpoint::presets::N0)
+                .bind()
+                .await
+                .unwrap();
+            let stale = endpoint.connect(addr, ALPN).await.unwrap();
+            let (mut send, mut recv) = stale.open_bi().await.unwrap();
+            send.write_all(&[1]).await.unwrap();
+            recv.read_to_end(LIMIT).await.unwrap();
+            let (tx, rx) = std::sync::mpsc::channel();
+            std::thread::spawn(move || {
+                let _ = tx.send(receive(ticket, dest.to_string_lossy().into_owned()));
+            });
+            let result = tokio::task::spawn_blocking(move || {
+                rx.recv_timeout(std::time::Duration::from_secs(15))
+            })
+            .await
+            .unwrap()
+            .expect("new receiver stalled behind old connection");
+            assert_eq!(result.unwrap().bytes, 6);
+            endpoint.close().await;
+        });
+        std::fs::remove_dir_all(dir).unwrap();
+    }
     #[test]
     fn rejects_unsafe_paths() {
         let root = std::env::temp_dir();
