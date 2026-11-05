@@ -66,6 +66,12 @@ android {
             if (keystorePropertiesFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
             }
+            if (project.findProperty("tylogProfileSuffix") == ".profiletest") {
+                applicationIdSuffix = ".profiletest"
+                if (!keystorePropertiesFile.exists()) {
+                    signingConfig = signingConfigs.getByName("debug")
+                }
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

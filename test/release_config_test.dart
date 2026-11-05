@@ -43,6 +43,10 @@ void main() {
       gradle.indexOf('        getByName("profile") {'),
       gradle.indexOf('\ndependencies {'),
     );
+    final release = gradle.substring(
+      gradle.indexOf('        release {'),
+      gradle.indexOf('        // Sign profile builds'),
+    );
     expect(debug, contains('?: ".debug"'));
     expect(debug, contains('tylogDebugSuffix'));
     expect(
@@ -55,6 +59,12 @@ void main() {
     expect(profile, contains('?.let { applicationIdSuffix = it }'));
     expect(profile, isNot(contains('".debug"')));
     expect(profile, isNot(contains('".profiletest"')));
+    expect(
+      release,
+      contains('findProperty("tylogProfileSuffix") == ".profiletest"'),
+    );
+    expect(release, contains('applicationIdSuffix = ".profiletest"'));
+    expect(release, contains('if (!keystorePropertiesFile.exists())'));
   });
 
   test('release builds ARM64 and refreshes the indexer only on macOS', () {

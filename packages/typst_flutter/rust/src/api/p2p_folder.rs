@@ -7,6 +7,7 @@ use std::{
 const ALPN: &[u8] = b"tylog/folder/1";
 const CHUNK: usize = 256 * 1024;
 const LIMIT: usize = 16 * 1024 * 1024;
+const TRANSFER_TIMEOUT_SECS: u64 = 7200;
 
 type Entry = (String, u64, String);
 fn hash(path: &Path) -> Result<(u64, String), String> {
@@ -163,7 +164,7 @@ pub(super) fn start(path: String) -> Result<String, String> {
                 endpoint.close().await;
                 return;
             }
-            let _ = tokio::time::timeout(std::time::Duration::from_secs(300), async {
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(TRANSFER_TIMEOUT_SECS), async {
                 loop {
                     let conn = endpoint
                         .accept()
@@ -335,7 +336,7 @@ pub(super) fn receive(
             .bind()
             .await
             .map_err(|e| e.to_string())?;
-        let result = tokio::time::timeout(std::time::Duration::from_secs(300), async {
+        let result = tokio::time::timeout(std::time::Duration::from_secs(TRANSFER_TIMEOUT_SECS), async {
             let transferred = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
             loop {
                 let conn = endpoint

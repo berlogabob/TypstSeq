@@ -151,3 +151,50 @@ new cross-device throughput, CPU, route or battery-consumption measurements
 were made for this slice. On the A24, battery service reported AC power and
 100% at inspection; this is not an unplugged measurement. The P2P3 no-go
 remains until the outstanding gates in P2P5-rest-rest-rest are met.
+
+## P2P6-rest real snapshot (2026-11-05)
+An explicitly authorized APFS clone of the Mac vault was made read-only in the
+scratchpad and sent to the P30 test app's private storage. It contained 25,206
+files and 2,461,600,858 bytes. The existing folder protocol checks the SHA-256
+of every received file, and checks already-present files before skipping them.
+The sender reported completion at 16:39:14, after the 16:33:07 receiver start:
+367 seconds including an intentional receiver kill, an idle wait, a new sender
+ticket and reconnection, equivalent to 6.71 MB/s of snapshot content over the
+whole elapsed interval. This is not an exact network-byte rate. A fresh-ticket
+repeat re-read the destination against the complete manifest in 33.667 seconds
+and reported zero bytes needed, confirming every manifest file already matched.
+
+After killing the receiver at 16:34:14, reuse of the original ticket remained
+idle for approximately a minute. Restarting the sender and using a new ticket
+resumed the same destination at 16:35:44 and completed. This does not prove
+same-ticket process restart works; it needs investigation. The route could not
+be distinguished as direct or relay from the available socket information.
+No nettop was used. The received copy is app-private; opening and indexing it
+in TyLog remain unmeasured. This experiment does not establish product sync,
+conflict, deletion or lifecycle safety, and P2P3's no-go remains.
+
+P30 process CPU samples averaged 76.1% (peak 185%, 33 samples including the
+interruption); Mac sender samples after restart averaged 29.6% (peak 85.5%, 27
+samples). These are approximately ten-second samples, with 100% representing
+one core, not energy measurements. Batterystats history's last recorded charge value
+was the same 24 mAh entry before and after (it did not update during the run);
+Battery Service reported 24,000 µAh and 80% before and after,
+with AC connected and status not charging. This zero delta is not a meaningful
+unplugged battery-consumption measurement. The production install time remained
+2026-11-05 15:27:02 before and after; only the `.profiletest` release APK was
+installed or launched.
+
+The reusable local runner is `tool/p2p6/main.dart` with
+`tool/p2p6/coordinator.py`. Build the isolated native libraries as described
+above, with release Flutter builds and the source clone passed to macOS as
+`--dart-define=P2P_SOURCE=<absolute-clone-path>`. The release Android build
+accepts `-PtylogProfileSuffix=.profiletest` and checks the package at runtime.
+Run the coordinator on the Mac, forward port 47993 with `adb reverse`, launch
+Mac first and wait for `ticket ready`, then launch the test APK. The receiver
+uses `p2p6-received` under its own application support directory and reuses
+verified files there; it does not delete extra destination files. Stop and
+restart both peers with a fresh ticket to retry a stalled process restart.
+Only use a source the user has explicitly authorized; do not grant the test
+app access to the original vault. Tickets must stay local and private. Harness
+libraries are isolated build outputs and must never be copied into
+`.typst_flutter_prebuilt`.

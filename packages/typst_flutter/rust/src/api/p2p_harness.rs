@@ -137,7 +137,7 @@ const MAX_FILE: u64 = 50 * 1024 * 1024;
 #[cfg(feature = "p2p-harness")]
 const CHUNK: usize = 256 * 1024;
 
-/// Serve a file or folder once. The ticket is valid for at most five minutes.
+/// Serve a file or folder once. Folder tickets allow up to two hours.
 #[cfg(feature = "p2p-harness")]
 pub fn start_file(path: String) -> Result<String, String> {
     use sha2::{Digest, Sha256};
