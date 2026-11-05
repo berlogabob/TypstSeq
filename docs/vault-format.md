@@ -300,3 +300,7 @@ The article pipeline and bots should pin to this document's contract version
 and preserve unknown fields. They should write only files they own, validate
 Typst output, and avoid modifying decision, revision, cache, or health data as
 a side effect of creating an article.
+
+## Bot vault handoff
+
+A bot vault is a separate directory mounted by TyLog, with `bot-vault.json` containing integer `schema: 1`. Its producer-owned Typst notes use the managed note format above. The Amadora schema-1 producer convention, including stable item and source IDs, advisory outbox JSONL records, ownership, and current interoperability limits, is specified in [bot vault contract v1](plans/2026-11-05-bot-vaults/contract-v1.md). The TyLog build at e21e62a mounts and displays these notes read-only; it does not yet write or process the bot outbox.
