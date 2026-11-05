@@ -302,7 +302,7 @@ class GitHubClient {
           'labels': ['doing'],
         },
       );
-    } else if (column != 'doing' && labels.contains('doing')) {
+    } else if (column == 'todo' && labels.contains('doing')) {
       try {
         await _request('DELETE', _uri('$path/labels/doing'));
       } on GitHubHttpError catch (error) {

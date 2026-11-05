@@ -78,10 +78,33 @@ void main() {
     await client.updateIssueColumn('a/b', 42, 'doing', ['bug']);
     expect(labels, {'bug', 'concurrent', 'doing'});
     await client.updateIssueColumn('a/b', 42, 'done', ['bug', 'doing']);
-    expect(labels, {'bug', 'concurrent'});
-    await client.updateIssueColumn('a/b', 42, 'todo', ['bug']);
+    expect(labels, {'bug', 'concurrent', 'doing'});
+    await client.updateIssueColumn('a/b', 42, 'todo', ['bug', 'doing']);
     expect(labels, {'bug', 'concurrent'});
   });
+
+  test(
+    'closing an issue preserves a concurrently changed doing label',
+    () async {
+      final labels = <String>{'doing'};
+      server.listen((request) async {
+        await request.drain<void>();
+        if (request.method == 'PATCH') {
+          request.response.write('{}');
+        } else if (request.method == 'DELETE') {
+          labels.remove('doing');
+          request.response.write('[]');
+        }
+        await request.response.close();
+      });
+      await GitHubClient(
+        null,
+        http,
+        base,
+      ).updateIssueColumn('a/b', 42, 'done', ['doing'], currentColumn: 'doing');
+      expect(labels, {'doing'});
+    },
+  );
 
   test(
     'moving between open columns does not reopen a concurrently closed issue',
