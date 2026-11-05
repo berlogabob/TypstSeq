@@ -765,46 +765,6 @@ String selfHealAutoEntities(String source) {
   return tags.isEmpty ? cleaned : updateNoteTags(cleaned, add: tags);
 }
 
-/// Rewrites the block from [decisions]: linked mentions the note does not
-/// already link inline, and [tags]. No block when there is nothing to say.
-///
-/// "Already" is judged on the text without the block. The indexed [note]
-/// includes the block's own links and tags, and trusting it would drop them
-/// on the next pass and add them back on the one after, forever.
-String writeAutoEntities(
-  String source,
-  NoteRef note,
-  List<EnrichDecision> decisions,
-  List<String> tags,
-) {
-  final stripped = stripAutoEntities(source);
-  final own = scanNote(note.path, stripped);
-  final inline = {...own.outgoingLinks};
-  final seen = <String>{};
-  final items = [
-    for (final decision in decisions)
-      if (decision.status == EnrichStatus.linked)
-        if (decision.target case final target?)
-          if (!inline.contains(target.id) &&
-              !inline.contains(target.title) &&
-              seen.add(target.id))
-            '- #tylog.ref-note(${typstString(target.id)})'
-                '[${escapeMarkup(decision.mention.surface)}]',
-  ];
-  final newTags = tags.where((tag) => !own.tags.contains(tag)).toList();
-  if (items.isEmpty && newTags.isEmpty) return stripped;
-  return [
-    stripped.trimRight(),
-    '',
-    autoEntitiesMarker,
-    '== Mentions',
-    ...items,
-    if (newTags.isNotEmpty)
-      newTags.map((tag) => '#tylog.tag(${typstString(tag)})').join(' '),
-    '',
-  ].join('\n');
-}
-
 /// Turns the first plain occurrence of [mention] on its line into a link.
 /// Returns [source] unchanged when the line no longer holds the surface
 /// outside markup: the user's text wins over our line numbers.

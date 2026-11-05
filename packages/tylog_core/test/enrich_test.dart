@@ -537,32 +537,6 @@ void main() {
     );
   });
 
-  test('writing the legacy block changes the content hash', () {
-    // Real vault: a day ending in "в точку . " plus blank lines lost its
-    // trailing blanks to the block, and every device then saw an edit.
-    const body = '= Day\n\nв точку . \n\n\n';
-    final note = day('2026-10-22');
-    final linked = EnrichDecision(
-      const EnrichMention(surface: 'IADE', type: 'organization', line: 3),
-      EnrichStatus.linked,
-      [
-        EnrichCandidate(
-          entity('iade', 'IADE', kind: 'organization'),
-          0,
-          strong: true,
-        ),
-      ],
-    );
-    final written = writeAutoEntities(body, note, [linked], const []);
-    expect(written, contains(autoEntitiesMarker));
-    expect(enrichContentSha(written), isNot(enrichContentSha(body)));
-    // Computed with tool/enrich_worker.py content_sha().
-    expect(
-      enrichContentSha(body),
-      '98e4ab71821ed482817f51df3f49becd38aea18e74b37327571cc5b29397e91a',
-    );
-  });
-
   test('a name linked on its line is settled', () {
     const roma = EnrichMention(surface: 'Рома', type: 'person', line: 2);
     expect(enrichLinkedOnLine(roma, ['x', 'с Ромой и Рома']), isFalse);
@@ -675,35 +649,6 @@ void main() {
         '#import "/_system/tylog.typ" as tylog\n\n'
         '#show: tylog.note.with(id: "2026-10-01", title: "2026-10-01", kind: "daily")\n\n'
         '= 2026-10-01\n\nmet André at IADE\n';
-    final note = day('2026-10-01', tags: ['journal']);
-    final linked = EnrichDecision(iadeMention, EnrichStatus.linked, [
-      EnrichCandidate(iade, 0, strong: true),
-    ]);
-
-    test('block is idempotent and keeps text typed after it', () {
-      final once = writeAutoEntities(header, note, [linked], ['design']);
-      expect(once, contains('- #tylog.ref-note("iade")[IADE]'));
-      expect(once, contains('#tylog.tag("design")'));
-      expect(writeAutoEntities(once, note, [linked], ['design']), once);
-      final typedAfter = '$once\nlater thought\n';
-      final rewritten = writeAutoEntities(typedAfter, note, const [], const []);
-      expect(rewritten, contains('later thought'));
-      expect(rewritten, isNot(contains(autoEntitiesMarker)));
-      expect(stripAutoEntities(once), header);
-      // Once indexed, the note carries the block's own link and tag; the
-      // next pass must still write the same block (no add/drop flip-flop).
-      final indexed = scanNote(note.path, once);
-      expect(indexed.outgoingLinks, contains('iade'));
-      expect(writeAutoEntities(once, indexed, [linked], ['design']), once);
-    });
-
-    test('already linked inline: no duplicate in the block', () {
-      final inline = header.replaceFirst(
-        'at IADE',
-        'at #tylog.ref-note("iade")[IADE]',
-      );
-      expect(writeAutoEntities(inline, note, [linked], const []), inline);
-    });
 
     test('inline link skips URLs and partial words, links the plain word', () {
       const src =
@@ -777,12 +722,8 @@ void main() {
         ..createSync(recursive: true);
       addTearDown(() => dir.deleteSync(recursive: true));
       const mention = EnrichMention(surface: 'André', type: 'person', line: 7);
-      final source = writeAutoEntities(
-        linkMentionInline(header, mention, silva),
-        note,
-        [linked],
-        ['design'],
-      ).replaceFirst('/_system/tylog.typ', '/typst/tylog/lib.typ');
+      final source = linkMentionInline(header, mention, silva)
+          .replaceFirst('/_system/tylog.typ', '/typst/tylog/lib.typ');
       final file = File('${dir.path}/day.typ')..writeAsStringSync(source);
       final result = Process.runSync('typst', [
         'compile',
