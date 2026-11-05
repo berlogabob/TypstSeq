@@ -28,7 +28,7 @@ void main() {
 #tylog.date-ref("2026-07-13")[Delivery]
 #tylog.attachment("assets/manual.pdf")[Manual]
 #tylog.attachment("assets/image.png", kind: "image")[Image]
-#tylog.task(id: "task-1", text: "Write", due: "2026-07-13")
+#tylog.task(id: "task-1", text: "Write", assignees: ("b-id",), due: "2026-07-13")
 ''',
       );
       await File('${dir.path}/notes/B.typ').writeAsString(
@@ -54,6 +54,7 @@ void main() {
       );
       expect(index.backlinksByTarget['notes/B.typ'], ['notes/A.typ']);
       expect(index.tasks.single.id, 'task-1');
+      expect(index.tasksByEntityPath!['notes/B.typ'], index.tasks);
       expect(index.calendar.map((item) => item.date), contains('2026-07-13'));
     },
   );
@@ -104,9 +105,9 @@ source:: https://example.com/page
 source:: [[real-id]]
 ''',
     );
-    await File('${dir.path}/articles/Real.typ').writeAsString(
-      '#show: tylog.note.with(id: "real-id", title: "Real")',
-    );
+    await File(
+      '${dir.path}/articles/Real.typ',
+    ).writeAsString('#show: tylog.note.with(id: "real-id", title: "Real")');
 
     final index = await scanVaultStorage(LocalVaultStorage(dir));
 
@@ -118,32 +119,35 @@ source:: [[real-id]]
     expect(index.problems.where((p) => p.code == 'broken-link'), isEmpty);
   });
 
-  test('cached URL outgoing links do not produce broken-link problems', () async {
-    final dir = await Directory.systemTemp.createTemp('tylog_srccache_');
-    addTearDown(() => dir.delete(recursive: true));
-    await Directory('${dir.path}/articles').create(recursive: true);
-    await File('${dir.path}/articles/A.typ').writeAsString(
-      '#show: tylog.note.with(id: "a", title: "A", kind: "article")',
-    );
+  test(
+    'cached URL outgoing links do not produce broken-link problems',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('tylog_srccache_');
+      addTearDown(() => dir.delete(recursive: true));
+      await Directory('${dir.path}/articles').create(recursive: true);
+      await File('${dir.path}/articles/A.typ').writeAsString(
+        '#show: tylog.note.with(id: "a", title: "A", kind: "article")',
+      );
 
-    final first = await scanVaultStorage(LocalVaultStorage(dir));
-    // Simulate a cache written by the pre-fix scanner, which recorded the
-    // raw source:: URL as an outgoing link on the cached note.
-    final poisoned = VaultIndex(
-      notesByPath: {
-        'articles/A.typ': first.notesByPath['articles/A.typ']!.copyWith(
-          outgoingLinks: ['#link("https://medium.com/")[medium.com]'],
-        ),
-      },
-      backlinksByTarget: const {},
-    );
+      final first = await scanVaultStorage(LocalVaultStorage(dir));
+      // Simulate a cache written by the pre-fix scanner, which recorded the
+      // raw source:: URL as an outgoing link on the cached note.
+      final poisoned = VaultIndex(
+        notesByPath: {
+          'articles/A.typ': first.notesByPath['articles/A.typ']!.copyWith(
+            outgoingLinks: ['#link("https://medium.com/")[medium.com]'],
+          ),
+        },
+        backlinksByTarget: const {},
+      );
 
-    final second = await scanVaultStorage(
-      LocalVaultStorage(dir),
-      previous: poisoned,
-    );
-    expect(second.problems.where((p) => p.code == 'broken-link'), isEmpty);
-  });
+      final second = await scanVaultStorage(
+        LocalVaultStorage(dir),
+        previous: poisoned,
+      );
+      expect(second.problems.where((p) => p.code == 'broken-link'), isEmpty);
+    },
+  );
 
   test('escaped source:: wiki links resolve or stay silent', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_escsrc_');
@@ -162,11 +166,13 @@ source:: \\[\\[3dnews.ru\\]\\]
 ''',
     );
     // An entity note for habr.com exists; none for 3dnews.ru.
-    await File('${dir.path}/notes/habr.typ').create(recursive: true).then(
-      (f) => f.writeAsString(
-        '#show: tylog.note.with(id: "habr", title: "habr.com")',
-      ),
-    );
+    await File('${dir.path}/notes/habr.typ')
+        .create(recursive: true)
+        .then(
+          (f) => f.writeAsString(
+            '#show: tylog.note.with(id: "habr", title: "habr.com")',
+          ),
+        );
 
     final index = await scanVaultStorage(LocalVaultStorage(dir));
 
@@ -235,9 +241,9 @@ More prose that Typst now reads as raw text.
       '${dir.path}/articles/.Lost.typ.tylog-449257966368947.tmp',
     ).writeAsString(content);
     // A stray temp whose target survived is dead bytes and just gets removed.
-    await File('${dir.path}/articles/Kept.typ').writeAsString(
-      '#show: tylog.note.with(id: "kept", title: "Kept")',
-    );
+    await File(
+      '${dir.path}/articles/Kept.typ',
+    ).writeAsString('#show: tylog.note.with(id: "kept", title: "Kept")');
     await File(
       '${dir.path}/articles/.Kept.typ.tylog-1.tmp',
     ).writeAsString('stale');
@@ -245,13 +251,11 @@ More prose that Typst now reads as raw text.
     final index = await scanVaultStorage(LocalVaultStorage(dir));
 
     expect(index.notesByPath['articles/Lost.typ']?.id, 'lost');
+    expect(await File('${dir.path}/articles/Lost.typ').readAsString(), content);
     expect(
-      await File('${dir.path}/articles/Lost.typ').readAsString(),
-      content,
-    );
-    expect(
-      File('${dir.path}/articles/.Lost.typ.tylog-449257966368947.tmp')
-          .existsSync(),
+      File(
+        '${dir.path}/articles/.Lost.typ.tylog-449257966368947.tmp',
+      ).existsSync(),
       isFalse,
     );
     expect(

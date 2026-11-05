@@ -164,6 +164,30 @@ void main() {
     await tester.pump();
     expect(find.text('Show more'), findsNothing);
   });
+
+  test('timeline reads task references from the entity index', () {
+    const entity = NoteRef(
+      id: 'person',
+      path: 'people/p.typ',
+      title: 'Person',
+      outgoingLinks: [],
+    );
+    final task = const TaskRef(
+      id: 't',
+      notePath: 'daily.typ',
+      text: 'Call',
+      assignees: ['person'],
+    );
+    final index = VaultIndex(
+      notesByPath: const {'people/p.typ': entity},
+      backlinksByTarget: const {},
+      tasks: [task],
+      tasksByEntityPath: {
+        'people/p.typ': [task],
+      },
+    );
+    expect(index.tasksByEntityPath!['people/p.typ'], [task]);
+  });
 }
 
 class _CountingTasks extends ListBase<TaskRef> {

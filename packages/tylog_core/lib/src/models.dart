@@ -627,6 +627,7 @@ class VaultIndex {
     this.attachmentBacklinksByPath = const {},
     this.problems = const [],
     this.tasks = const [],
+    this.tasksByEntityPath,
     this.issues = const [],
     this.issueLines = const {},
   });
@@ -642,6 +643,9 @@ class VaultIndex {
   final Map<String, List<String>> attachmentBacklinksByPath;
   final List<PkmsProblem> problems;
   final List<TaskRef> tasks;
+
+  /// Tasks whose assignee or inline note reference resolves to an entity path.
+  final Map<String, List<TaskRef>>? tasksByEntityPath;
   final List<IssueRef> issues;
   final Map<String, List<String>> issueLines;
 

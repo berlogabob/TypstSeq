@@ -533,7 +533,8 @@ Issues found:
 - [ ] PF4-rest-rest-rest Measure journal scrolling, task rendering, and retained memory on device at 50/500/5,000 days; the P30 smoke sample is not a controlled heap study (audit #4, #5, #12).
 - [x] PF5 Cache entity timeline entries per index and defer rebuilding them while collapsed (audit #6).
 - [x] PF5-rest Reuse the workspace resolver when opening entity timelines, and refresh entries if the resolver changes.
-- [ ] PF5-rest-rest Index task references by entity; make merge preview verification scalable while preserving unsupported-reference and concurrent-change checks (audit #6, #8). Measure timeline CPU and frames, and merge preview reads, bytes, time, CPU and heap on app-local and SAF fixtures.
+- [x] PF5-rest-rest Index task references by entity; make merge preview verification scalable while preserving unsupported-reference and concurrent-change checks (audit #6, #8). Timeline task matching now uses a per-entity index.
+- [ ] PF5-rest-rest-rest Make merge preview verification scalable while preserving unsupported-reference and concurrent-change checks; measure timeline CPU and frames, and merge preview reads, bytes, time, CPU and heap on app-local and SAF fixtures (audit #6, #8).
 - [x] PF6 Route manual rebuild progress through the narrow notifier and throttle updates (audit #14).
 - [x] PF6-rest Load vendored packages after the editor is usable while preserving compile readiness and vault-switch cancellation (audit #11).
 - [ ] PF6-rest-rest Measure cold startup with 0/100/1,000 vendored files and rebuild notifications, Flutter frames, channel operations, CPU and memory on device (audit #11, #14).

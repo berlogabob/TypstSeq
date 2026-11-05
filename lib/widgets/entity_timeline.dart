@@ -69,8 +69,13 @@ class _EntityTimelineState extends State<EntityTimeline> {
         ));
       }
     }
-    for (final task in index.tasks) {
+    final indexedTasks = index.tasksByEntityPath;
+    final candidateTasks = indexedTasks == null
+        ? index.tasks
+        : indexedTasks[widget.entity.path] ?? const <TaskRef>[];
+    for (final task in candidateTasks) {
       final linked =
+          indexedTasks != null ||
           task.assignees.any(
             (target) => resolver.resolve(target).path == widget.entity.path,
           ) ||

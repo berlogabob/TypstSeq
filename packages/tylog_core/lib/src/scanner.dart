@@ -1183,6 +1183,28 @@ VaultIndex _buildVaultIndex(
   final resolver = LinkResolver(notes.values);
   final backlinks = <String, Set<String>>{};
   final attachmentBacklinks = <String, Set<String>>{};
+  final tasksByEntity = <String, List<TaskRef>>{};
+  final taskReference = RegExp(
+    r'(?:#tylog\.ref-note\(\s*["\x27]([^"\x27]+)["\x27]|\[\[([^\]]+)\]\])',
+  );
+  for (final task in tasks) {
+    final paths = <String>{};
+    for (final target in task.assignees) {
+      final resolved = resolver.resolve(target);
+      if (resolved.status == LinkResolutionStatus.resolved) {
+        paths.add(resolved.path!);
+      }
+    }
+    for (final match in taskReference.allMatches(task.text)) {
+      final resolved = resolver.resolve(match[1] ?? match[2]!);
+      if (resolved.status == LinkResolutionStatus.resolved) {
+        paths.add(resolved.path!);
+      }
+    }
+    for (final path in paths) {
+      tasksByEntity.putIfAbsent(path, () => []).add(task);
+    }
+  }
   final allProblems = [...problems];
   for (final source in notes.values) {
     for (final target in source.outgoingLinks) {
@@ -1231,6 +1253,10 @@ VaultIndex _buildVaultIndex(
     attachmentBacklinksByPath: _setsToSortedLists(attachmentBacklinks),
     problems: allProblems,
     tasks: tasks,
+    tasksByEntityPath: {
+      for (final entry in tasksByEntity.entries)
+        entry.key: List.unmodifiable(entry.value),
+    },
     issues: issues,
     issueLines: issueLines,
   );
