@@ -3274,6 +3274,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       );
                 return SettingsSheet(
                   workspace: workspace,
+                  onOpenPath: (path) => unawaited(_openPath(path)),
                   onOpenProcessing: () => unawaited(_showProcessing()),
                   storage: vault?.storage,
                   calendarSettings: workspace.calendarSettings,

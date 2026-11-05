@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:tylog_core/tylog_core.dart'
-    show findDuplicates, NoteRef, VaultIndex;
+    show findDuplicates, NoteRef, VaultIndex, VaultStorage;
 import '../../workspace_controller.dart';
 import '../app_icons.dart';
 import '../ds/app_tile.dart';
@@ -20,6 +20,11 @@ class MaintenancePage extends StatelessWidget {
         title: 'Problems',
         onTap: settings.onProblems,
       ),
+      if (settings.storage != null)
+        _LatestHealthReportTile(
+          storage: settings.storage!,
+          onOpenPath: settings.onOpenPath,
+        ),
       AppTile(
         icon: Icons.content_copy,
         title: 'Duplicates',
@@ -81,6 +86,55 @@ class MaintenancePage extends StatelessWidget {
       ),
     ],
   );
+}
+
+class _LatestHealthReportTile extends StatefulWidget {
+  const _LatestHealthReportTile({required this.storage, this.onOpenPath});
+  final VaultStorage storage;
+  final ValueChanged<String>? onOpenPath;
+
+  @override
+  State<_LatestHealthReportTile> createState() =>
+      _LatestHealthReportTileState();
+}
+
+class _LatestHealthReportTileState extends State<_LatestHealthReportTile> {
+  late final Future<String?> _report = _latestHealthReport(widget.storage);
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<String?>(
+    future: _report,
+    builder: (context, snapshot) {
+      final path = snapshot.data;
+      if (path == null) return const SizedBox.shrink();
+      return AppTile(
+        icon: Icons.health_and_safety_outlined,
+        title: 'Latest health report',
+        subtitle: path.split('/').last.split('.').first,
+        onTap: widget.onOpenPath == null
+            ? null
+            : () => widget.onOpenPath!(path),
+      );
+    },
+  );
+}
+
+Future<String?> _latestHealthReport(VaultStorage storage) async {
+  const root = '_system/health';
+  if (!await storage.exists(root)) return null;
+  final reports =
+      (await storage.list(path: root))
+          .where(
+            (entry) =>
+                !entry.isDirectory &&
+                RegExp(
+                  r'^_system/health/\d{4}-\d{2}-\d{2}\.json$',
+                ).hasMatch(entry.path),
+          )
+          .map((entry) => entry.path)
+          .toList()
+        ..sort();
+  return reports.isEmpty ? null : reports.last;
 }
 
 class _DuplicatesPage extends StatefulWidget {

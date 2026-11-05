@@ -38,6 +38,7 @@ class SettingsSheet extends StatefulWidget {
     required this.onEnableReminders,
     required this.onMigrateEntityTypes,
     this.onMigrateNamespaces,
+    this.onOpenPath,
     required this.onStripImportNoise,
     required this.onImportVault,
     required this.onInstallModule,
@@ -100,6 +101,7 @@ class SettingsSheet extends StatefulWidget {
   final Future<void> Function() onEnableReminders;
   final Future<void> Function() onMigrateEntityTypes;
   final Future<void> Function()? onMigrateNamespaces;
+  final ValueChanged<String>? onOpenPath;
   final Future<void> Function() onStripImportNoise;
   final Future<void> Function() onImportVault;
   final Future<void> Function() onInstallModule;

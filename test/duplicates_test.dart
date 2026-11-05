@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/widgets/settings/maintenance_page.dart';
 import 'package:tylog/widgets/settings_sheet.dart';
@@ -108,6 +109,59 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets(
+    'latest health report opens directly from Maintenance at 360 dp',
+    (tester) async {
+      final storage = _TestStorage();
+      final opened = <String>[];
+      await storage.writeText('_system/health/not-a-date.json', '{}');
+      await storage.writeText(
+        '_system/health/2026-11-04.json',
+        '{"issues":[]}',
+      );
+      await storage.writeText(
+        '_system/health/2026-11-03.json',
+        '{"issues":[]}',
+      );
+      final settings = SettingsSheet(
+        storage: storage,
+        onOpenPath: opened.add,
+        workspace: WorkspaceController(
+          taskScheduler: TaskScheduler(),
+          reconcileTasks: (_) async {},
+        ),
+        vaultPath: '/vault',
+        cloud: null,
+        syncing: false,
+        syncStatusSubtitle: '',
+        onNextcloud: () {},
+        vaultCount: 1,
+        themeMode: ThemeMode.system,
+        onThemeModeChanged: (_) {},
+        onManageVaults: () {},
+        onEnableReminders: () async {},
+        onMigrateEntityTypes: () async {},
+        onStripImportNoise: () async {},
+        onImportVault: () async {},
+        onInstallModule: () async {},
+      );
+      addTearDown(settings.workspace!.dispose);
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        MaterialApp(home: MaintenancePage(settings: settings)),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Latest health report'), findsOneWidget);
+      expect(find.text('2026-11-04'), findsOneWidget);
+      await tester.tap(find.text('Latest health report'));
+      expect(opened, ['_system/health/2026-11-04.json']);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('Duplicates stays reachable while the index is unavailable', (
     tester,
   ) async {
@@ -148,4 +202,50 @@ void main() {
     expect(find.text('Retry'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+}
+
+class _TestStorage extends VaultStorage {
+  final files = <String, List<int>>{};
+
+  @override
+  Future<bool> exists(String path) async =>
+      files.keys.any((file) => file == path || file.startsWith('$path/'));
+
+  @override
+  Future<void> createDirectory(String path) async {}
+
+  @override
+  Future<List<VaultStorageEntry>> list({
+    String path = '',
+    bool recursive = false,
+  }) async => [
+    for (final file in files.keys.where((file) => file.startsWith('$path/')))
+      VaultStorageEntry(path: file, isDirectory: false),
+  ];
+
+  @override
+  Future<VaultStorageEntry?> stat(String path) async => files.containsKey(path)
+      ? VaultStorageEntry(
+          path: path,
+          isDirectory: false,
+          size: files[path]!.length,
+        )
+      : null;
+
+  @override
+  Future<Uint8List> readBytes(String path) async =>
+      Uint8List.fromList(files[path]!);
+
+  @override
+  Future<String> hash(String path) async => path;
+
+  @override
+  Future<void> writeBytes(String path, List<int> bytes) async {
+    files[path] = bytes;
+  }
+
+  @override
+  Future<void> delete(String path) async {
+    files.remove(path);
+  }
 }
