@@ -10,7 +10,7 @@ cd android && ./gradlew :app:assembleProfile -PtylogProfileSuffix=.profiletest &
 ```
 Use this APK with DevTools or `integration_test/support/editor_frame_metrics.dart` for Flutter frame timings. `dumpsys gfxinfo` measures platform decor and cannot establish Flutter jank. Never use `svc power stayon` or `flutter drive` for device work.
 
-Cold-start measurements: after `adb install -r` Android relaunches an app that was in the foreground, so a following `am start` only reaches the running instance ("intent delivered to currently running top-most instance") and its `TYLOG_STARTUP` marks are not a cold start. Always `adb shell am force-stop org.tylog.tylog` and wait a few seconds before `am start`; enlarge the log buffer first on noisy phones (`adb logcat -G 16M`).
+Cold-start measurements: after `adb install -r` Android relaunches the isolated `.profiletest` app if it was in the foreground, so a following `am start` only reaches the running instance ("intent delivered to currently running top-most instance") and its `TYLOG_STARTUP` marks are not a cold start. Always `adb shell am force-stop org.tylog.tylog.profiletest` and wait a few seconds before `adb shell monkey -p org.tylog.tylog.profiletest 1`; enlarge the log buffer first on noisy phones (`adb logcat -G 16M`).
 
 Engineering policies and their local test gates live in [CONTEXT.md → Engineering rules](CONTEXT.md#engineering-rules); read them when changing startup, indexing, editor layout, sync, or release tooling.
 
