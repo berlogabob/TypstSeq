@@ -2,10 +2,23 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:tylog_core/tylog_core.dart';
+import 'package:tylog_core/values.dart' show typstString;
 
 import 'tylog.dart' show generateHealthReport;
 
 const _tools = [
+  {
+    'name': 'daily_append',
+    'description': 'Append literal text to an existing daily note.',
+    'inputSchema': {
+      'type': 'object',
+      'properties': {
+        'date': {'type': 'string', 'description': 'Day in YYYY-MM-DD format'},
+        'text': {'type': 'string', 'minLength': 1},
+      },
+      'required': ['date', 'text'],
+    },
+  },
   {
     'name': 'incoming_list',
     'description': 'List vault notes with new attention.',
@@ -142,6 +155,95 @@ Future<Object> _call(Directory root, Object? params) async {
   }
   final name = params['name'];
   final args = params['arguments'] as Map;
+  if (name == 'daily_append') {
+    final date = args['date'];
+    final text = args['text'];
+    if (date is! String ||
+        !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(date) ||
+        DateTime.tryParse(date)?.toIso8601String().substring(0, 10) != date ||
+        text is! String ||
+        text.trim().isEmpty ||
+        RegExp(r'[\x00-\x1f\x7f]').hasMatch(text)) {
+      return reply('Invalid arguments', error: true);
+    }
+    final path =
+        'daily/${date.substring(0, 4)}/${date.substring(5, 7)}/$date.typ';
+    try {
+      for (final part in [
+        'daily',
+        'daily/${date.substring(0, 4)}',
+        'daily/${date.substring(0, 4)}/${date.substring(5, 7)}',
+      ]) {
+        if (await FileSystemEntity.type(
+              '${root.path}/$part',
+              followLinks: false,
+            ) !=
+            FileSystemEntityType.directory) {
+          throw const FileSystemException('Unsafe or missing daily directory');
+        }
+      }
+      if (await FileSystemEntity.type(
+            '${root.path}/$path',
+            followLinks: false,
+          ) !=
+          FileSystemEntityType.file) {
+        throw const FileSystemException('Daily note not found');
+      }
+      for (final part in [
+        '_system',
+        '_system/decisions',
+        '_system/decisions/mcp.jsonl',
+      ]) {
+        final type = await FileSystemEntity.type(
+          '${root.path}/$part',
+          followLinks: false,
+        );
+        if (type != FileSystemEntityType.notFound &&
+            type !=
+                (part.endsWith('.jsonl')
+                    ? FileSystemEntityType.file
+                    : FileSystemEntityType.directory)) {
+          throw const FileSystemException('Unsafe decision ledger');
+        }
+      }
+      final storage = LocalVaultStorage(root);
+      final source = await storage.readText(path);
+      guardNoteWrite(path, utf8.encode(source));
+      final note = scanNote(path, source);
+      if (!RegExp(
+            r'^\s*#show\s*:\s*tylog\.note\.with\s*\([\s\S]*?\)',
+            multiLine: true,
+          ).hasMatch(source) ||
+          note.kind != 'daily' ||
+          note.id != date ||
+          dailyDayOf(note) != date) {
+        throw const FormatException('Target is not the requested daily note');
+      }
+      final updated = appendAboveAutoBlock(
+        source,
+        '#text(${typstString(text)})',
+      );
+      await storage.writeText(path, updated);
+      await storage.appendBytes(
+        '_system/decisions/mcp.jsonl',
+        utf8.encode(
+          encodeDecisions([
+            Decision(
+              at: DateTime.now().toUtc().toIso8601String(),
+              device: 'mcp',
+              item: date,
+              source: 'mcp',
+              action: 'added-to-today',
+              target: path,
+            ),
+          ]),
+        ),
+      );
+      return reply(jsonEncode({'path': path}));
+    } catch (error) {
+      return reply('Unable to append daily note: $error', error: true);
+    }
+  }
   if (name == 'health_report') {
     if (args.containsKey('refresh') && args['refresh'] is! bool) {
       return reply('Invalid arguments', error: true);

@@ -19,6 +19,15 @@ import 'storage.dart';
 import 'values.dart';
 
 const autoEntitiesMarker = '// tylog:auto-entities';
+
+/// Appends a user line above the generated entities block, never inside it.
+String appendAboveAutoBlock(String source, String line) {
+  final auto = source.indexOf(autoEntitiesMarker);
+  if (auto < 0) return '${source.trimRight()}\n$line\n';
+  return '${source.substring(0, auto).trimRight()}\n$line\n\n'
+      '${source.substring(auto)}';
+}
+
 const enrichMentionsDir = '_system/enrich/mentions';
 const enrichFeedbackDir = '_system/enrich/feedback';
 const enrichShownDir = '_system/enrich/shown';

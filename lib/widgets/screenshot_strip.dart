@@ -5,7 +5,7 @@ import 'constants.dart';
 import '../models.dart';
 import '../github/github_outbox.dart';
 import '../controlled_editor.dart' show localTime;
-import 'package:tylog_core/enrich.dart' show autoEntitiesMarker;
+export 'package:tylog_core/enrich.dart' show appendAboveAutoBlock;
 import 'package:tylog_core/tylog_core.dart' show attentionOf;
 import 'ds/app_sheet.dart';
 
@@ -37,14 +37,6 @@ List<NoteRef> screenshotsOnDay(VaultIndex? index, String day) =>
             : first.compareTo(second);
         return order == 0 ? a.path.compareTo(b.path) : order;
       });
-
-/// Appends a user line above the generated entities block, never inside it.
-String appendAboveAutoBlock(String source, String line) {
-  final auto = source.indexOf(autoEntitiesMarker);
-  if (auto < 0) return '${source.trimRight()}\n$line\n';
-  return '${source.substring(0, auto).trimRight()}\n$line\n\n'
-      '${source.substring(auto)}';
-}
 
 List<NoteRef> incomingOnDay(VaultIndex? index, String day) {
   final notes = (index?.notes ?? const <NoteRef>[]).where((note) {
