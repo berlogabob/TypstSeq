@@ -369,6 +369,7 @@ class _EntityBoardState extends State<EntityBoard> {
             .map((label) => label['name'])
             .whereType<String>()
             .toList();
+        var updated = false;
         try {
           await client.updateIssueColumn(
             repository,
@@ -377,6 +378,7 @@ class _EntityBoardState extends State<EntityBoard> {
             labels,
             currentColumn: _remoteColumn(current),
           );
+          updated = true;
           final actual = await client.issue(repository, number);
           if (mounted && repo == repository) {
             setState(
@@ -395,16 +397,27 @@ class _EntityBoardState extends State<EntityBoard> {
             );
           }
         } catch (error) {
-          final actual = await client.issue(repository, number);
+          Map<String, dynamic> actual;
+          try {
+            actual = await client.issue(repository, number);
+          } catch (_) {
+            final rows = await client.repositoryIssues(repository);
+            actual = rows.firstWhere((row) => row['number'] == number);
+            if (mounted && repo == repository) {
+              setState(() => remoteIssues = rows);
+            }
+          }
           await _recordConflict(
             repository,
             number,
             _remoteColumn(actual),
-            'move to $column failed: $error',
+            updated
+                ? 'move to $column could not be verified individually: $error'
+                : 'move to $column failed: $error',
           );
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('GitHub move failed; refreshed: $error')),
+              SnackBar(content: Text('GitHub move refreshed: $error')),
             );
           }
         }
