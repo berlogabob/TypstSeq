@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:typst_flutter/typst_flutter.dart' as p2p;
+import 'package:path_provider/path_provider.dart';
+import 'p2p_snapshot.dart';
 import '../app_version.dart';
 import '../ds/app_tile.dart';
 import '../settings_sheet.dart';
@@ -40,6 +42,16 @@ class _AboutPageState extends State<AboutPage> {
       MaterialPageRoute<void>(
         builder: (_) => P2pScratchPage(
           start: (text) => p2p.startP2pScratch(text),
+          startSnapshot: () => p2p.startP2pScratch(createScratchSnapshot()),
+          receiveSnapshot: (ticket) async {
+            final transfer = await p2p.receiveP2pScratch(ticket);
+            final root = await getApplicationSupportDirectory();
+            final directory = await restoreScratchSnapshot(transfer.text, root);
+            final rate = transfer.elapsedMs == BigInt.zero
+                ? 'n/a'
+                : '${(transfer.bytes.toDouble() * 1000 / transfer.elapsedMs.toDouble() / 1024).toStringAsFixed(1)} KiB/s';
+            return 'Restored synthetic folder to ${directory.path}\n${transfer.bytes} bytes in ${transfer.elapsedMs} ms ($rate; includes connection setup)';
+          },
           receive: (ticket) async {
             final result = await p2p.receiveP2pScratch(ticket);
             return '${result.text}\n\n${result.bytes} bytes in ${result.elapsedMs} ms';

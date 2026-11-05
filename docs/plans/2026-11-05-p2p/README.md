@@ -63,10 +63,37 @@ Keep harness build outputs under `.native-build-p2p*`; never point `CARGO_TARGET
 or `cargo ndk -o` at `.typst_flutter_prebuilt`. The harness libraries are for
 local debug runs only and must not replace the source-built shipping libraries.
 
-Run `pod install` in `macos/` after changing the podspec. Run a Mac debug
-build with `--dart-define=P2P_HARNESS=true`; on Android
-use a profile build with `-PtylogProfileSuffix=.profiletest` and the same define.
+For a local Android harness build, stage the isolated output in the plugin's
+local JNI override (only if it does not already contain your files), then remove that override when finished:
+
+```sh
+mkdir -p packages/typst_flutter/android/src/main/jniLibs/arm64-v8a
+cp packages/typst_flutter/.native-build-p2p-android/jni/arm64-v8a/libtypst_flutter.so \
+  packages/typst_flutter/android/src/main/jniLibs/arm64-v8a/
+flutter build apk --profile --dart-define=P2P_HARNESS=true \
+  --target-platform android-arm64 -PtylogProfileSuffix=.profiletest
+```
+
+Install only the resulting `.profiletest` package. Remove the staged local JNI
+override after the experiment before any normal build. On macOS, temporarily
+point `prebuilt_lib` in `packages/typst_flutter/macos/typst_flutter.podspec` to
+the isolated universal archive above, run `pod install` in `macos/`, and build
+with `--dart-define=P2P_HARNESS=true`. Restore the original podspec path and run
+`pod install` again before normal builds. Never copy a harness archive into
+`.typst_flutter_prebuilt`.
 In Settings > About, tap App version seven times and open the developer entry.
 Copy the generated ticket to the receiving instance. It grants access to the
 scratch text for up to five minutes; only the first connection is served.
 Never put private vault contents in this experiment.
+
+## P2P5 synthetic folder slice (2026-11-05)
+The developer page can create a ticket for a generated synthetic folder: one
+Typst note and two binary assets, including a 128 KiB payload. On the other
+instance, choose **Receive synthetic folder** and paste the ticket. It verifies
+each SHA-256 digest and restores into a fresh directory under app support; the
+result shows the directory, serialized snapshot bytes, elapsed time (including connection
+setup), and effective KiB/s. Both directions use the same flow. Tickets are
+one-use and expire after five minutes. This is a full snapshot bounded by the
+existing 1 MiB transport limit, not an incremental sync or a real-vault tool.
+It does not measure CPU or battery. No new cross-device measurement is claimed;
+the P2P3 no-go remains in force pending P2P5-rest.

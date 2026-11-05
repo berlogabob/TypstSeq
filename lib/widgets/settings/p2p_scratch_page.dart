@@ -2,7 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 class P2pScratchPage extends StatefulWidget {
-  const P2pScratchPage({super.key, required this.start, required this.receive});
+  const P2pScratchPage({
+    super.key,
+    required this.start,
+    required this.receive,
+    this.startSnapshot,
+    this.receiveSnapshot,
+  });
+  final Future<String> Function()? startSnapshot;
+  final Future<String> Function(String)? receiveSnapshot;
   final Future<String> Function(String) start;
   final Future<String> Function(String) receive;
   @override
@@ -44,7 +52,7 @@ class _P2pScratchPageState extends State<P2pScratchPage> {
       padding: const EdgeInsets.all(16),
       children: [
         const Text(
-          'Scratch text only. Tickets grant access to this text for five minutes. Do not paste private data.',
+          'Tickets grant access to scratch text or a generated synthetic folder for five minutes. Do not paste private data.',
         ),
         TextField(
           key: const ValueKey('scratch-text'),
@@ -56,6 +64,11 @@ class _P2pScratchPageState extends State<P2pScratchPage> {
           onPressed: busy ? null : () => run(() => widget.start(text.text)),
           child: const Text('Create ticket'),
         ),
+        if (widget.startSnapshot != null)
+          ElevatedButton(
+            onPressed: busy ? null : () => run(widget.startSnapshot!),
+            child: const Text('Create synthetic folder ticket'),
+          ),
         TextField(
           key: const ValueKey('scratch-ticket'),
           controller: ticket,
@@ -66,6 +79,13 @@ class _P2pScratchPageState extends State<P2pScratchPage> {
           onPressed: busy ? null : () => run(() => widget.receive(ticket.text)),
           child: const Text('Receive'),
         ),
+        if (widget.receiveSnapshot != null)
+          ElevatedButton(
+            onPressed: busy
+                ? null
+                : () => run(() => widget.receiveSnapshot!(ticket.text)),
+            child: const Text('Receive synthetic folder'),
+          ),
         if (busy) const CircularProgressIndicator(),
         if (result.isNotEmpty) SelectableText(result),
         if (result.isNotEmpty)
