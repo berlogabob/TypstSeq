@@ -132,6 +132,17 @@ void main() {
     expect(find.text('First card'), findsOneWidget);
   });
 
+  test('Tree note preview removes the import and metadata header', () {
+    expect(
+      boardNotePreview('''#import "/_system/tylog.typ" as tylog
+#show: tylog.note.with(id: "child", title: "Child", kind: "note")
+
+= First body line
+'''),
+      '= First body line\n',
+    );
+  });
+
   testWidgets('Library Boards lists board titles and card counts', (
     tester,
   ) async {
@@ -272,7 +283,7 @@ void main() {
       await settleIo(tester);
     }
     expect(find.text('Parent'), findsOneWidget);
-    expect(find.text('0 tasks · 0 issues · 1 children'), findsOneWidget);
+    expect(find.text('0 tasks · 0 issues · 1 child'), findsOneWidget);
     await tester.tap(find.text('Parent'));
     expect(opened?.scopeEntity, 'parent');
     expect(

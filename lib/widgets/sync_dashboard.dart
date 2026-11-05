@@ -491,7 +491,7 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
   }
 }
 
-class SyncIconButton extends StatelessWidget {
+class SyncIconButton extends StatefulWidget {
   const SyncIconButton({
     super.key,
     required this.syncing,
@@ -516,18 +516,57 @@ class SyncIconButton extends StatelessWidget {
   final VoidCallback onPressed;
 
   @override
+  State<SyncIconButton> createState() => _SyncIconButtonState();
+}
+
+class _SyncIconButtonState extends State<SyncIconButton> {
+  Timer? _timeout;
+  bool _unreachable = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _watchSync();
+  }
+
+  @override
+  void didUpdateWidget(covariant SyncIconButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.syncing != widget.syncing) _watchSync();
+  }
+
+  void _watchSync() {
+    _timeout?.cancel();
+    _unreachable = false;
+    if (widget.syncing) {
+      _timeout = Timer(const Duration(seconds: 30), () {
+        if (mounted && widget.syncing) setState(() => _unreachable = true);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _timeout?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final w = widget;
     final kind = syncStatusKind(
-      vaultOpen: vaultOpen,
-      storageHealthy: storageHealthy,
-      cloudConfigured: configured,
-      desktopManaged: desktopManaged,
-      syncing: syncing,
-      error: error,
-      conflicts: conflicts,
-      result: result,
+      vaultOpen: w.vaultOpen,
+      storageHealthy: w.storageHealthy,
+      cloudConfigured: w.configured,
+      desktopManaged: w.desktopManaged,
+      syncing: w.syncing,
+      error: w.error,
+      conflicts: w.conflicts,
+      result: w.result,
     );
-    final label = syncStatusTitle(kind, conflicts: conflicts);
+    final label = _unreachable
+        ? 'Server unreachable'
+        : syncStatusTitle(kind, conflicts: w.conflicts);
     final icon = switch (kind) {
       SyncStatusKind.vaultClosed => AppIcons.folder,
       SyncStatusKind.storageUnavailable => AppIcons.storageUnavailable,
@@ -541,11 +580,11 @@ class SyncIconButton extends StatelessWidget {
       SyncStatusKind.synced => AppIcons.syncOk,
     };
     return IconButton(
-      onPressed: onPressed,
+      onPressed: w.onPressed,
       tooltip: label,
-      icon: syncing
+      icon: w.syncing && !_unreachable
           ? const LoadingIndicator(size: 22, strokeWidth: 2.5)
-          : Icon(icon),
+          : Icon(_unreachable ? AppIcons.warning : icon),
     );
   }
 }

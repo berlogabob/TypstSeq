@@ -196,6 +196,7 @@ class _UnifiedBoardState extends State<UnifiedBoard> {
                     ? EntityBoard(
                         key: const ValueKey('kanban'),
                         boardId: widget.entity.id,
+                        embedded: true,
                         entity: widget.entity,
                         vault: widget.vault,
                         index: widget.index,

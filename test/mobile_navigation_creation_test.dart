@@ -1018,6 +1018,12 @@ void main() {
       expect(rail.scrollable, isTrue);
       expect(tester.widget<AppBar>(find.byType(AppBar)).toolbarHeight, 48);
       expect(tester.takeException(), isNull);
+      rail.onDestinationSelected!(1);
+      await tester.pumpAndSettle();
+      expect(
+        tester.getRect(find.byType(CompactDateTitle)).left,
+        closeTo(tester.getRect(find.byType(WorkSurface)).left + 16, 1),
+      );
       final library = find.descendant(
         of: find.byType(NavigationRail),
         matching: find.byIcon(AppIcons.library),

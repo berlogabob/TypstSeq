@@ -627,7 +627,11 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 250));
     expect(tester.getRect(editor), before);
-    expect(find.text('Uploading…'), findsOneWidget);
+    expect(find.text('Uploading…'), findsNothing);
+    expect(find.byTooltip('Syncing…'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 30));
+    expect(find.byTooltip('Server unreachable'), findsOneWidget);
+    expect(find.byIcon(AppIcons.warning), findsOneWidget);
     home.workspace.syncing = false;
     home.workspace.syncStage = null;
     home.workspace.notifyListeners();

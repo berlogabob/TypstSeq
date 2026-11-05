@@ -6587,14 +6587,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   ],
                 ),
               )
-            : (syncing && syncStage != null)
-            ? statusPill(
-                key: const ValueKey('status-stage'),
-                child: Text(
-                  syncStageLabel(syncStage!),
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              )
             : const SizedBox.shrink(key: ValueKey('status-none'));
         return AnimatedSwitcher(
           key: error ? null : _statusPillBounds,
@@ -6679,8 +6671,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     constraints: const BoxConstraints(minHeight: 48),
                     child: Align(
                       alignment: Alignment.centerLeft,
-                      child: CompactDateTitle(
-                        day: currentDaily ?? DateTime.now(),
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                          left: wideNavigation ? 25 : 0,
+                        ),
+                        child: CompactDateTitle(
+                          day: currentDaily ?? DateTime.now(),
+                        ),
                       ),
                     ),
                   ),
@@ -6703,9 +6700,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           alignment: Alignment.centerLeft,
                           child: ValueListenableBuilder<bool>(
                             valueListenable: workspace.dirtyNotifier,
-                            builder: (context, dirty, _) => CompactDateTitle(
-                              day: currentDaily,
-                              dirty: dirty,
+                            builder: (context, dirty, _) => Padding(
+                              padding: EdgeInsets.only(
+                                left: wideNavigation ? 25 : 0,
+                              ),
+                              child: CompactDateTitle(
+                                day: currentDaily,
+                                dirty: dirty,
+                              ),
                             ),
                           ),
                         ),

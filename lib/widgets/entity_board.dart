@@ -21,9 +21,11 @@ class EntityBoard extends StatefulWidget {
     this.githubClient,
     this.onOpenUrl,
     this.boardId,
+    this.embedded = false,
   });
 
   final String? boardId;
+  final bool embedded;
   final Future<GitHubClient> Function()? githubClient;
   final void Function(String)? onOpenUrl;
   final NoteRef entity;
@@ -536,24 +538,26 @@ class _EntityBoardState extends State<EntityBoard> {
     ];
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '${widget.entity.title} Board',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            if (repo != null)
-              Text(
-                repo!,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.labelMedium,
+        title: widget.embedded
+            ? null
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '${widget.entity.title} Board',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (repo != null)
+                    Text(
+                      repo!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.labelMedium,
+                    ),
+                ],
               ),
-          ],
-        ),
         actions: [
           if (widget.githubClient != null)
             IconButton(

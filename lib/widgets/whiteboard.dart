@@ -16,6 +16,18 @@ import 'constants.dart';
 import 'entity_tree.dart';
 import 'note_picker_sheet.dart';
 
+String boardNotePreview(String source) {
+  final lines = source.trimLeft().split('\n');
+  var body = 0;
+  while (body < lines.length &&
+      (lines[body].trim().isEmpty ||
+          lines[body].startsWith('#import ') ||
+          lines[body].startsWith('#show: tylog.note'))) {
+    body++;
+  }
+  return lines.skip(body).join('\n').trimLeft();
+}
+
 class BoardsTab extends StatefulWidget {
   const BoardsTab({
     super.key,
@@ -177,10 +189,13 @@ class _BoardsTabState extends State<BoardsTab> {
   Widget build(BuildContext context) => Column(
     children: [
       if (widget.githubClient != null)
-        TextButton.icon(
-          onPressed: newProjectBoard,
-          icon: const Icon(Icons.add),
-          label: const Text('New GitHub project board'),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: newProjectBoard,
+            icon: const Icon(Icons.add),
+            label: const Text('New GitHub project board'),
+          ),
         ),
       Align(
         alignment: Alignment.centerRight,
@@ -224,7 +239,7 @@ class _BoardsTabState extends State<BoardsTab> {
                     title: Text(board.title),
                     subtitle: Text(
                       board.scopeEntity != null && widget.index != null
-                          ? '${tasksForEntity(board.scopeEntity!, widget.index!).length} tasks · ${issuesForEntity(board.scopeEntity!, widget.index!).length} issues · ${childrenByParent(widget.index!.notes)[board.scopeEntity]?.length ?? 0} children'
+                          ? '${tasksForEntity(board.scopeEntity!, widget.index!).length} tasks · ${issuesForEntity(board.scopeEntity!, widget.index!).length} issues · ${childrenByParent(widget.index!.notes)[board.scopeEntity]?.length ?? 0} ${childrenByParent(widget.index!.notes)[board.scopeEntity]?.length == 1 ? 'child' : 'children'}'
                           : '${board.layout} · ${board.cards.length} cards',
                     ),
                     onTap: () => open(board),
@@ -1046,7 +1061,7 @@ class _WhiteboardState extends State<Whiteboard> {
               FutureBuilder<String>(
                 future: noteContent(note),
                 builder: (_, s) => Text(
-                  s.data ?? '',
+                  s.data == null ? '' : boardNotePreview(s.data!),
                   maxLines: 3,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -1085,7 +1100,7 @@ class _WhiteboardState extends State<Whiteboard> {
     appBar: AppBar(
       automaticallyImplyLeading: !widget.embedded,
       leading: widget.embedded ? null : BackButton(onPressed: leave),
-      title: Text(board.title),
+      title: widget.embedded ? null : Text(board.title),
       actions: [
         if (board.scopeEntity != null && !widget.embedded)
           TextButton(
