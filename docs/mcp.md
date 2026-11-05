@@ -2,7 +2,7 @@
 
 TyLog exposes a local Model Context Protocol (MCP) server over
 standard input and output. It lets an MCP client search note source text and
-read a note by its TyLog ID, list its backlinks and tasks, append text to an existing daily note, and read or refresh the vault health report. It does not open a network listener. Refreshing a health report writes report and scan cursor files under `_system/health/`.
+read a note by its TyLog ID, list its backlinks and tasks, append text to an existing daily note, add tasks to notes, and read or refresh the vault health report. It does not open a network listener. Refreshing a health report writes report and scan cursor files under `_system/health/`.
 
 ## Requirements and launch command
 
@@ -28,6 +28,7 @@ startup to fail.
 | `get_note` | `id`: non-empty string | Returns the complete source of the note with that TyLog ID. |
 | `backlinks` | `id`: non-empty string | Returns linking notes as JSON objects with `id`, `title`, and `path`. The target ID must be unique. |
 | `list_tasks` | None | Returns tasks as JSON objects, including their note paths, statuses, and dates. |
+| `add_task` | `id`: unique note ID; `text`: non-empty single-line string | Adds a task above the generated entities block in an existing note, and records a decision. Returns the note path and new task ID. |
 | `daily_append` | `date`: YYYY-MM-DD; `text`: non-empty single-line string | Appends literal text above the generated entities block in the existing canonical daily note, and records a decision. Returns the note path. |
 | `incoming_list` | None | Returns vault notes with new attention, sorted by path, with `id`, `title`, `path`, `kind`, and `date` (which may be null). |
 | `health_report` | Optional `refresh`: boolean | Returns the latest dated report from `_system/health/` as JSON. Set `refresh` to `true` to scan the vault and generate a fresh report. |
@@ -37,7 +38,7 @@ Search checks `.typ` files recursively in `daily/`, `notes/`, `projects/`,
 note has the requested ID or when more than one note has that ID. Tool errors
 are returned as MCP results with `isError: true`.
 
-Backlinks, tasks, and incoming notes use the vault scanner’s source-based fallback, without Typst inspection; metadata generated only by Typst evaluation may be absent. `incoming_list` uses the app's attention rules, including legacy screenshot, idea, and audio defaults. It does not include the app's separate suggestion, audio proposal, OCR, booking, or health review queues. The daily note must already exist with matching note metadata. `daily_append` rejects control characters and non-note targets, and writes one decision to `_system/decisions/mcp.jsonl`. Note and ledger writes are separate; a ledger I/O failure after the note write is reported as an error and requires checking the note before retrying. Without `refresh`, health reports may be stale.
+Backlinks, tasks, and incoming notes use the vault scanner’s source-based fallback, without Typst inspection; metadata generated only by Typst evaluation may be absent. `incoming_list` uses the app's attention rules, including legacy screenshot, idea, and audio defaults. It does not include the app's separate suggestion, audio proposal, OCR, booking, or health review queues. The daily note must already exist with matching note metadata. `daily_append` and `add_task` reject control characters and non-note targets, and each writes one decision to `_system/decisions/mcp.jsonl`. Note and ledger writes are separate; a ledger I/O failure after the note write is reported as an error and requires checking the note before retrying. Without `refresh`, health reports may be stale.
 
 ## Claude Code
 

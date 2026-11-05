@@ -5,6 +5,78 @@ import 'dart:io';
 import 'package:test/test.dart';
 
 void main() {
+  test('add_task writes a compilable task and refuses non-notes', () async {
+    final vault = await Directory.systemTemp.createTemp('tylog_mcp_task_');
+    addTearDown(() => vault.delete(recursive: true));
+    final settings = File('${vault.path}/.tylog/settings.json');
+    await settings.parent.create(recursive: true);
+    await settings.writeAsString('{"version":5}');
+    final note = File('${vault.path}/notes/a.typ');
+    await note.parent.create(recursive: true);
+    await File('../../typst/tylog/lib.typ').copy('${vault.path}/tylog.typ');
+    const source =
+        '#import "/tylog.typ" as tylog\n'
+        '#show: tylog.note.with(id: "a", title: "A")\nExisting\n// tylog:auto-entities\n';
+    await note.writeAsString(source);
+    final process = await Process.start(Platform.resolvedExecutable, [
+      'run',
+      'bin/tylog.dart',
+      'mcp',
+      vault.path,
+    ]);
+    final responses = StreamIterator(
+      process.stdout.transform(utf8.decoder).transform(const LineSplitter()),
+    );
+    Future<Map> call(int id, String target, String text) async {
+      process.stdin.writeln(
+        jsonEncode({
+          'jsonrpc': '2.0',
+          'id': id,
+          'method': 'tools/call',
+          'params': {
+            'name': 'add_task',
+            'arguments': {'id': target, 'text': text},
+          },
+        }),
+      );
+      expect(await responses.moveNext(), true);
+      return (jsonDecode(responses.current) as Map)['result'] as Map;
+    }
+
+    expect(
+      (await call(1, 'a', r'Literal # [ ] \ " $'))['isError'],
+      isNot(true),
+    );
+    final written = await note.readAsString();
+    expect(
+      written.indexOf('#tylog.task('),
+      lessThan(written.indexOf('// tylog:auto-entities')),
+    );
+    final compile = await Process.run('typst', [
+      'compile',
+      '--root',
+      vault.path,
+      note.path,
+      '${vault.path}/out.pdf',
+    ]);
+    expect(compile.exitCode, 0, reason: '${compile.stderr}');
+    final ledger = File('${vault.path}/_system/decisions/mcp.jsonl');
+    expect(
+      const LineSplitter().convert(await ledger.readAsString()),
+      hasLength(1),
+    );
+    await note.writeAsString('{"revision":{},"node":{}}');
+    expect((await call(2, 'a', 'no'))['isError'], true);
+    expect(await note.readAsString(), '{"revision":{},"node":{}}');
+    expect(
+      const LineSplitter().convert(await ledger.readAsString()),
+      hasLength(1),
+    );
+    await process.stdin.close();
+    expect(await process.exitCode, 0);
+    await responses.cancel();
+  });
+
   test('daily_append writes literal text and rejects non-notes', () async {
     final vault = await Directory.systemTemp.createTemp('tylog_mcp_daily_');
     addTearDown(() => vault.delete(recursive: true));
@@ -345,6 +417,7 @@ void main() {
         'health_report',
         'incoming_list',
         'daily_append',
+        'add_task',
       ]),
     );
     expect(rows[2]['result']['content'][0]['text'], contains('Apple'));

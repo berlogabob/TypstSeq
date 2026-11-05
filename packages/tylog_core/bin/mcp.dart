@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:tylog_core/tylog_core.dart';
 import 'package:tylog_core/values.dart' show typstString;
@@ -7,6 +8,18 @@ import 'package:tylog_core/values.dart' show typstString;
 import 'tylog.dart' show generateHealthReport;
 
 const _tools = [
+  {
+    'name': 'add_task',
+    'description': 'Add a task to an existing note by its unique ID.',
+    'inputSchema': {
+      'type': 'object',
+      'properties': {
+        'id': {'type': 'string', 'minLength': 1},
+        'text': {'type': 'string', 'minLength': 1},
+      },
+      'required': ['id', 'text'],
+    },
+  },
   {
     'name': 'daily_append',
     'description': 'Append literal text to an existing daily note.',
@@ -155,6 +168,118 @@ Future<Object> _call(Directory root, Object? params) async {
   }
   final name = params['name'];
   final args = params['arguments'] as Map;
+  if (name == 'add_task') {
+    final id = args['id'];
+    final text = args['text'];
+    if (id is! String ||
+        id.trim().isEmpty ||
+        text is! String ||
+        text.trim().isEmpty ||
+        RegExp(r'[\x00-\x1f\x7f]').hasMatch(text)) {
+      return reply('Invalid arguments', error: true);
+    }
+    try {
+      final matches = <String>[];
+      for (final dir in [
+        'daily',
+        'notes',
+        'projects',
+        'articles',
+        'screenshots',
+        'ext',
+      ]) {
+        final folder = Directory('${root.path}/$dir');
+        if (await FileSystemEntity.type(folder.path, followLinks: false) !=
+            FileSystemEntityType.directory) {
+          continue;
+        }
+        await for (final entry in folder.list(
+          recursive: true,
+          followLinks: false,
+        )) {
+          if (entry is! File || !entry.path.endsWith('.typ')) continue;
+          final path = entry.path
+              .substring(root.path.length + 1)
+              .replaceAll(Platform.pathSeparator, '/');
+          if (scanNote(path, await entry.readAsString()).id == id) {
+            matches.add(path);
+          }
+        }
+      }
+      if (matches.length != 1) {
+        throw FormatException(
+          matches.isEmpty ? 'Note not found' : 'Note ID is ambiguous',
+        );
+      }
+      final path = matches.single;
+      final parts = path.split('/');
+      for (var i = 1; i <= parts.length; i++) {
+        final type = await FileSystemEntity.type(
+          '${root.path}/${parts.take(i).join('/')}',
+          followLinks: false,
+        );
+        if (type !=
+            (i == parts.length
+                ? FileSystemEntityType.file
+                : FileSystemEntityType.directory)) {
+          throw const FileSystemException('Unsafe note path');
+        }
+      }
+      for (final part in [
+        '_system',
+        '_system/decisions',
+        '_system/decisions/mcp.jsonl',
+      ]) {
+        final type = await FileSystemEntity.type(
+          '${root.path}/$part',
+          followLinks: false,
+        );
+        if (type != FileSystemEntityType.notFound &&
+            type !=
+                (part.endsWith('.jsonl')
+                    ? FileSystemEntityType.file
+                    : FileSystemEntityType.directory)) {
+          throw const FileSystemException('Unsafe decision ledger');
+        }
+      }
+      final storage = LocalVaultStorage(root);
+      final source = await storage.readText(path);
+      guardNoteWrite(path, utf8.encode(source));
+      if (!RegExp(
+            r'^\s*#show\s*:\s*tylog\.note\.with\s*\([\s\S]*?\)',
+            multiLine: true,
+          ).hasMatch(source) ||
+          scanNote(path, source).id != id) {
+        throw const FormatException('Target is not a note');
+      }
+      final random = Random.secure();
+      final taskId =
+          'mcp-${List.generate(16, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join()}';
+      final updated = appendAboveAutoBlock(
+        source,
+        '#tylog.task(id: ${typstString(taskId)}, text: ${typstString(text)})',
+      );
+      await storage.writeText(path, updated);
+      await storage.appendBytes(
+        '_system/decisions/mcp.jsonl',
+        utf8.encode(
+          encodeDecisions([
+            Decision(
+              at: DateTime.now().toUtc().toIso8601String(),
+              device: 'mcp',
+              item: taskId,
+              source: 'mcp',
+              action: 'accepted',
+              target: path,
+            ),
+          ]),
+        ),
+      );
+      return reply(jsonEncode({'path': path, 'id': taskId}));
+    } catch (error) {
+      return reply('Unable to add task: $error', error: true);
+    }
+  }
   if (name == 'daily_append') {
     final date = args['date'];
     final text = args['text'];
