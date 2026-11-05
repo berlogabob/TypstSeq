@@ -7,6 +7,20 @@ import 'package:tylog/widgets/settings/p2p_snapshot.dart';
 import 'support/temp_dir.dart';
 
 void main() {
+  test('creates a synthetic folder for streaming', () async {
+    final root = await Directory.systemTemp.createTemp('p2p-folder-');
+    addTearDown(() => deleteTempDir(root));
+    final folder = await createScratchFolder(root);
+    expect(
+      await File('${folder.path}/notes/note-0.typ').readAsString(),
+      contains('Scratch note 0'),
+    );
+    expect(
+      await File('${folder.path}/assets/payload.bin').length(),
+      128 * 1024,
+    );
+  });
+
   test(
     'synthetic folder snapshot verifies and restores into a fresh folder',
     () async {

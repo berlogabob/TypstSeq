@@ -42,11 +42,12 @@ class _AboutPageState extends State<AboutPage> {
       MaterialPageRoute<void>(
         builder: (_) => P2pScratchPage(
           start: (text) => p2p.startP2pScratch(text),
-          startSnapshot: () async => p2p.startP2pScratch(
-            await createRepresentativeScratchSnapshot(
+          startSnapshot: () async {
+            final folder = await createScratchFolder(
               await getTemporaryDirectory(),
-            ),
-          ),
+            );
+            return p2p.startP2pFile(folder.path);
+          },
           startDelta: () async => p2p.startP2pScratch(
             await createChangedScratchDelta(await getTemporaryDirectory()),
           ),
@@ -59,17 +60,13 @@ class _AboutPageState extends State<AboutPage> {
             return 'Restored changed synthetic folder to ${directory.path}\n${transfer.bytes} bytes in ${transfer.elapsedMs} ms';
           },
           receiveSnapshot: (ticket) async {
-            final transfer = await p2p.receiveP2pScratch(ticket);
             final root = await getApplicationSupportDirectory();
-            final directory = await restoreScratchSnapshot(transfer.text, root);
-            final verified = await verifyScratchSnapshot(
-              transfer.text,
-              directory,
-            );
+            final directory = Directory('${root.path}/p2p-synthetic-received');
+            final transfer = await p2p.receiveP2pFile(ticket, directory.path);
             final rate = transfer.elapsedMs == BigInt.zero
                 ? 'n/a'
-                : '${(transfer.bytes.toDouble() * 1000 / transfer.elapsedMs.toDouble() / 1024).toStringAsFixed(1)} KiB/s';
-            return 'Restored and verified $verified files to ${directory.path}\n${transfer.bytes} bytes in ${transfer.elapsedMs} ms ($rate; includes connection setup)';
+                : '${(transfer.bytes.toDouble() / transfer.elapsedMs.toDouble() / 1000).toStringAsFixed(2)} MB/s';
+            return 'Received synthetic folder to ${directory.path}\n${transfer.bytes} bytes in ${transfer.elapsedMs} ms ($rate; includes connection setup)';
           },
           receive: (ticket) async {
             final result = await p2p.receiveP2pScratch(ticket);

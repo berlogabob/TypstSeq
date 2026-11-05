@@ -28,6 +28,24 @@ String createScratchSnapshot() {
   });
 }
 
+/// Create a synthetic source folder for the streamed native harness.
+Future<Directory> createScratchFolder(Directory root) async {
+  final source = await root.createTemp('p2p-source-');
+  for (var i = 0; i < 200; i++) {
+    final file = File('${source.path}/notes/note-$i.typ');
+    await file.parent.create(recursive: true);
+    await file.writeAsString(
+      '= Scratch note $i\n${'Synthetic content for transfer measurement.\n' * 20}',
+    );
+  }
+  final asset = File('${source.path}/assets/payload.bin');
+  await asset.parent.create(recursive: true);
+  await asset.writeAsBytes(
+    List.generate(128 * 1024, (i) => (i * 73 + i ~/ 251) % 256),
+  );
+  return source;
+}
+
 /// Generate and read a disposable folder; no existing folder is opened.
 Future<String> createRepresentativeScratchSnapshot(Directory root) async {
   final source = await root.createTemp('p2p-source-');

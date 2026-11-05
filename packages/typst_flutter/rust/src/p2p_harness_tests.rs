@@ -61,3 +61,65 @@ fn file_round_trips_over_iroh() {
     );
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+#[test]
+fn folder_incremental_loopback() {
+    use crate::api::p2p_harness::{receive_file, start_file};
+    use std::io::Write;
+    let dir = std::env::temp_dir().join(format!("p2p-folder-test-{}", std::process::id()));
+    let source = dir.join("source");
+    let dest = dir.join("dest");
+    std::fs::create_dir_all(&source).unwrap();
+    let data: Vec<u8> = (0..65536)
+        .map(|i| ((i * 73 + i / 251) % 256) as u8)
+        .collect();
+    for i in 0..300 {
+        let sub = source.join(format!("group-{}", i / 30));
+        std::fs::create_dir_all(&sub).unwrap();
+        let mut f = std::fs::File::create(sub.join(format!("{i}.bin"))).unwrap();
+        let size = (200 * 1024 * 1024 / 300) + usize::from(i < 200 * 1024 * 1024 % 300);
+        for chunk in data
+            .iter()
+            .copied()
+            .cycle()
+            .take(size)
+            .collect::<Vec<_>>()
+            .chunks(65536)
+        {
+            f.write_all(chunk).unwrap();
+        }
+    }
+    let run = || {
+        receive_file(
+            start_file(source.to_string_lossy().into_owned()).unwrap(),
+            dest.to_string_lossy().into_owned(),
+        )
+        .unwrap()
+    };
+    let first = run();
+    assert_eq!(first.bytes, 200 * 1024 * 1024);
+    for i in 0..300 {
+        let p = format!("group-{}/{i}.bin", i / 30);
+        assert_eq!(
+            std::fs::read(source.join(&p)).unwrap(),
+            std::fs::read(dest.join(&p)).unwrap()
+        );
+    }
+    let second = run();
+    assert_eq!(second.bytes, 0);
+    std::fs::write(source.join("group-0/0.bin"), b"changed").unwrap();
+    let third = run();
+    assert_eq!(third.bytes, 7);
+    assert_eq!(
+        std::fs::read(dest.join("group-0/0.bin")).unwrap(),
+        b"changed"
+    );
+    println!(
+        "folder loopback: {} bytes in {} ms; {:.2} MB/s; repeat {} bytes",
+        first.bytes,
+        first.elapsed_ms,
+        first.bytes as f64 / 1000.0 / first.elapsed_ms.max(1) as f64,
+        second.bytes
+    );
+    std::fs::remove_dir_all(dir).unwrap();
+}

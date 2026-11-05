@@ -135,13 +135,16 @@ const FILE_ALPN: &[u8] = b"tylog/file/1";
 #[cfg(feature = "p2p-harness")]
 const MAX_FILE: u64 = 50 * 1024 * 1024;
 #[cfg(feature = "p2p-harness")]
-const CHUNK: usize = 64 * 1024;
+const CHUNK: usize = 256 * 1024;
 
-/// Serve one file, once. The ticket is valid for at most five minutes.
+/// Serve a file or folder once. The ticket is valid for at most five minutes.
 #[cfg(feature = "p2p-harness")]
 pub fn start_file(path: String) -> Result<String, String> {
     use sha2::{Digest, Sha256};
     use std::io::Read;
+    if std::path::Path::new(&path).is_dir() {
+        return super::p2p_folder::start(path);
+    }
     let mut file = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let size = file.metadata().map_err(|e| e.to_string())?.len();
     if size > MAX_FILE {
@@ -219,11 +222,18 @@ pub fn start_file(path: String) -> Result<String, String> {
     rx.recv().map_err(|e| e.to_string())?
 }
 
-/// Receive and verify one file into a new destination path.
+/// Receive a verified file into a new path, or update a folder incrementally.
 #[cfg(feature = "p2p-harness")]
 pub fn receive_file(ticket: String, path: String) -> Result<FileTransfer, String> {
     use sha2::{Digest, Sha256};
     use std::io::Write;
+    if serde_json::from_str::<serde_json::Value>(&ticket)
+        .ok()
+        .and_then(|v| v.get("folder").cloned())
+        .is_some()
+    {
+        return super::p2p_folder::receive(ticket, path);
+    }
     let addr: iroh::EndpointAddr =
         serde_json::from_str(&ticket).map_err(|e| format!("Invalid ticket: {e}"))?;
     let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
