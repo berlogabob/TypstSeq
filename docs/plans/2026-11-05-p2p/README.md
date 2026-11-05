@@ -70,6 +70,8 @@ local JNI override (only if it does not already contain your files), then remove
 mkdir -p packages/typst_flutter/android/src/main/jniLibs/arm64-v8a
 cp packages/typst_flutter/.native-build-p2p-android/jni/arm64-v8a/libtypst_flutter.so \
   packages/typst_flutter/android/src/main/jniLibs/arm64-v8a/
+cp "$HOME/Library/Android/sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so" \
+  packages/typst_flutter/android/src/main/jniLibs/arm64-v8a/
 flutter build apk --profile --dart-define=P2P_HARNESS=true \
   --target-platform android-arm64 -PtylogProfileSuffix=.profiletest
 ```
@@ -97,3 +99,40 @@ one-use and expire after five minutes. This is a full snapshot bounded by the
 existing 1 MiB transport limit, not an incremental sync or a real-vault tool.
 It does not measure CPU or battery. No new cross-device measurement is claimed;
 the P2P3 no-go remains in force pending P2P5-rest.
+
+
+## P2P5-rest generated-folder measurement (2026-11-05)
+The developer synthetic-folder button now generates a disposable on-disk source
+with 200 synthetic notes and two assets, reads it into the snapshot, and deletes
+the source. The receiver checks all hashes before restoring to a fresh directory.
+No existing folder or vault is read. The serialized snapshot was 438,076 bytes;
+it remains subject to the 1 MiB transport ceiling.
+
+A single profile-mode run between the Mac and Samsung A24 on the same subnet
+transferred and verified exactly that snapshot in both directions. Mac → A24
+was 149 ms, or 2.94 MB/s; A24 → Mac was 189 ms, or 2.32 MB/s. Rates use
+serialized bytes and include connection setup, but exclude generation and
+restoration. macOS `nettop` observed roughly 495 kB outgoing and 457 kB incoming
+UDP on the Mac's LAN interface at the respective transfer times. The socket
+view did not identify the remote IP, so a direct peer route rather than relay
+is **not proven**. These small, single-shot rates are not representative vault
+throughput.
+
+Across the roughly ten-second test window, sampled process CPU averaged 8.1%
+(peak 25.9%) on the A24 and 3.9% (peak 30.4%) on the Mac; samples were about
+0.9 seconds apart and include setup and verification, so they do not resolve
+the subsecond transfers. A24 battery reported 100% before and after (0 percentage
+points); external power was connected, so this is not a battery consumption
+measurement. No retry, resume, incremental transfer or user-selected folder
+was exercised. The P2P3 product no-go remains in force.
+
+To repeat the scratch-only integration test, run `python3 tool/p2p_lan_control.py
+<Mac-LAN-IP>` on the Mac, then launch `flutter drive --profile` for
+`integration_test/p2p_lan_measurement_test.dart` on each device with
+`--driver=test_driver/integration_test.dart`, `--dart-define=P2P_HARNESS=true`
+and `--dart-define=P2P_CONTROL_HOST=<Mac-LAN-IP>`. For Android pass
+`-d <A24-serial> -PtylogProfileSuffix=.profiletest`; for macOS pass `-d macos`.
+Use the isolated native harness builds and restore the normal build setup as
+above. The coordinator forwards scratch tickets over the local network; run it
+only on a trusted network. The test compares the complete received snapshot and
+restores it under a temporary directory, which it deletes afterward.

@@ -28,6 +28,39 @@ String createScratchSnapshot() {
   });
 }
 
+/// Generate and read a disposable folder; no existing folder is opened.
+Future<String> createRepresentativeScratchSnapshot(Directory root) async {
+  final source = await root.createTemp('p2p-source-');
+  try {
+    final files = <String, List<int>>{
+      for (var i = 0; i < 200; i++)
+        'notes/note-$i.typ': utf8.encode(
+          '= Scratch note $i\n${'Synthetic content for transfer measurement.\n' * 20}',
+        ),
+      'assets/sample.bin': [0, 1, 2, 255],
+      'assets/payload.bin': List.generate(
+        128 * 1024,
+        (i) => (i * 73 + i ~/ 251) % 256,
+      ),
+    };
+    final entries = <Map<String, String>>[];
+    for (final entry in files.entries) {
+      final file = File('${source.path}/${entry.key}');
+      await file.parent.create(recursive: true);
+      await file.writeAsBytes(entry.value);
+      final bytes = await file.readAsBytes();
+      entries.add({
+        'path': entry.key,
+        'sha256': sha256.convert(bytes).toString(),
+        'data': base64Encode(bytes),
+      });
+    }
+    return jsonEncode({'version': 1, 'files': entries});
+  } finally {
+    await source.delete(recursive: true);
+  }
+}
+
 /// Validate the entire untrusted manifest before creating a fresh destination.
 Future<Directory> restoreScratchSnapshot(
   String snapshot,

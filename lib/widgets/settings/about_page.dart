@@ -42,7 +42,11 @@ class _AboutPageState extends State<AboutPage> {
       MaterialPageRoute<void>(
         builder: (_) => P2pScratchPage(
           start: (text) => p2p.startP2pScratch(text),
-          startSnapshot: () => p2p.startP2pScratch(createScratchSnapshot()),
+          startSnapshot: () async => p2p.startP2pScratch(
+            await createRepresentativeScratchSnapshot(
+              await getTemporaryDirectory(),
+            ),
+          ),
           receiveSnapshot: (ticket) async {
             final transfer = await p2p.receiveP2pScratch(ticket);
             final root = await getApplicationSupportDirectory();

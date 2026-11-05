@@ -25,6 +25,19 @@ void main() {
     },
   );
 
+  test('generated scratch folder contains 200 notes and assets', () async {
+    final root = await Directory.systemTemp.createTemp('p2p-fixture-');
+    addTearDown(() => root.delete(recursive: true));
+    final snapshot = await createRepresentativeScratchSnapshot(root);
+    final restored = await restoreScratchSnapshot(snapshot, root);
+    final notes = await Directory('${restored.path}/notes').list().toList();
+    expect(notes.length, 200);
+    expect(
+      await File('${restored.path}/assets/payload.bin').length(),
+      128 * 1024,
+    );
+  });
+
   test('rejects tampered or unsafe snapshots before creating files', () async {
     final root = await Directory.systemTemp.createTemp('p2p-test-');
     addTearDown(() => root.delete(recursive: true));
