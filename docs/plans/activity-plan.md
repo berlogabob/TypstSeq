@@ -529,7 +529,8 @@ Issues found:
 - [ ] PF3-rest-rest-rest Measure root CPU, Flutter frames, heap and TYLOG_ENRICH at 1/20/100 mentions across 1k/10k pages on device (audit #3, #16).
 - [x] PF4 Cache the sorted journal days per index to avoid sorting on every scroll and rebuild (audit #4).
 - [x] PF4-rest Index journal task rows by note and task ID (audit #5).
-- [ ] PF4-rest-rest Bound and invalidate the journal source cache without losing visible edits (audit #12), and measure journal scrolling, task rendering, and memory on device (audit #4, #5, #12).
+- [x] PF4-rest-rest Bound and invalidate the journal source cache without losing visible edits (audit #12).
+- [ ] PF4-rest-rest-rest Measure journal scrolling, task rendering, and retained memory on device at 50/500/5,000 days; the P30 smoke sample is not a controlled heap study (audit #4, #5, #12).
 - [x] PF5 Cache entity timeline entries per index and defer rebuilding them while collapsed (audit #6).
 - [x] PF5-rest Reuse the workspace resolver when opening entity timelines, and refresh entries if the resolver changes.
 - [ ] PF5-rest-rest Index task references by entity; make merge preview verification scalable while preserving unsupported-reference and concurrent-change checks (audit #6, #8). Measure timeline CPU and frames, and merge preview reads, bytes, time, CPU and heap on app-local and SAF fixtures.

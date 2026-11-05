@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:math' show min;
 import 'dart:typed_data';
 
@@ -57,8 +58,12 @@ class _JournalFeedState extends State<JournalFeed> {
   VaultIndex? _daysIndex;
   List<NoteRef>? _cachedDays;
   final _tasksByNote = <String, Map<String, TaskRef>>{};
-  final sources = <String, Future<String>>{};
+  static const _sourceCacheLimit = 32;
+  final _sources = LinkedHashMap<String, Future<String>>();
   final _loadedPaths = <String>{};
+  Set<String> _activeSourcePaths = {};
+  Set<String> _buildingSourcePaths = {};
+  bool _sourceTrimScheduled = false;
   final _scroll = ScrollController();
   int _visibleDays = 1;
   bool _growing = false;
@@ -85,7 +90,8 @@ class _JournalFeedState extends State<JournalFeed> {
   void didUpdateWidget(JournalFeed oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.vault != oldWidget.vault) {
-      sources.clear();
+      _sources.clear();
+      _loadedPaths.clear();
       _visibleDays = 1;
     }
   }
@@ -109,6 +115,9 @@ class _JournalFeedState extends State<JournalFeed> {
     if (identical(_daysIndex, widget.index) && _cachedDays != null) {
       return _cachedDays!;
     }
+    final previous = {
+      for (final day in _cachedDays ?? const <NoteRef>[]) day.path: day,
+    };
     _daysIndex = widget.index;
     _tasksByNote.clear();
     for (final task in widget.index?.tasks ?? const <TaskRef>[]) {
@@ -117,7 +126,65 @@ class _JournalFeedState extends State<JournalFeed> {
     final days = (widget.index?.notes ?? const <NoteRef>[])
         .where((note) => note.kind == 'daily')
         .toList();
+    final currentByPath = {for (final day in days) day.path: day};
+    for (final entry in previous.entries) {
+      final replacement = currentByPath[entry.key];
+      if (replacement == null || _sourceChanged(entry.value, replacement)) {
+        _sources.remove(entry.key);
+        _loadedPaths.remove(entry.key);
+      }
+    }
     return _cachedDays = days..sort((a, b) => _dayKey(b).compareTo(_dayKey(a)));
+  }
+
+  bool _sourceChanged(NoteRef previous, NoteRef current) =>
+      previous.contentHash != current.contentHash ||
+      previous.fingerprint != current.fingerprint ||
+      (previous.contentHash == null &&
+          previous.fingerprint == null &&
+          !identical(previous, current));
+
+  Future<String> _sourceFor(NoteRef day) {
+    final existing = _sources.remove(day.path);
+    if (existing != null) {
+      _sources[day.path] = existing;
+      _buildingSourcePaths.add(day.path);
+      return existing;
+    }
+    late final Future<String> source;
+    source = () async {
+      try {
+        return await widget.vault!.storage.readText(day.path);
+      } finally {
+        if (identical(_sources[day.path], source)) {
+          _loadedPaths.add(day.path);
+        }
+      }
+    }();
+    _sources[day.path] = source;
+    _buildingSourcePaths.add(day.path);
+    _scheduleSourceTrim();
+    return source;
+  }
+
+  void _scheduleSourceTrim() {
+    if (_sourceTrimScheduled) return;
+    _sourceTrimScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _sourceTrimScheduled = false;
+      if (!mounted) return;
+      _activeSourcePaths = _buildingSourcePaths;
+      _buildingSourcePaths = {};
+      while (_sources.length > _sourceCacheLimit) {
+        final candidate = _sources.keys.firstWhere(
+          (path) => !_activeSourcePaths.contains(path),
+          orElse: () => '',
+        );
+        if (candidate.isEmpty) break;
+        _sources.remove(candidate);
+        _loadedPaths.remove(candidate);
+      }
+    });
   }
 
   List<CalendarItem> _eventsOn(String day) =>
@@ -205,6 +272,7 @@ class _JournalFeedState extends State<JournalFeed> {
 
   @override
   Widget build(BuildContext context) {
+    _buildingSourcePaths = {};
     final days = _days();
     if (days.isEmpty) {
       return const Center(child: Text('No journal pages yet'));
@@ -224,15 +292,7 @@ class _JournalFeedState extends State<JournalFeed> {
           );
         }
         final day = days[index];
-        final source = day.path.isEmpty
-            ? Future.value('')
-            : sources.putIfAbsent(day.path, () async {
-                try {
-                  return await widget.vault!.storage.readText(day.path);
-                } finally {
-                  _loadedPaths.add(day.path);
-                }
-              });
+        final source = day.path.isEmpty ? Future.value('') : _sourceFor(day);
         return Card(
           margin: const EdgeInsets.only(bottom: kSpace12),
           clipBehavior: Clip.antiAlias,
@@ -274,7 +334,7 @@ class _JournalFeedState extends State<JournalFeed> {
                           title: const Text('Could not read this day.'),
                           trailing: TextButton(
                             onPressed: () => setState(() {
-                              sources.remove(day.path);
+                              _sources.remove(day.path);
                               _loadedPaths.remove(day.path);
                             }),
                             child: const Text('Retry'),

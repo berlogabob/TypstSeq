@@ -315,6 +315,42 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('journal reloads a daily when its indexed content changes', (
+    tester,
+  ) async {
+    final root = await Directory.systemTemp.createTemp('journal_invalidate_');
+    addTearDown(() => root.delete(recursive: true));
+    final vault = Vault(root);
+    const path = 'daily/2026-10-08.typ';
+    await vault.storage.writeText(path, 'Original journal prose');
+    const firstNote = NoteRef(
+      id: 'day',
+      path: path,
+      title: 'Day',
+      date: '2026-10-08',
+      kind: 'daily',
+      outgoingLinks: [],
+      contentHash: 'first',
+    );
+    Widget app(NoteRef note) => MaterialApp(
+      home: JournalFeed(
+        vault: vault,
+        index: VaultIndex(
+          notesByPath: {path: note},
+          backlinksByTarget: const {},
+        ),
+        onOpenPath: (_) {},
+      ),
+    );
+    await tester.pumpWidget(app(firstNote));
+    await pumpUntilFound(tester, find.text('Original journal prose'));
+    await vault.storage.writeText(path, 'Updated journal prose');
+    await tester.pumpWidget(app(firstNote.copyWith(contentHash: 'second')));
+    await pumpUntilFound(tester, find.text('Updated journal prose'));
+    expect(find.text('Original journal prose'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('journal lists only real pages; a day\'s events stay collapsed', (
     tester,
   ) async {
