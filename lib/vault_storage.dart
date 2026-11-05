@@ -219,34 +219,54 @@ class AndroidTreeVaultStorage extends VaultStorage {
     final previous = _appends[key];
     final done = Completer<void>();
     _appends[key] = done.future;
-    try {
-      if (previous != null) await previous;
-      await _appendBytes(path, bytes);
-    } finally {
-      done.complete();
-      if (identical(_appends[key], done.future)) _appends.remove(key);
+    final result = Completer<void>();
+    Future<void> run() async {
+      try {
+        if (previous != null) await previous;
+        await _appendBytes(path, bytes, (error, stack) {
+          result.completeError(error, stack);
+        });
+        if (!result.isCompleted) result.complete();
+      } catch (error, stack) {
+        if (!result.isCompleted) result.completeError(error, stack);
+      } finally {
+        done.complete();
+        if (identical(_appends[key], done.future)) _appends.remove(key);
+      }
     }
+
+    unawaited(run());
+    return result.future;
   }
 
-  Future<void> _appendBytes(String path, List<int> bytes) async {
+  Future<void> _appendBytes(
+    String path,
+    List<int> bytes,
+    void Function(Object, StackTrace) reportTimeout,
+  ) async {
     if (path.endsWith('.typ')) {
       final existing = await exists(path) ? await readBytes(path) : <int>[];
       guardNoteWrite(path, [...existing, ...bytes]);
     }
     final marker = await markIndexDirty(path);
+    final call = channel.invokeMethod<void>(
+      'append',
+      args({'path': path, 'bytes': Uint8List.fromList(bytes)}),
+    );
     try {
-      await invoke(
-        channel.invokeMethod<void>(
-          'append',
-          args({'path': path, 'bytes': Uint8List.fromList(bytes)}),
-        ),
-        'append',
-      );
-    } on PlatformException catch (error) {
-      // The native append may still complete after the Dart watchdog expires.
-      if (error.code == 'saf_timeout') rethrow;
-      // ponytail: some document providers reject "wa"; read+write keeps the
-      // line (not atomic across devices, same as before append existed).
+      await invoke(call, 'append');
+    } on PlatformException catch (error, stack) {
+      if (error.code == 'saf_timeout') {
+        reportTimeout(error, stack);
+        // Keep the queue occupied until the provider's outcome is known.
+        try {
+          await call;
+        } catch (_) {
+          // The caller already received the timeout; leave the marker dirty.
+        }
+        return;
+      }
+      // Some document providers reject "wa"; retain the read/write fallback.
       await super.appendBytes(path, bytes);
     }
     await commitIndexWrite(marker, path);

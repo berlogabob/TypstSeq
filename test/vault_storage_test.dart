@@ -200,6 +200,44 @@ void main() {
     },
   );
 
+  test('a later SAF append waits for a timed-out provider call', () async {
+    final originalTimeout = AndroidTreeVaultStorage.safCallTimeout;
+    AndroidTreeVaultStorage.safCallTimeout = const Duration(milliseconds: 50);
+    addTearDown(() => AndroidTreeVaultStorage.safCallTimeout = originalTimeout);
+    final pending = Completer<Object?>();
+    var calls = 0;
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(AndroidTreeVaultStorage.channel, (call) {
+      if (call.method == 'append') {
+        calls++;
+        return calls == 1 ? pending.future : Future.value(null);
+      }
+      return Future.value(null);
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(
+        AndroidTreeVaultStorage.channel,
+        null,
+      ),
+    );
+    final storage = AndroidTreeVaultStorage(
+      uri: 'content://test/timeout-queue',
+      name: 'Test',
+    );
+    const path = 'logs/events.jsonl';
+    await expectLater(
+      storage.appendBytes(path, utf8.encode('one\n')),
+      throwsA(isA<PlatformException>()),
+    );
+    final second = storage.appendBytes(path, utf8.encode('two\n'));
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(calls, 1);
+    pending.complete();
+    await second;
+    expect(calls, 2);
+  });
+
   test('vault paths reject aliases and control characters', () {
     for (final path in ['assets/./a.bin', 'assets/../a.bin', 'assets/a\nbin']) {
       expect(() => validateVaultPath(path), throwsArgumentError);
