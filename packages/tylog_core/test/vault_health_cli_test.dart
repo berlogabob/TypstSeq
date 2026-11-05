@@ -49,6 +49,69 @@ void main() {
     );
   });
 
+  test('reports auto-entities only on standalone non-list lines', () async {
+    final vault = await Directory.systemTemp.createTemp('tylog_health_marker_');
+    addTearDown(() => vault.delete(recursive: true));
+    final settings = File('${vault.path}/.tylog/settings.json');
+    await settings.parent.create(recursive: true);
+    await settings.writeAsString('{"version":5}');
+    final notes = Directory('${vault.path}/screenshots');
+    await notes.create();
+    await File('${notes.path}/ocr.typ').writeAsString('''
+#show: tylog.note.with(id: "ocr", title: "OCR")
+= OCR
+Screenshot text: // tylog:auto-entities
+- // tylog:auto-entities
+1. // tylog:auto-entities
+''');
+    await File('${notes.path}/marker.typ').writeAsString('''
+#show: tylog.note.with(id: "marker", title: "Marker")
+= Marker
+  // tylog:auto-entities
+''');
+
+    final result = await Process.run(Platform.resolvedExecutable, [
+      'run',
+      'bin/tylog.dart',
+      'vault-health',
+      vault.path,
+    ]);
+    expect(result.exitCode, 0, reason: '${result.stderr}');
+    final date = DateTime.now();
+    final report = File(
+      '${vault.path}/_system/health/${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}.json',
+    );
+    final data = jsonDecode(await report.readAsString()) as Map;
+    final issues = (data['issues'] as List).cast<Map>();
+    expect(
+      issues.any(
+        (issue) =>
+            issue['path'] == 'screenshots/marker.typ' &&
+            issue['code'] == 'auto-entities',
+      ),
+      isTrue,
+    );
+
+    final content = await File('${notes.path}/ocr.typ').readAsString();
+    await File(
+      '${notes.path}/ocr.typ',
+    ).writeAsString('$content\n// tylog:auto-entities\n');
+    final second = await Process.run(Platform.resolvedExecutable, [
+      'run',
+      'bin/tylog.dart',
+      'vault-health',
+      vault.path,
+    ]);
+    expect(second.exitCode, 0, reason: '${second.stderr}');
+    final updated = jsonDecode(await report.readAsString()) as Map;
+    expect(
+      (updated['issues'] as List)
+          .where((issue) => issue['code'] == 'auto-entities')
+          .length,
+      2,
+    );
+  });
+
   test('compiles a bounded batch and resumes at the next note', () async {
     final vault = await Directory.systemTemp.createTemp('tylog_health_batch_');
     addTearDown(() => vault.delete(recursive: true));

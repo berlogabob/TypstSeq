@@ -110,7 +110,7 @@ Future<String> generateHealthReport(Directory root) async {
       if (!RegExp(r'#show\s*:\s*tylog\.note\.with\s*\(').hasMatch(source)) {
         issues.add({'path': path, 'code': 'missing-note-header'});
       }
-      if (source.contains('// tylog:auto-entities')) {
+      if (source.split('\n').any(_isAutoEntitiesMarkerLine)) {
         issues.add({'path': path, 'code': 'auto-entities'});
       }
     }
@@ -133,6 +133,12 @@ Future<String> generateHealthReport(Directory root) async {
   );
   await temporary.rename(report.path);
   return report.readAsString();
+}
+
+bool _isAutoEntitiesMarkerLine(String line) {
+  final content = line.trimLeft();
+  if (RegExp(r'^(?:[-+*]|\d+[.)])\s+').hasMatch(content)) return false;
+  return content.startsWith('// tylog:auto-entities');
 }
 
 const _healthTypstBatchSize = 20;
