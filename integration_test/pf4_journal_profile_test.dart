@@ -11,13 +11,36 @@ import 'package:tylog/widgets/journal_feed.dart';
 import 'package:vm_service/vm_service.dart';
 import 'package:vm_service/vm_service_io.dart';
 
-class _FixtureStorage extends LocalVaultStorage {
-  _FixtureStorage() : super(Directory.systemTemp);
+abstract class _ProfileStorageBase extends LocalVaultStorage {
+  _ProfileStorageBase(super.root);
+  final readPaths = <String>{};
+}
+
+class _ProfileStorage extends _ProfileStorageBase {
+  _ProfileStorage(super.root);
+
+  @override
+  Future<String> readText(String path) {
+    readPaths.add(path);
+    return super.readText(path);
+  }
+}
+
+class _MemoryProfileStorage extends _ProfileStorageBase {
+  _MemoryProfileStorage() : super(Directory.systemTemp);
 
   final sources = <String, String>{};
 
   @override
-  Future<String> readText(String path) async => sources[path] ?? '';
+  Future<void> writeText(String path, String value) async {
+    sources[path] = value;
+  }
+
+  @override
+  Future<String> readText(String path) async {
+    readPaths.add(path);
+    return sources[path] ?? '';
+  }
 }
 
 Future<(VmService, String)> _connect() async {
@@ -44,96 +67,112 @@ void main() {
     SchedulerBinding.instance.addTimingsCallback(collect);
     addTearDown(() => SchedulerBinding.instance.removeTimingsCallback(collect));
 
-    for (final dayCount in [50, 500, 5000]) {
-      final storage = _FixtureStorage();
-      final vault = Vault.withStorage(storage);
-      final notes = <String, NoteRef>{};
-      final tasks = <TaskRef>[];
-      for (var i = 0; i < dayCount; i++) {
-        final day = DateTime.utc(2020).add(Duration(days: i));
-        final date =
-            '${day.year.toString().padLeft(4, '0')}-'
-            '${day.month.toString().padLeft(2, '0')}-'
-            '${day.day.toString().padLeft(2, '0')}';
-        final path = 'daily/$date.typ';
-        final source = i == dayCount - 1
-            ? List.generate(
-                20,
-                (n) => '#tylog.task(id: "task-$n", text: "Task $n")',
-              ).join('\n\n')
-            : 'Journal $date\n\n${'A short journal entry. ' * 8}';
-        storage.sources[path] = source;
-        notes[path] = NoteRef(
-          id: date,
-          path: path,
-          title: date,
-          date: date,
-          kind: 'daily',
-          outgoingLinks: const [],
-        );
-        if (i == dayCount - 1) {
-          tasks.addAll([
-            for (var n = 0; n < 20; n++)
-              TaskRef(id: 'task-$n', notePath: path, text: 'Indexed task $n'),
-          ]);
+    for (final backend in ['memory', 'disk']) {
+      for (final dayCount in [50, 500, 5000]) {
+        final root = backend == 'disk'
+            ? await Directory.systemTemp.createTemp('pf4-journal-')
+            : null;
+        if (root != null) addTearDown(() => root.delete(recursive: true));
+        final storage = backend == 'disk'
+            ? _ProfileStorage(root!)
+            : _MemoryProfileStorage();
+        final vault = Vault.withStorage(storage);
+        final notes = <String, NoteRef>{};
+        final tasks = <TaskRef>[];
+        for (var i = 0; i < dayCount; i++) {
+          final day = DateTime.utc(2020).add(Duration(days: i));
+          final date =
+              '${day.year.toString().padLeft(4, '0')}-'
+              '${day.month.toString().padLeft(2, '0')}-'
+              '${day.day.toString().padLeft(2, '0')}';
+          final path = 'daily/$date.typ';
+          final source = i == dayCount - 1
+              ? List.generate(
+                  20,
+                  (n) => '#tylog.task(id: "task-$n", text: "Task $n")',
+                ).join('\n\n')
+              : 'Journal $date\n\n${'A short journal entry. ' * 8}';
+          await storage.writeText(path, source);
+          notes[path] = NoteRef(
+            id: date,
+            path: path,
+            title: date,
+            date: date,
+            kind: 'daily',
+            outgoingLinks: const [],
+          );
+          if (i == dayCount - 1) {
+            tasks.addAll([
+              for (var n = 0; n < 20; n++)
+                TaskRef(id: 'task-$n', notePath: path, text: 'Indexed task $n'),
+            ]);
+          }
         }
-      }
-      final index = VaultIndex(
-        notesByPath: notes,
-        backlinksByTarget: const {},
-        tasks: tasks,
-      );
-      await service.getAllocationProfile(isolate, gc: true);
-      final before = await service.getMemoryUsage(isolate);
-      final frameStart = frames.length;
-      await service.clearCpuSamples(isolate);
-      final watch = Stopwatch()..start();
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: JournalFeed(vault: vault, index: index, onOpenPath: (_) {}),
+        final index = VaultIndex(
+          notesByPath: notes,
+          backlinksByTarget: const {},
+          tasks: tasks,
+        );
+        await service.getAllocationProfile(isolate, gc: true);
+        final before = await service.getMemoryUsage(isolate);
+        final frameStart = frames.length;
+        await service.clearCpuSamples(isolate);
+        final watch = Stopwatch()..start();
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: JournalFeed(vault: vault, index: index, onOpenPath: (_) {}),
+            ),
           ),
-        ),
-      );
-      await tester.pump(const Duration(milliseconds: 500));
-      await tester.pump();
-      expect(find.text('Indexed task 0'), findsOneWidget);
-      final taskRows = find.textContaining('Indexed task').evaluate().length;
-      final list = find.byType(ListView);
-      const scrollGestures = 40;
-      for (var i = 0; i < scrollGestures; i++) {
-        await tester.fling(list, const Offset(0, -800), 3000);
+        );
         await tester.pump(const Duration(milliseconds: 500));
         await tester.pump();
+        expect(find.text('Indexed task 0'), findsOneWidget);
+        final taskRows = find.textContaining('Indexed task').evaluate().length;
+        final list = find.byType(ListView);
+        var scrollGestures = 0;
+        while (storage.readPaths.length < dayCount && scrollGestures < 20000) {
+          await tester.fling(list, const Offset(0, -1200), 5000);
+          await tester.pump(const Duration(milliseconds: 100));
+          await tester.pump();
+          scrollGestures++;
+        }
+        watch.stop();
+        expect(
+          storage.readPaths.length,
+          dayCount,
+          reason:
+              'the profile must read every day before taking its heap sample',
+        );
+        await service.getAllocationProfile(isolate, gc: true);
+        final after = await service.getMemoryUsage(isolate);
+        final cpu = await service.getCpuSamples(isolate, 0, 1 << 62);
+        final frameUs =
+            frames
+                .skip(frameStart)
+                .map((f) => f.totalSpan.inMicroseconds)
+                .toList()
+              ..sort();
+        int percentile(double p) =>
+            frameUs.isEmpty ? 0 : frameUs[((frameUs.length - 1) * p).round()];
+        // ignore: avoid_print
+        print(
+          'PF4_JOURNAL backend=$backend days=$dayCount '
+          'indexedTasks=${tasks.length} '
+          'renderedTaskRows=$taskRows '
+          'scrollGestures=$scrollGestures readDays=${storage.readPaths.length} '
+          'browseMs=${watch.elapsedMilliseconds} '
+          'heapBefore=${before.heapUsage} heapAfter=${after.heapUsage} '
+          'heapDelta=${after.heapUsage! - before.heapUsage!} '
+          'cpuSamples=${cpu.samples?.length ?? 0} '
+          'cpuSamplePeriodUs=${cpu.samplePeriod} '
+          'rssBytes=${ProcessInfo.currentRss} '
+          'frames=${frameUs.length} frameP50Us=${percentile(.50)} '
+          'frameP95Us=${percentile(.95)} frameP99Us=${percentile(.99)} '
+          'frameMaxUs=${frameUs.isEmpty ? 0 : frameUs.last}',
+        );
+        await tester.pumpWidget(const SizedBox.shrink());
       }
-      watch.stop();
-      await service.getAllocationProfile(isolate, gc: true);
-      final after = await service.getMemoryUsage(isolate);
-      final cpu = await service.getCpuSamples(isolate, 0, 1 << 62);
-      final frameUs =
-          frames
-              .skip(frameStart)
-              .map((f) => f.totalSpan.inMicroseconds)
-              .toList()
-            ..sort();
-      int percentile(double p) =>
-          frameUs.isEmpty ? 0 : frameUs[((frameUs.length - 1) * p).round()];
-      // ignore: avoid_print
-      print(
-        'PF4_JOURNAL days=$dayCount indexedTasks=${tasks.length} '
-        'renderedTaskRows=$taskRows '
-        'scrollGestures=$scrollGestures '
-        'browseMs=${watch.elapsedMilliseconds} '
-        'heapBefore=${before.heapUsage} heapAfter=${after.heapUsage} '
-        'heapDelta=${after.heapUsage! - before.heapUsage!} '
-        'cpuSamples=${cpu.samples?.length ?? 0} '
-        'cpuSamplePeriodUs=${cpu.samplePeriod} '
-        'rssBytes=${ProcessInfo.currentRss} '
-        'frames=${frameUs.length} frameP50Us=${percentile(.50)} '
-        'frameP95Us=${percentile(.95)} frameP99Us=${percentile(.99)} '
-        'frameMaxUs=${frameUs.isEmpty ? 0 : frameUs.last}',
-      );
-      await tester.pumpWidget(const SizedBox.shrink());
     }
-  }, timeout: const Timeout(Duration(minutes: 10)));
+  }, timeout: const Timeout(Duration(minutes: 30)));
 }
