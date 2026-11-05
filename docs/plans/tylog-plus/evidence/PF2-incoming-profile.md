@@ -170,3 +170,22 @@ The P30 was left with `.profiletest` running and its received copy intact. The
 temporary clone and JNI staging were removed. The test-driver package cleanup
 and production-install recovery remain unresolved; do not rerun `flutter
 drive` as part of this follow-up.
+
+## PF2-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest follow-up (2026-11-05)
+
+The requested safe Flutter integration-test command was run:
+`flutter test integration_test/pf2_incoming_sheet_profile_test.dart -d
+XPH0219904001750 --no-uninstall`. Flutter built and installed the separate
+`org.tylog.tylog.debug` package; that package has no vault registration, so the
+harness stopped at `profile vault copy missing` before opening the sheet. The
+existing `.profiletest` package remained installed at its recorded first
+install time `2026-11-05 21:05:34`. The production package was absent before
+and after this attempt, so its historical `firstInstallTime=2026-11-05
+15:27:02` could not be queried; no command installed, launched, or modified it.
+The profile harness therefore collected no new device measurements. The Mac
+screen was locked, so GUI or P2P sender actions were skipped.
+
+`flutter test` passed the full suite: 2,089 tests passed and 10 were skipped.
+The actual-sheet measurement still needs a runner that targets the installed
+`.profiletest` app without Flutter's debug-package path, plus a received copy
+with eligible rows for measuring a decision append and Show older paging.
