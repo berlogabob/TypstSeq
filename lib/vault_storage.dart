@@ -254,22 +254,40 @@ class AndroidTreeVaultStorage extends VaultStorage {
       args({'path': path, 'bytes': Uint8List.fromList(bytes)}),
     );
     try {
-      await invoke(call, 'append');
-    } on PlatformException catch (error, stack) {
-      if (error.code == 'saf_timeout') {
-        reportTimeout(error, stack);
-        // Keep the queue occupied until the provider's outcome is known.
-        try {
-          await call;
-        } catch (_) {
-          // The caller already received the timeout; leave the marker dirty.
-        }
-        return;
-      }
+      if (!await _waitForAppendWrite(call, 'append', reportTimeout)) return;
+    } on PlatformException {
       // Some document providers reject "wa"; retain the read/write fallback.
-      await super.appendBytes(path, bytes);
+      final existing = await exists(path) ? await readBytes(path) : <int>[];
+      final combined = [...existing, ...bytes];
+      guardNoteWrite(path, combined);
+      final write = channel.invokeMethod<void>(
+        'write',
+        args({'path': path, 'bytes': Uint8List.fromList(combined)}),
+      );
+      if (!await _waitForAppendWrite(write, 'write', reportTimeout)) return;
     }
     await commitIndexWrite(marker, path);
+  }
+
+  Future<bool> _waitForAppendWrite(
+    Future<void> call,
+    String operation,
+    void Function(Object, StackTrace) reportTimeout,
+  ) async {
+    try {
+      await invoke(call, operation);
+      return true;
+    } on PlatformException catch (error, stack) {
+      if (error.code != 'saf_timeout') rethrow;
+      reportTimeout(error, stack);
+      // Keep the queue occupied until the provider's outcome is known.
+      try {
+        await call;
+      } catch (_) {
+        // The caller already received the timeout; leave the marker dirty.
+      }
+      return false;
+    }
   }
 
   @override

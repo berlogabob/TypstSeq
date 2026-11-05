@@ -238,6 +238,59 @@ void main() {
     expect(calls, 2);
   });
 
+  test('a timed-out SAF fallback write keeps later appends queued', () async {
+    final originalTimeout = AndroidTreeVaultStorage.safCallTimeout;
+    AndroidTreeVaultStorage.safCallTimeout = const Duration(milliseconds: 50);
+    addTearDown(() => AndroidTreeVaultStorage.safCallTimeout = originalTimeout);
+    final pending = Completer<Object?>();
+    var content = 'start\n';
+    var writes = 0;
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(AndroidTreeVaultStorage.channel, (
+      call,
+    ) async {
+      switch (call.method) {
+        case 'append':
+          throw PlatformException(code: 'unsupported');
+        case 'exists':
+          return true;
+        case 'read':
+          return Uint8List.fromList(utf8.encode(content));
+        case 'write':
+          writes++;
+          final next = utf8.decode(call.arguments['bytes'] as Uint8List);
+          if (writes == 1) await pending.future;
+          content = next;
+          return null;
+      }
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(
+        AndroidTreeVaultStorage.channel,
+        null,
+      ),
+    );
+    final storage = AndroidTreeVaultStorage(
+      uri: 'content://test/fallback-timeout',
+      name: 'Test',
+    );
+    const path = 'logs/events.jsonl';
+    await expectLater(
+      storage.appendBytes(path, utf8.encode('one\n')),
+      throwsA(
+        isA<PlatformException>().having((e) => e.code, 'code', 'saf_timeout'),
+      ),
+    );
+    final second = storage.appendBytes(path, utf8.encode('two\n'));
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(writes, 1);
+    pending.complete();
+    await second;
+    expect(content, 'start\none\ntwo\n');
+  });
+
   test('vault paths reject aliases and control characters', () {
     for (final path in ['assets/./a.bin', 'assets/../a.bin', 'assets/a\nbin']) {
       expect(() => validateVaultPath(path), throwsArgumentError);
