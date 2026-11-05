@@ -64,6 +64,61 @@ void main() {
     },
   );
 
+  test('health_report can generate a fresh report', () async {
+    final vault = await Directory.systemTemp.createTemp('tylog_mcp_refresh_');
+    addTearDown(() => vault.delete(recursive: true));
+    final settings = File('${vault.path}/.tylog/settings.json');
+    await settings.parent.create(recursive: true);
+    await settings.writeAsString('{"version":5}');
+    final note = File('${vault.path}/notes/broken.typ');
+    await note.parent.create(recursive: true);
+    await note.writeAsString('missing header');
+    final process = await Process.start(Platform.resolvedExecutable, [
+      'run',
+      'bin/tylog.dart',
+      'mcp',
+      vault.path,
+    ]);
+    process.stdin.writeln(
+      jsonEncode({
+        'jsonrpc': '2.0',
+        'id': 1,
+        'method': 'tools/call',
+        'params': {
+          'name': 'health_report',
+          'arguments': {'refresh': true},
+        },
+      }),
+    );
+    await process.stdin.close();
+    final rows = await process.stdout
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .toList();
+    expect(await process.exitCode, 0);
+    final result = (jsonDecode(rows.single) as Map)['result'];
+    expect(result['isError'], isNot(true));
+    final report = jsonDecode(result['content'][0]['text'] as String) as Map;
+    expect(report['scanned'], 1);
+    expect(
+      report['issues'],
+      contains(
+        predicate(
+          (issue) =>
+              issue is Map &&
+              issue['path'] == 'notes/broken.typ' &&
+              issue['code'] == 'missing-note-header',
+        ),
+      ),
+    );
+    expect(
+      await File(
+        '${vault.path}/_system/health/${report['date']}.json',
+      ).exists(),
+      true,
+    );
+  });
+
   test('MCP clients discover, search, and retrieve notes over stdio', () async {
     final vault = await Directory.systemTemp.createTemp('tylog_mcp_');
     addTearDown(() => vault.delete(recursive: true));

@@ -3,11 +3,19 @@ import 'dart:io';
 
 import 'package:tylog_core/tylog_core.dart';
 
+import 'tylog.dart' show generateHealthReport;
+
 const _tools = [
   {
     'name': 'health_report',
-    'description': 'Read the latest saved vault health report.',
-    'inputSchema': {'type': 'object', 'properties': {}},
+    'description':
+        'Read the latest saved health report or generate a fresh one.',
+    'inputSchema': {
+      'type': 'object',
+      'properties': {
+        'refresh': {'type': 'boolean'},
+      },
+    },
   },
   {
     'name': 'backlinks',
@@ -130,7 +138,39 @@ Future<Object> _call(Directory root, Object? params) async {
   final name = params['name'];
   final args = params['arguments'] as Map;
   if (name == 'health_report') {
+    if (args.containsKey('refresh') && args['refresh'] is! bool) {
+      return reply('Invalid arguments', error: true);
+    }
     try {
+      if (args['refresh'] == true) {
+        final now = DateTime.now();
+        final date =
+            '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+        for (final path in ['_system', '_system/health']) {
+          final type = await FileSystemEntity.type(
+            '${root.path}/$path',
+            followLinks: false,
+          );
+          if (type != FileSystemEntityType.notFound &&
+              type != FileSystemEntityType.directory) {
+            throw const FileSystemException('Unsafe health directory');
+          }
+        }
+        for (final path in [
+          'typst-cursor.json',
+          '$date.json',
+          '$date.json.tmp',
+        ]) {
+          if (await FileSystemEntity.type(
+                '${root.path}/_system/health/$path',
+                followLinks: false,
+              ) ==
+              FileSystemEntityType.link) {
+            throw const FileSystemException('Unsafe health file');
+          }
+        }
+        return reply(await generateHealthReport(root));
+      }
       final directory = Directory('${root.path}/_system/health');
       if (await FileSystemEntity.type(
                 '${root.path}/_system',

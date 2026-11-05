@@ -1,9 +1,8 @@
 # TyLog MCP server
 
-TyLog exposes a local, read-only Model Context Protocol (MCP) server over
+TyLog exposes a local Model Context Protocol (MCP) server over
 standard input and output. It lets an MCP client search note source text and
-read a note by its TyLog ID, list its backlinks and tasks, and read the latest saved health report. It does not open a network listener or change the
-vault.
+read a note by its TyLog ID, list its backlinks and tasks, and read or refresh the vault health report. It does not open a network listener. Refreshing a health report writes report and scan cursor files under `_system/health/`.
 
 ## Requirements and launch command
 
@@ -29,14 +28,14 @@ startup to fail.
 | `get_note` | `id`: non-empty string | Returns the complete source of the note with that TyLog ID. |
 | `backlinks` | `id`: non-empty string | Returns linking notes as JSON objects with `id`, `title`, and `path`. The target ID must be unique. |
 | `list_tasks` | None | Returns tasks as JSON objects, including their note paths, statuses, and dates. |
-| `health_report` | None | Returns the latest dated report from `_system/health/` as JSON. Run `dart run packages/tylog_core/bin/tylog.dart vault-health <vault>` first to generate or refresh it. |
+| `health_report` | Optional `refresh`: boolean | Returns the latest dated report from `_system/health/` as JSON. Set `refresh` to `true` to scan the vault and generate a fresh report. |
 
 Search checks `.typ` files recursively in `daily/`, `notes/`, `projects/`,
 `articles/`, `screenshots/`, and `ext/`. `get_note` reports an error when no
 note has the requested ID or when more than one note has that ID. Tool errors
 are returned as MCP results with `isError: true`.
 
-Backlinks and tasks use the vault scanner’s source-based fallback, without Typst inspection; metadata generated only by Typst evaluation may be absent. Incoming and write tools are not available in this read-only slice. Health reports reflect the last run of `vault-health` and may be stale.
+Backlinks and tasks use the vault scanner’s source-based fallback, without Typst inspection; metadata generated only by Typst evaluation may be absent. Incoming and note-writing tools are not available. Without `refresh`, health reports may be stale.
 
 ## Claude Code
 

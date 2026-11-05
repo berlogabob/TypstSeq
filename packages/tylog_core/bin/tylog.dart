@@ -57,6 +57,18 @@ Future<int> _vaultHealth(List<String> args) async {
     throw _UsageException('vault-health requires <vault>');
   }
   final root = Directory(args.single).absolute;
+  final report = await generateHealthReport(root);
+  final data = jsonDecode(report) as Map;
+  stdout.writeln(
+    'Scanned ${data['scanned']} notes; ${(data['issues'] as List).length} findings: ${root.path}/_system/health/${data['date']}.json',
+  );
+  for (final issue in data['issues'] as List) {
+    stdout.writeln('${issue['code']}: ${issue['path']}');
+  }
+  return 0;
+}
+
+Future<String> generateHealthReport(Directory root) async {
   if ((await inspectVaultStorage(LocalVaultStorage(root))).kind !=
       VaultStorageKind.validVault) {
     throw StateError('TyLog vault marker is missing or invalid');
@@ -120,13 +132,7 @@ Future<int> _vaultHealth(List<String> args) async {
     flush: true,
   );
   await temporary.rename(report.path);
-  stdout.writeln(
-    'Scanned $scanned notes; ${issues.length} findings: ${report.path}',
-  );
-  for (final issue in issues) {
-    stdout.writeln('${issue['code']}: ${issue['path']}');
-  }
-  return 0;
+  return report.readAsString();
 }
 
 const _healthTypstBatchSize = 20;
