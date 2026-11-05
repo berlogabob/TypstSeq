@@ -576,4 +576,4 @@ Issues found:
 - [x] D2 docs/extension-packs.md: module pack manifest (schema), install record, update channel (GitHub releases), mounts (local/GitHub, read-only, push outbox), what a pack may and may not write.
 - [x] D3 Read-only MCP slice: `dart run packages/tylog_core/bin/tylog.dart mcp <vault>` serves stdio search and get_note, with no network listener or new dependencies. Searches note source and retrieves a note by unique ID; changes are picked up on each call.
 - [ ] D3-rest Add MCP tools backlinks, list_tasks, incoming_list, daily_append, add_task, propose_mention (-> Incoming), and health_report. All writes through existing surgical writers, output must compile, refuse non-note writes (K1 guard), one decision-ledger line per write. Tests per tool.
-- [ ] D4 docs/mcp.md tool reference + how to register in Claude Code / Hermes; example config.
+- [x] D4 docs/mcp.md tool reference + how to register in Claude Code / Hermes; example config.
