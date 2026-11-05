@@ -39,7 +39,7 @@ strip = true         # strip debug symbols from the output
 panic = "abort"      # smaller binary: no unwinding tables
 
 [features]
-p2p-harness = ["dep:iroh", "dep:tokio", "dep:jni"]
+p2p-harness = ["dep:iroh", "dep:tokio", "dep:jni", "dep:sha2"]
 
 [dependencies.iroh]
 version = "1.4.0"
@@ -54,3 +54,7 @@ features = ["rt-multi-thread", "time"]
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni = { version = "0.21", optional = true }
+
+[dependencies.sha2]
+version = "0.10"
+optional = true

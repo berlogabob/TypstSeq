@@ -7,13 +7,48 @@ import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `receive_impl`, `start_impl`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `fmt`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `fmt`, `fmt`
 
 Future<String> startScratch({required String text}) =>
     RustLib.instance.api.crateApiP2PHarnessStartScratch(text: text);
 
 Future<ScratchTransfer> receiveScratch({required String ticket}) =>
     RustLib.instance.api.crateApiP2PHarnessReceiveScratch(ticket: ticket);
+
+Future<String> startFile({required String path}) =>
+    RustLib.instance.api.crateApiP2PHarnessStartFile(path: path);
+
+Future<FileTransfer> receiveFile({
+  required String ticket,
+  required String path,
+}) => RustLib.instance.api.crateApiP2PHarnessReceiveFile(
+  ticket: ticket,
+  path: path,
+);
+
+class FileTransfer {
+  final BigInt bytes;
+  final BigInt elapsedMs;
+  final String sha256;
+
+  const FileTransfer({
+    required this.bytes,
+    required this.elapsedMs,
+    required this.sha256,
+  });
+
+  @override
+  int get hashCode => bytes.hashCode ^ elapsedMs.hashCode ^ sha256.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FileTransfer &&
+          runtimeType == other.runtimeType &&
+          bytes == other.bytes &&
+          elapsedMs == other.elapsedMs &&
+          sha256 == other.sha256;
+}
 
 class ScratchTransfer {
   final String text;

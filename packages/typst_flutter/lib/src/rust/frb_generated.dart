@@ -68,7 +68,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => 1651627476;
+  int get rustContentHash => 1075997531;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -161,9 +161,16 @@ abstract class RustLibApi extends BaseApi {
 
   String crateApiTypstGetTypstVersion();
 
+  Future<FileTransfer> crateApiP2PHarnessReceiveFile({
+    required String ticket,
+    required String path,
+  });
+
   Future<ScratchTransfer> crateApiP2PHarnessReceiveScratch({
     required String ticket,
   });
+
+  Future<String> crateApiP2PHarnessStartFile({required String path});
 
   Future<String> crateApiP2PHarnessStartScratch({required String text});
 
@@ -764,6 +771,41 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "get_typst_version", argNames: []);
 
   @override
+  Future<FileTransfer> crateApiP2PHarnessReceiveFile({
+    required String ticket,
+    required String path,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(ticket, serializer);
+          sse_encode_String(path, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 17,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_file_transfer,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiP2PHarnessReceiveFileConstMeta,
+        argValues: [ticket, path],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiP2PHarnessReceiveFileConstMeta =>
+      const TaskConstMeta(
+        debugName: "receive_file",
+        argNames: ["ticket", "path"],
+      );
+
+  @override
   Future<ScratchTransfer> crateApiP2PHarnessReceiveScratch({
     required String ticket,
   }) {
@@ -775,7 +817,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 18,
             port: port_,
           );
         },
@@ -794,6 +836,34 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "receive_scratch", argNames: ["ticket"]);
 
   @override
+  Future<String> crateApiP2PHarnessStartFile({required String path}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(path, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 19,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiP2PHarnessStartFileConstMeta,
+        argValues: [path],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiP2PHarnessStartFileConstMeta =>
+      const TaskConstMeta(debugName: "start_file", argNames: ["path"]);
+
+  @override
   Future<String> crateApiP2PHarnessStartScratch({required String text}) {
     return handler.executeNormal(
       NormalTask(
@@ -803,7 +873,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 20,
             port: port_,
           );
         },
@@ -963,6 +1033,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   double dco_decode_f_64(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as double;
+  }
+
+  @protected
+  FileTransfer dco_decode_file_transfer(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return FileTransfer(
+      bytes: dco_decode_u_64(arr[0]),
+      elapsedMs: dco_decode_u_64(arr[1]),
+      sha256: dco_decode_String(arr[2]),
+    );
   }
 
   @protected
@@ -1417,6 +1500,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   double sse_decode_f_64(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getFloat64();
+  }
+
+  @protected
+  FileTransfer sse_decode_file_transfer(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_bytes = sse_decode_u_64(deserializer);
+    var var_elapsedMs = sse_decode_u_64(deserializer);
+    var var_sha256 = sse_decode_String(deserializer);
+    return FileTransfer(
+      bytes: var_bytes,
+      elapsedMs: var_elapsedMs,
+      sha256: var_sha256,
+    );
   }
 
   @protected
@@ -1964,6 +2060,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_f_64(double self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putFloat64(self);
+  }
+
+  @protected
+  void sse_encode_file_transfer(FileTransfer self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_64(self.bytes, serializer);
+    sse_encode_u_64(self.elapsedMs, serializer);
+    sse_encode_String(self.sha256, serializer);
   }
 
   @protected

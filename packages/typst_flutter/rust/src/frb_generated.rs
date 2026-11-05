@@ -28,7 +28,7 @@
 
 use crate::api::typst::*;
 use flutter_rust_bridge::for_generated::byteorder::{NativeEndian, ReadBytesExt, WriteBytesExt};
-use flutter_rust_bridge::for_generated::{Lifetimeable, Lockable, transform_result_dco};
+use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
 use flutter_rust_bridge::{Handler, IntoIntoDart};
 
 // Section: boilerplate
@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.12.0";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1651627476;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1075997531;
 
 // Section: executor
 
@@ -819,6 +819,40 @@ fn wire__crate__api__typst__get_typst_version_impl(
         },
     )
 }
+fn wire__crate__api__p2p_harness__receive_file_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "receive_file",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api__ticket = <String>::sse_decode(&mut deserializer);
+            let api__path = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::p2p_harness::receive_file(api__ticket, api__path)?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__p2p_harness__receive_scratch_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -846,6 +880,39 @@ fn wire__crate__api__p2p_harness__receive_scratch_impl(
             move |context| {
                 transform_result_sse::<_, String>((move || {
                     let output_ok = crate::api::p2p_harness::receive_scratch(api_ticket)?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__p2p_harness__start_file_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "start_file",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api__path = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, String>((move || {
+                    let output_ok = crate::api::p2p_harness::start_file(api__path)?;
                     Ok(output_ok)
                 })())
             }
@@ -987,6 +1054,20 @@ impl SseDecode for f64 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         deserializer.cursor.read_f64::<NativeEndian>().unwrap()
+    }
+}
+
+impl SseDecode for crate::api::p2p_harness::FileTransfer {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut var_bytes = <u64>::sse_decode(deserializer);
+        let mut var_elapsedMs = <u64>::sse_decode(deserializer);
+        let mut var_sha256 = <String>::sse_decode(deserializer);
+        return crate::api::p2p_harness::FileTransfer {
+            bytes: var_bytes,
+            elapsed_ms: var_elapsedMs,
+            sha256: var_sha256,
+        };
     }
 }
 
@@ -1470,10 +1551,12 @@ fn pde_ffi_dispatcher_primary_impl(
             data_len,
         ),
         15 => wire__crate__api__embedding__embed_impl(port, ptr, rust_vec_len, data_len),
-        17 => {
+        17 => wire__crate__api__p2p_harness__receive_file_impl(port, ptr, rust_vec_len, data_len),
+        18 => {
             wire__crate__api__p2p_harness__receive_scratch_impl(port, ptr, rust_vec_len, data_len)
         }
-        18 => wire__crate__api__p2p_harness__start_scratch_impl(port, ptr, rust_vec_len, data_len),
+        19 => wire__crate__api__p2p_harness__start_file_impl(port, ptr, rust_vec_len, data_len),
+        20 => wire__crate__api__p2p_harness__start_scratch_impl(port, ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1547,6 +1630,28 @@ impl flutter_rust_bridge::IntoIntoDart<crate::api::embedding::EmbeddingResult>
     for crate::api::embedding::EmbeddingResult
 {
     fn into_into_dart(self) -> crate::api::embedding::EmbeddingResult {
+        self
+    }
+}
+// Codec=Dco (DartCObject based), see doc to use other codecs
+impl flutter_rust_bridge::IntoDart for crate::api::p2p_harness::FileTransfer {
+    fn into_dart(self) -> flutter_rust_bridge::for_generated::DartAbi {
+        [
+            self.bytes.into_into_dart().into_dart(),
+            self.elapsed_ms.into_into_dart().into_dart(),
+            self.sha256.into_into_dart().into_dart(),
+        ]
+        .into_dart()
+    }
+}
+impl flutter_rust_bridge::for_generated::IntoDartExceptPrimitive
+    for crate::api::p2p_harness::FileTransfer
+{
+}
+impl flutter_rust_bridge::IntoIntoDart<crate::api::p2p_harness::FileTransfer>
+    for crate::api::p2p_harness::FileTransfer
+{
+    fn into_into_dart(self) -> crate::api::p2p_harness::FileTransfer {
         self
     }
 }
@@ -1895,6 +2000,15 @@ impl SseEncode for f64 {
     }
 }
 
+impl SseEncode for crate::api::p2p_harness::FileTransfer {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <u64>::sse_encode(self.bytes, serializer);
+        <u64>::sse_encode(self.elapsed_ms, serializer);
+        <String>::sse_encode(self.sha256, serializer);
+    }
+}
+
 impl SseEncode for i32 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
@@ -2239,7 +2353,7 @@ mod io {
     use flutter_rust_bridge::for_generated::byteorder::{
         NativeEndian, ReadBytesExt, WriteBytesExt,
     };
-    use flutter_rust_bridge::for_generated::{Lifetimeable, Lockable, transform_result_dco};
+    use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
     use flutter_rust_bridge::{Handler, IntoIntoDart};
 
     // Section: boilerplate
@@ -2292,7 +2406,7 @@ mod web {
     };
     use flutter_rust_bridge::for_generated::wasm_bindgen;
     use flutter_rust_bridge::for_generated::wasm_bindgen::prelude::*;
-    use flutter_rust_bridge::for_generated::{Lifetimeable, Lockable, transform_result_dco};
+    use flutter_rust_bridge::for_generated::{transform_result_dco, Lifetimeable, Lockable};
     use flutter_rust_bridge::{Handler, IntoIntoDart};
 
     // Section: boilerplate
