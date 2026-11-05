@@ -15,10 +15,7 @@ void main() {
 
   group('conflictShape', () {
     test('identical bytes', () {
-      expect(
-        conflictShape(local: base, remote: base),
-        ConflictShape.identical,
-      );
+      expect(conflictShape(local: base, remote: base), ConflictShape.identical);
     });
 
     test('an append on either side is a superset, not a disagreement', () {
@@ -44,8 +41,10 @@ void main() {
         conflictShape(local: base, remote: null),
         ConflictShape.incomparable,
       );
-      expect(conflictShape(local: null, remote: null),
-          ConflictShape.incomparable);
+      expect(
+        conflictShape(local: null, remote: null),
+        ConflictShape.incomparable,
+      );
     });
   });
 
@@ -111,10 +110,7 @@ void main() {
         remoteExists: true,
         remoteSnapshot: '.tylog/conflicts/c.remote',
       );
-      expect(
-        conflictRemoteBytesToShow(live, utf8.encode(extended)),
-        isNotNull,
-      );
+      expect(conflictRemoteBytesToShow(live, utf8.encode(extended)), isNotNull);
     });
 
     test('so it can never be preselected as the lossless side', () {

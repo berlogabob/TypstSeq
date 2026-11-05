@@ -8,19 +8,21 @@ import 'package:tylog/vault_storage.dart';
 import 'package:tylog/audio/audio_note_doc.dart';
 
 void main() {
-  test('peak sidecar lookup uses the audio path and decodes 200 buckets', () async {
-    final peaks = List.generate(200, (i) => i);
-    final paths = <String>[];
-    final result = await readPeakSidecar(
-      'assets/modules/p/audio/a.mp3',
-      (path) async {
+  test(
+    'peak sidecar lookup uses the audio path and decodes 200 buckets',
+    () async {
+      final peaks = List.generate(200, (i) => i);
+      final paths = <String>[];
+      final result = await readPeakSidecar('assets/modules/p/audio/a.mp3', (
+        path,
+      ) async {
         paths.add(path);
         return Uint8List.fromList(ascii.encode(encodePeaks(peaks)));
-      },
-    );
-    expect(paths, ['assets/modules/p/audio/a.mp3.peaks']);
-    expect(result, peaks);
-  });
+      });
+      expect(paths, ['assets/modules/p/audio/a.mp3.peaks']);
+      expect(result, peaks);
+    },
+  );
 
   test('peaks backfill writes a sidecar and preserves note bytes', () async {
     final root = await Directory.systemTemp.createTemp('tylog_peaks_');

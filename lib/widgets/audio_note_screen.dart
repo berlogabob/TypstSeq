@@ -496,9 +496,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
     _translations = {
       for (final l in translationLangs(source)) l: parseTranslation(source, l),
     };
-    if (_loadingSource &&
-        widget.initialTab == null &&
-        _transcript.isNotEmpty) {
+    if (_loadingSource && widget.initialTab == null && _transcript.isNotEmpty) {
       _tab = AudioTab.transcribe;
     }
     _loadingSource = false;

@@ -942,8 +942,9 @@ class _WhiteboardState extends State<Whiteboard> {
     for (final edge in tree.edges) {
       if (next.edges.any(
         (e) => e.from == ids[edge.from] && e.to == ids[edge.to],
-      ))
+      )) {
         continue;
+      }
       next = next.addEdge(
         BoardEdge(
           id: '$stamp-${serial++}',

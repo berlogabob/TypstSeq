@@ -63,7 +63,9 @@ void main() {
     'list-item-tasks':
         '- #tylog.task(id: "t1", text: "Buy milk", status: "done")\n'
         '  - #tylog.task(id: "t2", text: "Sub", status: "done")\n\nafter',
-    'equation-then-para': r'$x^2$' '\n\nbody',
+    'equation-then-para':
+        r'$x^2$'
+        '\n\nbody',
     'inline-mix': '#strong[b] #emph[i] #strike[s]\n\nplain',
     'para-para': 'alpha\n\nbeta',
     'three-paras': 'one\n\ntwo\n\nthree',
@@ -79,8 +81,9 @@ void main() {
   void checkIdentity(String label, String source) {
     try {
       final d = TyLogDocument.parse(source);
-      final round =
-          TyLogDocument.parse(d.toSource(validate: false)).visibleText;
+      final round = TyLogDocument.parse(
+        d.toSource(validate: false),
+      ).visibleText;
       if (round != d.visibleText) {
         identityFail.add('$label :: ${_firstDiff(d.visibleText, round)}');
       }
@@ -94,11 +97,11 @@ void main() {
   void checkEdits(String label, String source) {
     final errors = <Object>[];
     TyLogEditingController make() => TyLogEditingController(
-          source: source,
-          onSourceChanged: (_) {},
-          onError: errors.add,
-          onProtectedTap: (_) {},
-        );
+      source: source,
+      onSourceChanged: (_) {},
+      onError: errors.add,
+      onProtectedTap: (_) {},
+    );
     final probe = make();
     final ranges = _ranges(probe.document);
     final len = probe.text.length;
@@ -133,12 +136,13 @@ void main() {
         if (errors.isNotEmpty) {
           editRevert++;
           // Is the edit adjacent to a protected node (￼ = U+FFFC)?
-          final adj = (at > 0 && t[at - 1] == '￼') ||
-              (at < t.length && t[at] == '￼');
+          final adj =
+              (at > 0 && t[at - 1] == '￼') || (at < t.length && t[at] == '￼');
           final err = '${errors.first}'.contains('protected')
               ? 'crossed-protected'
               : 'validate-fail';
-          final bucket = '${op.padRight(9)} | '
+          final bucket =
+              '${op.padRight(9)} | '
               '${adj ? 'PROTECTED-adjacent' : 'plain-boundary  '} | $err';
           editByPattern.update(bucket, (v) => v + 1, ifAbsent: () => 1);
           editExample.putIfAbsent(bucket, () {
@@ -159,9 +163,15 @@ void main() {
       final prev = i > 0 ? ranges[i - 1].style.name : '∅';
       final cur = r.style.name;
       // Enter at end of this block (before the next block boundary).
-      run('enter', r.end, 'enter @block-end : $cur>${i + 1 < ranges.length ? ranges[i + 1].style.name : '∅'}');
+      run(
+        'enter',
+        r.end,
+        'enter @block-end : $cur>${i + 1 < ranges.length ? ranges[i + 1].style.name : '∅'}',
+      );
       // Backspace at the start of this block (deletes the separator above).
-      if (i > 0) run('backspace', r.start, 'backspace @block-start : $prev>$cur');
+      if (i > 0) {
+        run('backspace', r.start, 'backspace @block-start : $prev>$cur');
+      }
       // Type at end / start of this block.
       run('type', r.end, 'type @block-end : $cur');
       run('type', r.start, 'type @block-start : $cur');
@@ -185,7 +195,9 @@ void main() {
   // marker line followed by bare continuation lines. Those must not sprout
   // bullets they never had — 6152 such lines across 457 imported notes.
   test('a continuation line is not turned into a list item', () {
-    final document = TyLogDocument.parse('- item one\ncontinued here\n- item two');
+    final document = TyLogDocument.parse(
+      '- item one\ncontinued here\n- item two',
+    );
     expect(document.visibleText, '• item one\ncontinued here\n• item two');
     final at = document.visibleText.indexOf('one');
     document.replace(at, at + 3, 'ONE');
@@ -219,13 +231,15 @@ void main() {
     var vaultFiles = 0;
     var editSample = 0;
     if (vault != null && vault.existsSync()) {
-      final files = vault
-          .listSync(recursive: true)
-          .whereType<File>()
-          .where((f) =>
-              f.path.endsWith('.typ') && !f.path.contains('/_system/'))
-          .toList()
-        ..sort((a, b) => a.path.compareTo(b.path));
+      final files =
+          vault
+              .listSync(recursive: true)
+              .whereType<File>()
+              .where(
+                (f) => f.path.endsWith('.typ') && !f.path.contains('/_system/'),
+              )
+              .toList()
+            ..sort((a, b) => a.path.compareTo(b.path));
       for (final f in files) {
         final src = f.readAsStringSync();
         final id = f.path.replaceAll('${vault.path}/', '');
@@ -246,15 +260,19 @@ void main() {
     // ignore: avoid_print
     print('vault notes: $vaultFiles (identity) / $editSample (edit-driven)');
     // ignore: avoid_print
-    print('INVARIANT 1 serialize/parse identity failures: ${identityFail.length}');
+    print(
+      'INVARIANT 1 serialize/parse identity failures: ${identityFail.length}',
+    );
     for (final f in identityFail.take(15)) {
       // ignore: avoid_print
       print('   ! $f');
     }
     // ignore: avoid_print
-    print('\nINVARIANT 2 edit-safety: $editRevert reverts / $editTried edits '
-        '(${(100 * editRevert / editTried).toStringAsFixed(1)}%) across '
-        '${patterns.length} distinct patterns:');
+    print(
+      '\nINVARIANT 2 edit-safety: $editRevert reverts / $editTried edits '
+      '(${(100 * editRevert / editTried).toStringAsFixed(1)}%) across '
+      '${patterns.length} distinct patterns:',
+    );
     for (final e in patterns) {
       // ignore: avoid_print
       print('   [${e.value.toString().padLeft(4)}]  ${e.key}');
@@ -271,9 +289,13 @@ void main() {
     expect(identityFail, isEmpty, reason: 'serialize/parse must be identity');
     if (Platform.environment['AUDIT_ASSERT'] == '1') {
       final rate = editTried == 0 ? 0.0 : editRevert / editTried;
-      expect(rate, lessThan(0.01),
-          reason: 'boundary-edit revert rate regressed to '
-              '${(100 * rate).toStringAsFixed(1)}%');
+      expect(
+        rate,
+        lessThan(0.01),
+        reason:
+            'boundary-edit revert rate regressed to '
+            '${(100 * rate).toStringAsFixed(1)}%',
+      );
     }
   });
 }

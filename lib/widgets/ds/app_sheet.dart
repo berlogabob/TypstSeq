@@ -34,12 +34,20 @@ class AppSheet extends StatelessWidget {
     ];
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(kSpace16, kSpace8, kSpace16, kSpace24),
+        padding: const EdgeInsets.fromLTRB(
+          kSpace16,
+          kSpace8,
+          kSpace16,
+          kSpace24,
+        ),
         child: body != null
             ? Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [...content, Flexible(child: body!)],
+                children: [
+                  ...content,
+                  Flexible(child: body!),
+                ],
               )
             : SingleChildScrollView(
                 child: Column(

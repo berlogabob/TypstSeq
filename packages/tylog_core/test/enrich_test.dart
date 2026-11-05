@@ -70,7 +70,7 @@ void main() {
         note: note.path,
         contentSha: 'unused',
         mentions: const [
-        EnrichMention(surface: 'Alex', type: 'person', line: 2),
+          EnrichMention(surface: 'Alex', type: 'person', line: 2),
         ],
         keywords: const ['Design'],
         markers: const [(4, 'fixit')],

@@ -115,7 +115,7 @@ void main() {
     final summary = ActionableSidecarSummary();
     await storage.writeText(
       '_system/enrich/audio/large.json',
-      '{"note":"notes/a.typ","items":[]}' + ' ' * (1024 * 1024 + 500),
+      '{"note":"notes/a.typ","items":[]}${' ' * (1024 * 1024 + 500)}',
     );
     expect(await summary.audio(storage, []), isEmpty);
     expect(storage.sidecarBytes, 1024 * 1024);

@@ -86,10 +86,7 @@ void main() {
           '2022-01-05 | dry-run: merge daily/2022/01/2022-01-05-01.typ into daily/2022/01/2022-01-05.typ',
         ),
       );
-      expect(
-        dryRun.stdout,
-        contains('different-hashes | dry-run: reassign'),
-      );
+      expect(dryRun.stdout, contains('different-hashes | dry-run: reassign'));
       expect(
         dryRun.stdout,
         contains(
@@ -145,13 +142,15 @@ void main() {
       // note and a reassigned id propagated to every device as though they
       // were still current.
       expect(applied.stdout, contains('republished donor'));
-      final index = jsonDecode(
-        utf8.decode(
-          gzip.decode(
-            await File('${root.path}/_index/index.json').readAsBytes(),
-          ),
-        ),
-      ) as Map<String, Object?>;
+      final index =
+          jsonDecode(
+                utf8.decode(
+                  gzip.decode(
+                    await File('${root.path}/_index/index.json').readAsBytes(),
+                  ),
+                ),
+              )
+              as Map<String, Object?>;
       final paths = {
         for (final note in (index['notes'] as List).cast<Map>())
           note['path'] as String,
@@ -175,7 +174,8 @@ void main() {
           .toList();
       expect(donors, hasLength(1));
       final donor =
-          jsonDecode(await donors.single.readAsString()) as Map<String, Object?>;
+          jsonDecode(await donors.single.readAsString())
+              as Map<String, Object?>;
       final donorPaths = {
         for (final note in (donor['notes'] as List).cast<Map>())
           note['path'] as String,

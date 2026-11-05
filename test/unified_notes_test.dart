@@ -78,7 +78,9 @@ void main() {
     expect(find.text('No notes yet'), findsOneWidget);
   });
 
-  testWidgets('Notes search filters titles without case and clears', (tester) async {
+  testWidgets('Notes search filters titles without case and clears', (
+    tester,
+  ) async {
     await tester.pumpWidget(surface());
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('notes-search')), 'PLAIN');

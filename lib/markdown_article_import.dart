@@ -9,7 +9,8 @@ import 'package:tylog_core/storage.dart';
 import 'package:typst_flutter/typst_flutter.dart';
 import 'package:yaml/yaml.dart';
 
-import 'widgets/property_select_chip.dart' show laterArticleStatusStage, articleStatusStage;
+import 'widgets/property_select_chip.dart'
+    show laterArticleStatusStage, articleStatusStage;
 
 class MarkdownArticleDiagnostic {
   const MarkdownArticleDiagnostic({

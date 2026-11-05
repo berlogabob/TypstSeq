@@ -63,11 +63,16 @@ Body.
       return draft.properties;
     }
 
-    test('the legacy processed/read_status pair collapses to one stage', () async {
-      final props = await importWith('status: processed\nread_status: unread\n');
-      expect(props['status'], 'unread');
-      expect(props.containsKey('read_status'), isFalse);
-    });
+    test(
+      'the legacy processed/read_status pair collapses to one stage',
+      () async {
+        final props = await importWith(
+          'status: processed\nread_status: unread\n',
+        );
+        expect(props['status'], 'unread');
+        expect(props.containsKey('read_status'), isFalse);
+      },
+    );
 
     test('a real reading state survives the merge, in either slot', () async {
       // read_status is the truthful one here...

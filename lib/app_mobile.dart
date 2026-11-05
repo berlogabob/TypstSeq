@@ -6672,9 +6672,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     child: Align(
                       alignment: Alignment.centerLeft,
                       child: Padding(
-                        padding: EdgeInsets.only(
-                          left: wideNavigation ? 25 : 0,
-                        ),
+                        padding: EdgeInsets.only(left: wideNavigation ? 25 : 0),
                         child: CompactDateTitle(
                           day: currentDaily ?? DateTime.now(),
                         ),

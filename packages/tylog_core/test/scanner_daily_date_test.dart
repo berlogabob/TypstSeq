@@ -40,25 +40,27 @@ void main() {
 
   tearDown(() => root.delete(recursive: true));
 
-  test('a daily note gets its date from the path when the header omits it',
-      () async {
-    await storage.writeText('daily/2026/08/2026-08-17.typ', _noDate);
-    await storage.writeText('daily/2026/08/2026-08-21.typ', _withDate);
+  test(
+    'a daily note gets its date from the path when the header omits it',
+    () async {
+      await storage.writeText('daily/2026/08/2026-08-17.typ', _noDate);
+      await storage.writeText('daily/2026/08/2026-08-21.typ', _withDate);
 
-    final index = await scanVaultStorage(storage);
-    final byName = {
-      for (final note in index.notes) note.path.split('/').last: note,
-    };
+      final index = await scanVaultStorage(storage);
+      final byName = {
+        for (final note in index.notes) note.path.split('/').last: note,
+      };
 
-    expect(byName['2026-08-17.typ']!.date, '2026-08-17');
-    expect(byName['2026-08-21.typ']!.date, '2026-08-21');
+      expect(byName['2026-08-17.typ']!.date, '2026-08-17');
+      expect(byName['2026-08-21.typ']!.date, '2026-08-21');
 
-    // Both days therefore reach the calendar.
-    expect(
-      index.calendar.map((item) => item.date),
-      containsAll(['2026-08-17', '2026-08-21']),
-    );
-  });
+      // Both days therefore reach the calendar.
+      expect(
+        index.calendar.map((item) => item.date),
+        containsAll(['2026-08-17', '2026-08-21']),
+      );
+    },
+  );
 
   // An index cached by an earlier build still carries date: null. Repairing
   // those by re-deriving would mean a version bump, i.e. every device

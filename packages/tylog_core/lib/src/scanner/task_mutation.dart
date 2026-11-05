@@ -507,4 +507,3 @@ _TopLevelField? _locateTopLevelField(String callSource, String name) {
 
 bool _identifierStart(int code) =>
     code >= 65 && code <= 90 || code >= 97 && code <= 122 || code == 95;
-

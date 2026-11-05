@@ -129,4 +129,3 @@ LinkResolution _resolveCandidates(String target, Set<String> candidates) {
     candidates: sorted,
   );
 }
-

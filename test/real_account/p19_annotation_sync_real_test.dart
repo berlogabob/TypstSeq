@@ -15,9 +15,11 @@ import 'package:tylog/pdf/pdf_reader_store.dart';
 import 'package:tylog/vault.dart';
 
 final _env = Platform.environment;
-final _configured = ['NC_URL', 'NC_USER', 'NC_PW'].every(
-  (key) => (_env[key] ?? '').isNotEmpty,
-);
+final _configured = [
+  'NC_URL',
+  'NC_USER',
+  'NC_PW',
+].every((key) => (_env[key] ?? '').isNotEmpty);
 
 void main() {
   test(
@@ -80,10 +82,9 @@ void main() {
         return received;
       }
 
-      Future<Set<String>> quotes(TyLogDatabase db, PdfExtraction pdf) =>
-          db
-              .annotationsFor(pdf.sourceVersionId)
-              .then((rows) => {for (final row in rows) row.quote});
+      Future<Set<String>> quotes(TyLogDatabase db, PdfExtraction pdf) => db
+          .annotationsFor(pdf.sourceVersionId)
+          .then((rows) => {for (final row in rows) row.quote});
 
       final (vaultA, dbA, pdfA) = await device();
       final (vaultB, dbB, pdfB) = await device();
@@ -152,9 +153,7 @@ Future<void> _deleteRemote(NextcloudConfig config, String folder) async {
   try {
     final base = config.serverUrl.replaceAll(RegExp(r'/+$'), '');
     final request = await client.deleteUrl(
-      Uri.parse(
-        '$base/remote.php/dav/files/${config.username}/$folder',
-      ),
+      Uri.parse('$base/remote.php/dav/files/${config.username}/$folder'),
     );
     request.headers
       ..set(

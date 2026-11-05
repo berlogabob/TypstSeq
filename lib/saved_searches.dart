@@ -42,7 +42,10 @@ class SavedSearch {
 
   @override
   int get hashCode =>
-      name.hashCode ^ query.hashCode ^ (tag?.hashCode ?? 0) ^ (status?.hashCode ?? 0);
+      name.hashCode ^
+      query.hashCode ^
+      (tag?.hashCode ?? 0) ^
+      (status?.hashCode ?? 0);
 }
 
 /// Manages persistence of saved searches to '_system/saved-searches.json'.

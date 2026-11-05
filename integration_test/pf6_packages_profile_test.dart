@@ -97,7 +97,7 @@ void main() {
           home: Scaffold(
             body: ListenableBuilder(
               listenable: controller,
-              builder: (_, __) => Text(
+              builder: (_, _) => Text(
                 controller.typstPackagesReady
                     ? 'Packages ready'
                     : 'Loading packages',

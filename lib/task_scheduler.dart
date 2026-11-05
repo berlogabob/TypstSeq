@@ -52,7 +52,8 @@ List<PkmsProblem> validateTaskRecurrences(Iterable<TaskRef> tasks) {
           severity: PkmsSeverity.warning,
           subject: task.notePath,
           message: 'Task "${task.id}" has an unparseable recurrence rule',
-          fix: 'Fix the recurrence field of task "${task.id}" so it is a valid RRULE.',
+          fix:
+              'Fix the recurrence field of task "${task.id}" so it is a valid RRULE.',
         ),
       );
     }

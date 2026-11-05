@@ -40,7 +40,10 @@ void main() {
       full.stop();
 
       final warm = Stopwatch()..start();
-      final second = await scanVaultStorage(LocalVaultStorage(dir), previous: index);
+      final second = await scanVaultStorage(
+        LocalVaultStorage(dir),
+        previous: index,
+      );
       final loadedSearch = await PkmsSearchIndex.loadStorage(
         LocalVaultStorage(dir),
         '_index/search-index.json.gz',

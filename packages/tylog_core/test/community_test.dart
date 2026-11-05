@@ -1,8 +1,13 @@
 import 'package:test/test.dart';
 import 'package:tylog_core/tylog_core.dart';
 
-NoteRef _note(String path, List<String> tags) =>
-    NoteRef(id: path, path: path, title: path, outgoingLinks: const [], tags: tags);
+NoteRef _note(String path, List<String> tags) => NoteRef(
+  id: path,
+  path: path,
+  title: path,
+  outgoingLinks: const [],
+  tags: tags,
+);
 
 VaultIndex _index(List<NoteRef> notes) => VaultIndex(
   notesByPath: {for (final n in notes) n.path: n},

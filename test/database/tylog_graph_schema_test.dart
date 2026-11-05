@@ -362,7 +362,7 @@ void main() {
       await db.close();
     });
 
-  test('v2 database migrates to v8 preserving metadata', () async {
+    test('v2 database migrates to v8 preserving metadata', () async {
       final file = File('${tempDir.path}/v2_to_v5.db');
 
       // Create a v2 database file

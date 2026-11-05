@@ -13,8 +13,9 @@ import 'package:tylog/widgets/constants.dart';
 // ---------------------------------------------------------------------------
 
 /// sRGB channel -> linear, per the WCAG 2.1 relative luminance formula.
-double _linearize(double channel) =>
-    channel <= 0.03928 ? channel / 12.92 : math.pow((channel + 0.055) / 1.055, 2.4).toDouble();
+double _linearize(double channel) => channel <= 0.03928
+    ? channel / 12.92
+    : math.pow((channel + 0.055) / 1.055, 2.4).toDouble();
 
 /// Relative luminance of [c] (0 = black, 1 = white).
 ///

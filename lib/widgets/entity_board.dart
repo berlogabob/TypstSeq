@@ -651,8 +651,9 @@ class _EntityBoardState extends State<EntityBoard> {
                                         itemBuilder: (context, itemIndex) {
                                           if (itemIndex < cards.length * 2) {
                                             final i = itemIndex ~/ 2;
-                                            if (itemIndex.isEven)
+                                            if (itemIndex.isEven) {
                                               return target(i);
+                                            }
                                             return LongPressDraggable<Object>(
                                               data: cards[i],
                                               feedback: Material(

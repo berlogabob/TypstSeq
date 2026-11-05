@@ -22,42 +22,48 @@ void main() {
       _node('dup-mapped'),
       _node('other'),
     ]);
-    await db.into(db.edges).insert(
-      const EdgeData(
-        id: 'e1',
-        fromNodeId: 'other',
-        toNodeId: 'dup-edge',
-        type: 'links',
-        attributesJson: '{}',
-        createdAtMs: 1,
-        updatedAtMs: 1,
-      ),
-    );
-    await db.into(db.importJobs).insert(
-      const ImportJobData(
-        id: 'job',
-        sourceKind: 'logseq',
-        sourceFingerprint: 'sha',
-        status: 'completed',
-        totalCount: 1,
-        completedCount: 1,
-        createdAtMs: 1,
-        updatedAtMs: 1,
-        errorJson: '{}',
-      ),
-    );
-    await db.into(db.importItems).insert(
-      const ImportItemData(
-        jobId: 'job',
-        sourcePath: 'pages/x.md',
-        sourceSha256: 'x',
-        state: 'written',
-        targetNodeId: 'dup-mapped',
-        targetPath: 'notes/x.typ',
-        errorJson: '{}',
-        updatedAtMs: 1,
-      ),
-    );
+    await db
+        .into(db.edges)
+        .insert(
+          const EdgeData(
+            id: 'e1',
+            fromNodeId: 'other',
+            toNodeId: 'dup-edge',
+            type: 'links',
+            attributesJson: '{}',
+            createdAtMs: 1,
+            updatedAtMs: 1,
+          ),
+        );
+    await db
+        .into(db.importJobs)
+        .insert(
+          const ImportJobData(
+            id: 'job',
+            sourceKind: 'logseq',
+            sourceFingerprint: 'sha',
+            status: 'completed',
+            totalCount: 1,
+            completedCount: 1,
+            createdAtMs: 1,
+            updatedAtMs: 1,
+            errorJson: '{}',
+          ),
+        );
+    await db
+        .into(db.importItems)
+        .insert(
+          const ImportItemData(
+            jobId: 'job',
+            sourcePath: 'pages/x.md',
+            sourceSha256: 'x',
+            state: 'written',
+            targetNodeId: 'dup-mapped',
+            targetPath: 'notes/x.typ',
+            errorJson: '{}',
+            updatedAtMs: 1,
+          ),
+        );
 
     await db.dropProjectedNodes(['dup-free', 'dup-edge', 'dup-mapped']);
 

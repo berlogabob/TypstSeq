@@ -160,7 +160,7 @@ void _synonymTests() {
     final note = scanNote(
       'notes/a.typ',
       '#show: tylog.note.with(id: "a", title: "A", tags: ())\n\n'
-      'tags:: #ИИ #Godot\n',
+          'tags:: #ИИ #Godot\n',
       synonyms: synonyms,
     );
     expect(note.tags, ['ai', 'godot']);
@@ -269,11 +269,9 @@ void _staleCacheTests() {
       inspector: _FailingInspector(),
     );
 
-    expect(
-      index.notes.single.tags,
-      ['ai'],
-      reason: 'the failed query must not bring back pre-merge tags',
-    );
+    expect(index.notes.single.tags, [
+      'ai',
+    ], reason: 'the failed query must not bring back pre-merge tags');
   });
 
   test('a current-schema cached note still survives a failed query', () async {

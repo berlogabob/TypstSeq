@@ -23,8 +23,10 @@ void main() {
       expect(updated, isNot(contains('"status": "unread"')));
     });
 
-    test('overwrites a bare-identifier key instead of appending a duplicate', () {
-      const source = '''
+    test(
+      'overwrites a bare-identifier key instead of appending a duplicate',
+      () {
+        const source = '''
 #show: tylog.note.with(
   id: "a",
   title: "A",
@@ -32,12 +34,13 @@ void main() {
   properties: (status: "unread", "rating": "4",),
 )
 ''';
-      final updated = replaceNoteProperty(source, 'status', 'read');
+        final updated = replaceNoteProperty(source, 'status', 'read');
 
-      expect(updated, contains('"status": "read"'));
-      expect(updated, contains('"rating": "4"'));
-      expect(updated, isNot(contains('unread')));
-    });
+        expect(updated, contains('"status": "read"'));
+        expect(updated, contains('"rating": "4"'));
+        expect(updated, isNot(contains('unread')));
+      },
+    );
 
     test('inserts a new key into an existing non-empty properties dict', () {
       const source = '''

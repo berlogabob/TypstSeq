@@ -120,8 +120,9 @@ void main() {
       if (await tester.runAsync(
             () => vault.storage.exists(boardPath('order')),
           ) ==
-          true)
+          true) {
         break;
+      }
     }
     final saved = await tester.runAsync(
       () => readBoard(vault.storage, 'order'),
@@ -821,7 +822,7 @@ void main() {
     expect(source, contains('unsaved edit'));
     client.state = 'closed';
     await move('todo');
-    for (var i = 0; i < 30 && !source.contains('\"done\"'); i++) {
+    for (var i = 0; i < 30 && !source.contains('"done"'); i++) {
       await io();
     }
     expect(client.state, 'closed');
@@ -833,11 +834,11 @@ void main() {
 
     client.failAfterReopen = true;
     await move('doing');
-    for (var i = 0; i < 30 && !source.contains('\"todo\"'); i++) {
+    for (var i = 0; i < 30 && !source.contains('"todo"'); i++) {
       await io();
     }
     expect(client.state, 'open');
-    expect(source, contains('\"tylog-issue-status\": \"todo\"'));
+    expect(source, contains('"tylog-issue-status": "todo"'));
     expect(source, contains('unsaved edit'));
   });
 

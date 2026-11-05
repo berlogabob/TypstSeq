@@ -25,7 +25,10 @@ void main() {
 
         // Everything except the status value must survive byte-identical:
         // only "todo" -> "doing" should change.
-        expect(updated, source.replaceFirst('status: "todo"', 'status: "doing"'));
+        expect(
+          updated,
+          source.replaceFirst('status: "todo"', 'status: "doing"'),
+        );
       },
     );
 
@@ -40,10 +43,7 @@ void main() {
       final updated = replaceTaskStatus(source, 't1', 'done');
 
       expect(updated, contains('status: "done"'));
-      expect(
-        updated,
-        contains(r'text: "say \"hi\" to status: \"blocked\""'),
-      );
+      expect(updated, contains(r'text: "say \"hi\" to status: \"blocked\""'));
     });
 
     test('a // comment containing status: does not confuse the locator', () {
@@ -120,53 +120,61 @@ void main() {
   completed: (),
 )
 ''';
-      final updated = completeTaskOccurrence(source, 't1', '2024-01-02T00:00:00');
+      final updated = completeTaskOccurrence(
+        source,
+        't1',
+        '2024-01-02T00:00:00',
+      );
 
       // Everything except the completed tuple must survive byte-identical.
       expect(
         updated,
-        source.replaceFirst('completed: ()', 'completed: ("2024-01-02T00:00:00",)'),
+        source.replaceFirst(
+          'completed: ()',
+          'completed: ("2024-01-02T00:00:00",)',
+        ),
       );
     });
 
-    test(
-      'a text field with nested parens shaped like completed: (...) does '
-      'not truncate the naive [^)]* match into the wrong place',
-      () {
-        // The old `completed\s*:\s*\(([^)]*)\)` regex stops at the FIRST
-        // `)` it sees, so a fake "completed: (info (nested) more)" inside
-        // free text truncates right after the inner ")" of "(nested)",
-        // splicing the timestamp into the middle of the text field.
-        const source = '''
+    test('a text field with nested parens shaped like completed: (...) does '
+        'not truncate the naive [^)]* match into the wrong place', () {
+      // The old `completed\s*:\s*\(([^)]*)\)` regex stops at the FIRST
+      // `)` it sees, so a fake "completed: (info (nested) more)" inside
+      // free text truncates right after the inner ")" of "(nested)",
+      // splicing the timestamp into the middle of the text field.
+      const source = '''
 #tylog.task(
   id: "t1",
   text: "completed: (info (nested) more) noted",
   completed: ("2024-01-01T00:00:00",),
 )
 ''';
-        final updated = completeTaskOccurrence(
-          source,
-          't1',
-          '2024-02-02T00:00:00',
-        );
+      final updated = completeTaskOccurrence(
+        source,
+        't1',
+        '2024-02-02T00:00:00',
+      );
 
-        // Everything except the completed tuple must survive byte-identical.
-        expect(
-          updated,
-          source.replaceFirst(
-            'completed: ("2024-01-01T00:00:00",)',
-            'completed: ("2024-01-01T00:00:00","2024-02-02T00:00:00",)',
-          ),
-        );
-      },
-    );
+      // Everything except the completed tuple must survive byte-identical.
+      expect(
+        updated,
+        source.replaceFirst(
+          'completed: ("2024-01-01T00:00:00",)',
+          'completed: ("2024-01-01T00:00:00","2024-02-02T00:00:00",)',
+        ),
+      );
+    });
 
     test('only mutates the task whose id matches, among adjacent tasks', () {
       const source = '''
 #tylog.task(id: "a", text: "first", completed: ())
 #tylog.task(id: "b", text: "second", completed: ())
 ''';
-      final updated = completeTaskOccurrence(source, 'b', '2024-01-01T00:00:00');
+      final updated = completeTaskOccurrence(
+        source,
+        'b',
+        '2024-01-01T00:00:00',
+      );
 
       expect(
         updated,
@@ -236,21 +244,24 @@ void main() {
       expect(updated, contains(r'properties: (note: "text: \"decoy\"")'));
     });
 
-    test('existing escaped quotes in the text value do not confuse the locator', () {
-      const source = '''
+    test(
+      'existing escaped quotes in the text value do not confuse the locator',
+      () {
+        const source = '''
 #tylog.task(
   id: "t1",
   text: "say \\"hi\\" already",
   status: "todo",
 )
 ''';
-      final updated = replaceTaskText(source, 't1', 'new');
+        final updated = replaceTaskText(source, 't1', 'new');
 
-      expect(
-        updated,
-        source.replaceFirst(r'text: "say \"hi\" already"', 'text: "new"'),
-      );
-    });
+        expect(
+          updated,
+          source.replaceFirst(r'text: "say \"hi\" already"', 'text: "new"'),
+        );
+      },
+    );
 
     test('inserts a missing text field before the closing paren', () {
       const source = '''
@@ -310,10 +321,7 @@ void main() {
     test('reads text, status, and id', () {
       expect(taskField(source, 'id'), 't1');
       expect(taskField(source, 'status'), 'todo');
-      expect(
-        taskField(source, 'text'),
-        'review status: "done" pretend field',
-      );
+      expect(taskField(source, 'text'), 'review status: "done" pretend field');
     });
 
     test('a status-shaped decoy inside the text value does not fool it', () {
@@ -552,7 +560,6 @@ void main() {
     });
   });
 
-
   group('single-line calls survive every writer', () {
     // The shape the in-app Task chip and typst/tylog/README.md emit: no
     // trailing comma, and no `status`/`completed` field, so each writer takes
@@ -569,7 +576,11 @@ void main() {
       // `project: none  status: "done"` — no separator — is what Typst
       // rejects with `error: expected comma`, and what the paren-based
       // scanner accepts anyway, so assert on the text as well.
-      expect(out, isNot(matches(RegExp(r'(none|"[a-z]+")\s\s+[a-z]+:'))), reason: label);
+      expect(
+        out,
+        isNot(matches(RegExp(r'(none|"[a-z]+")\s\s+[a-z]+:'))),
+        reason: label,
+      );
     }
 
     test('replaceTaskStatus', () {
@@ -615,7 +626,10 @@ void main() {
           '#tylog.link("Notes/A.typ")[5" pipe]\n'
           '#tylog.task(id: "t1", text: "One")\n';
 
-      final calls = locateTypstCalls(source, names: {'tylog.link', 'tylog.task'});
+      final calls = locateTypstCalls(
+        source,
+        names: {'tylog.link', 'tylog.task'},
+      );
 
       expect(calls, hasLength(2));
       expect(calls.first.source, endsWith('[5" pipe]'));
@@ -650,10 +664,13 @@ void main() {
     );
 
     expect(entries, hasLength(2));
-    expect(entries.first.isRunning, isTrue, reason: 'the older stray stays open');
+    expect(
+      entries.first.isRunning,
+      isTrue,
+      reason: 'the older stray stays open',
+    );
     expect(entries.last.end, '2026-01-02T11:00:00');
   });
-
 }
 
 List<TaskRef> _fallbackTasksFor(String source) {

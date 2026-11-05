@@ -74,7 +74,9 @@ class _AudioShelfState extends State<AudioShelf> {
           child: audio.isEmpty
               ? AppEmptyState(
                   icon: Icons.graphic_eq,
-                  title: query.isEmpty ? 'No recordings yet' : 'Nothing matches',
+                  title: query.isEmpty
+                      ? 'No recordings yet'
+                      : 'Nothing matches',
                   hint: query.isEmpty
                       ? 'Record or import audio to get started.'
                       : 'Try another search.',

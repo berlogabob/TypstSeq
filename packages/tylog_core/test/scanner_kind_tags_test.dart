@@ -43,19 +43,21 @@ void main() {
 
   tearDown(() => root.delete(recursive: true));
 
-  test('queried path: non-default kinds surface as tags, note does not',
-      () async {
-    await storage.writeText('articles/a.typ', _note('a', 'article'));
-    await storage.writeText('notes/p.typ', _note('p', 'person'));
-    await storage.writeText('notes/n.typ', _note('n', 'note'));
+  test(
+    'queried path: non-default kinds surface as tags, note does not',
+    () async {
+      await storage.writeText('articles/a.typ', _note('a', 'article'));
+      await storage.writeText('notes/p.typ', _note('p', 'person'));
+      await storage.writeText('notes/n.typ', _note('n', 'note'));
 
-    final index = await scanVaultStorage(storage, inspector: _Inspector());
-    final byId = {for (final n in index.notes) n.id: n};
+      final index = await scanVaultStorage(storage, inspector: _Inspector());
+      final byId = {for (final n in index.notes) n.id: n};
 
-    expect(byId['a']!.tags, containsAll(['article', 'existing']));
-    expect(byId['p']!.tags, contains('person'));
-    expect(byId['n']!.tags, isNot(contains('note')));
-  });
+      expect(byId['a']!.tags, containsAll(['article', 'existing']));
+      expect(byId['p']!.tags, contains('person'));
+      expect(byId['n']!.tags, isNot(contains('note')));
+    },
+  );
 
   test('fallback path: kind aliases into tags too', () async {
     await storage.writeText('articles/f.typ', _note('f', 'article'));

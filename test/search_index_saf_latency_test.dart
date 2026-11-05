@@ -10,9 +10,7 @@ void main() {
   test(
     'buildStorage parallelizes cold reads instead of awaiting them serially',
     () async {
-      final dir = await Directory.systemTemp.createTemp(
-        'tylog_saf_latency_',
-      );
+      final dir = await Directory.systemTemp.createTemp('tylog_saf_latency_');
       addTearDown(() => dir.delete(recursive: true));
       final notesDir = await Directory('${dir.path}/notes').create();
       const noteCount = 1500;
@@ -31,19 +29,13 @@ void main() {
 
       final latencyStorage = _LatencyStorage(dir);
       final stopwatch = Stopwatch()..start();
-      final search = await PkmsSearchIndex.buildStorage(
-        latencyStorage,
-        index,
-      );
+      final search = await PkmsSearchIndex.buildStorage(latencyStorage, index);
       stopwatch.stop();
 
       // Serial reads at 15ms each would take ~22.5s; bounded-concurrency
       // parallel reads must finish well under that.
       expect(stopwatch.elapsed, lessThan(const Duration(seconds: 5)));
-      expect(
-        search.search('', limit: noteCount + 10),
-        hasLength(noteCount),
-      );
+      expect(search.search('', limit: noteCount + 10), hasLength(noteCount));
     },
   );
 }

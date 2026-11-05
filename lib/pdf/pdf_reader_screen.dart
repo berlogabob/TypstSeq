@@ -213,7 +213,10 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
       }
       await _refreshAnnotations();
       if (mounted) {
-        showSnack(context, reassigning == null ? 'Highlight saved' : 'Highlight reassigned');
+        showSnack(
+          context,
+          reassigning == null ? 'Highlight saved' : 'Highlight reassigned',
+        );
       }
     } catch (_) {
       if (mounted) {
@@ -371,11 +374,16 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
     body: Column(
       children: [
         if (_status != null)
-          Padding(padding: const EdgeInsets.all(kSpace8), child: Text(_status!)),
+          Padding(
+            padding: const EdgeInsets.all(kSpace8),
+            child: Text(_status!),
+          ),
         if (_reassigningAnnotation != null)
           appBanner(
             backgroundColor: null,
-            content: const Text('Select replacement text, then save highlight.'),
+            content: const Text(
+              'Select replacement text, then save highlight.',
+            ),
             actions: [
               TextButton(
                 onPressed: () => setState(() => _reassigningAnnotation = null),

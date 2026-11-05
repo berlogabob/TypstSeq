@@ -14,9 +14,7 @@ extension _DesktopUpdateFlow on _HomeScreenState {
       if (!silent) {
         showSnack(
           context,
-          result.failed
-              ? "Couldn't check for updates"
-              : "You're up to date",
+          result.failed ? "Couldn't check for updates" : "You're up to date",
         );
       }
       return;
@@ -28,7 +26,9 @@ extension _DesktopUpdateFlow on _HomeScreenState {
         title: Text('Update available · ${update.version}'),
         content: SingleChildScrollView(
           child: Text(
-            update.notes.isEmpty ? 'A newer version is available.' : update.notes,
+            update.notes.isEmpty
+                ? 'A newer version is available.'
+                : update.notes,
           ),
         ),
         actions: [
@@ -67,16 +67,18 @@ extension _DesktopUpdateFlow on _HomeScreenState {
           title: const Text('Updating…'),
           content: ValueListenableBuilder<double>(
             valueListenable: progress,
-            builder: (_, value, _) => LinearProgressIndicator(
-              value: value == 0 ? null : value,
-            ),
+            builder: (_, value, _) =>
+                LinearProgressIndicator(value: value == 0 ? null : value),
           ),
         ),
       ),
     );
     try {
       // On success this never returns — the process exits and relaunches.
-      await updater.downloadAndApply(update, onProgress: (p) => progress.value = p);
+      await updater.downloadAndApply(
+        update,
+        onProgress: (p) => progress.value = p,
+      );
     } on updater.UpdateNotWritable {
       if (mounted) {
         Navigator.of(context, rootNavigator: true).pop();

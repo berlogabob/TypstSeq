@@ -198,9 +198,9 @@ Future<bool> backgroundSyncRecentlyCompleted(
 }) async {
   now ??= DateTime.now();
   try {
-    final lines = (await (await deviceLocalStorage(storage)).readText(
-      '.tylog/sync_trace.jsonl',
-    )).split('\n');
+    final lines = (await (await deviceLocalStorage(
+      storage,
+    )).readText('.tylog/sync_trace.jsonl')).split('\n');
     for (final line in lines.reversed) {
       if (line.isEmpty) continue;
       try {

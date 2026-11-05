@@ -91,8 +91,7 @@ String conflictSideLabel(
 /// Extra line the dialog shows when one side strictly extends the other, so
 /// the safe choice is visible rather than inferred from two byte counts.
 String? conflictShapeHint(ConflictShape shape) => switch (shape) {
-  ConflictShape.identical =>
-    'Both copies are the same. Either choice is safe.',
+  ConflictShape.identical => 'Both copies are the same. Either choice is safe.',
   ConflictShape.localSuperset =>
     'This device has everything Nextcloud has, plus more. Keeping it loses '
         'nothing.',

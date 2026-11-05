@@ -7,12 +7,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/app_mobile.dart';
-import 'package:tylog/models.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_registry.dart';
-import 'package:tylog/vault_storage.dart';
 import 'package:tylog/widgets/enrich_review.dart';
-import 'package:tylog_core/enrich.dart';
 import 'package:tylog_core/tylog_core.dart';
 
 Future<void> _emptyStartup() async {}
@@ -176,7 +173,6 @@ void main() {
     await _mount(tester);
     Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
     await _pump(tester);
-    final editor = tester.getRect(find.byKey(const Key('rich-journal-editor')));
     expect(find.byKey(const ValueKey('enrich-day-chip')), findsNothing);
     expect(find.text('More · 5 suggestions'), findsOneWidget);
     tester.view.viewInsets = const FakeViewPadding(bottom: 300);

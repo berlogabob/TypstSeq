@@ -19,7 +19,10 @@ class CancellingStorage extends LocalVaultStorage {
   }
 
   @override
-  Future<List<VaultStorageEntry>> list({String path = '', bool recursive = false}) async {
+  Future<List<VaultStorageEntry>> list({
+    String path = '',
+    bool recursive = false,
+  }) async {
     final result = await super.list(path: path, recursive: recursive);
     onRead(path);
     return result;
@@ -34,35 +37,41 @@ class CancellingStorage extends LocalVaultStorage {
 }
 
 void main() {
-  test('cancelling after index stops later stages and next run succeeds', () async {
-    final root = await Directory.systemTemp.createTemp('tylog_cancel_stage_');
-    addTearDown(() => root.delete(recursive: true));
-    final storage = LocalVaultStorage(root);
-    await storage.writeText('notes/a.typ', '= A\n\nBody\n');
-    final maintenance = VaultMaintenance(storage);
-    var cancelled = false;
-    final events = <VaultMaintenanceEvent>[];
-    Object? error;
-    await maintenance.run(
-      validate: true,
-      buildSearch: true,
-      sweep: false,
-      isCancelled: () => cancelled,
-    ).forEach((event) {
-      events.add(event);
-      if (event is MaintenanceIndexed) cancelled = true;
-    }).catchError((Object caught, StackTrace _) {
-      error = caught;
-    });
-    expect(error, isA<IndexBuildCancelled>());
-    expect(events.whereType<MaintenanceValidated>(), isEmpty);
-    expect(events.whereType<MaintenanceSearchBuilt>(), isEmpty);
+  test(
+    'cancelling after index stops later stages and next run succeeds',
+    () async {
+      final root = await Directory.systemTemp.createTemp('tylog_cancel_stage_');
+      addTearDown(() => root.delete(recursive: true));
+      final storage = LocalVaultStorage(root);
+      await storage.writeText('notes/a.typ', '= A\n\nBody\n');
+      final maintenance = VaultMaintenance(storage);
+      var cancelled = false;
+      final events = <VaultMaintenanceEvent>[];
+      Object? error;
+      await maintenance
+          .run(
+            validate: true,
+            buildSearch: true,
+            sweep: false,
+            isCancelled: () => cancelled,
+          )
+          .forEach((event) {
+            events.add(event);
+            if (event is MaintenanceIndexed) cancelled = true;
+          })
+          .catchError((Object caught, StackTrace _) {
+            error = caught;
+          });
+      expect(error, isA<IndexBuildCancelled>());
+      expect(events.whereType<MaintenanceValidated>(), isEmpty);
+      expect(events.whereType<MaintenanceSearchBuilt>(), isEmpty);
 
-    cancelled = false;
-    final retry = await maintenance.run(sweep: false).toList();
-    expect(retry.whereType<MaintenanceIndexed>(), hasLength(1));
-    expect(retry.whereType<MaintenanceSearchBuilt>(), hasLength(1));
-  });
+      cancelled = false;
+      final retry = await maintenance.run(sweep: false).toList();
+      expect(retry.whereType<MaintenanceIndexed>(), hasLength(1));
+      expect(retry.whereType<MaintenanceSearchBuilt>(), hasLength(1));
+    },
+  );
 
   test('cancels during validation without publishing search output', () async {
     final root = await Directory.systemTemp.createTemp('tylog_cancel_mid_');
@@ -76,10 +85,13 @@ void main() {
     final maintenance = VaultMaintenance(storage);
     final first = <VaultMaintenanceEvent>[];
     Object? error;
-    await maintenance.run(isCancelled: () => cancelled, sweep: false).forEach((event) {
-      first.add(event);
-      if (event is MaintenanceIndexed) armed = true;
-    }).catchError((caught) => error = caught);
+    await maintenance
+        .run(isCancelled: () => cancelled, sweep: false)
+        .forEach((event) {
+          first.add(event);
+          if (event is MaintenanceIndexed) armed = true;
+        })
+        .catchError((caught) => error = caught);
     expect(error, isA<IndexBuildCancelled>());
     expect(first.whereType<MaintenanceSearchBuilt>(), isEmpty);
     cancelled = false;
@@ -108,7 +120,10 @@ void main() {
       throwsA(isA<IndexBuildCancelled>()),
     );
     armed = false;
-    expect(await PkmsSearchIndex.buildStorage(storage, index), isA<PkmsSearchIndex>());
+    expect(
+      await PkmsSearchIndex.buildStorage(storage, index),
+      isA<PkmsSearchIndex>(),
+    );
   });
 
   test('cancels after search write before publication or sweep', () async {

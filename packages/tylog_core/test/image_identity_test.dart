@@ -69,18 +69,17 @@ void main() {
 
       expect(sameJpegIgnoringMetadata(png, png), isFalse);
       expect(sameJpegIgnoringMetadata(const [], const []), isFalse);
-      expect(sameJpegIgnoringMetadata(const [0xFF, 0xD8], const [0xFF, 0xD8]),
-          isFalse);
+      expect(
+        sameJpegIgnoringMetadata(const [0xFF, 0xD8], const [0xFF, 0xD8]),
+        isFalse,
+      );
     });
 
     test('a truncated segment yields no opinion rather than a crash', () {
       final good = _jpeg(exif: [1, 2, 3, 4], pixels: [5, 6]);
       final truncated = good.sublist(0, 8);
 
-      expect(
-        () => sameJpegIgnoringMetadata(good, truncated),
-        returnsNormally,
-      );
+      expect(() => sameJpegIgnoringMetadata(good, truncated), returnsNormally);
       expect(sameJpegIgnoringMetadata(good, truncated), isFalse);
     });
   });

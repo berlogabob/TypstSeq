@@ -92,8 +92,9 @@ class WorkspaceController extends ChangeNotifier {
         final last =
             DateTime.tryParse(record['updateAttemptedAt'] as String? ?? '') ??
             module.updateCheckedAt;
-        if (last != null && _now().difference(last) < const Duration(days: 7))
+        if (last != null && _now().difference(last) < const Duration(days: 7)) {
           continue;
+        }
         record['updateAttemptedAt'] = _now().toIso8601String();
         await opened.storage.writeText(path, jsonEncode(record));
         try {
@@ -103,8 +104,9 @@ class WorkspaceController extends ChangeNotifier {
             jsonDecode(await opened.storage.readText(path)) as Map,
           );
           if ((current['source'] as Map?)?['github'] != module.github ||
-              (current['version'] ?? '0') != module.version)
+              (current['version'] ?? '0') != module.version) {
             continue;
+          }
           current['updateAvailableVersion'] = pack?.version;
           current['updateCheckedAt'] = _now().toIso8601String();
           await opened.storage.writeText(path, jsonEncode(current));
@@ -542,8 +544,9 @@ class WorkspaceController extends ChangeNotifier {
   void _reportRebuildProgress(int complete, int total) {
     if (_rebuildProgressClock.isRunning &&
         _rebuildProgressClock.elapsedMilliseconds < 100 &&
-        complete != total)
+        complete != total) {
       return;
+    }
     _rebuildProgressClock
       ..reset()
       ..start();

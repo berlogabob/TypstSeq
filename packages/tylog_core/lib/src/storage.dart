@@ -26,8 +26,9 @@ void guardNoteWrite(String path, List<int> bytes) {
   if (!path.endsWith('.typ') ||
       path.startsWith('_system/') ||
       path.startsWith('_index/') ||
-      path.startsWith('.tylog/'))
+      path.startsWith('.tylog/')) {
     return;
+  }
   String text;
   try {
     text = utf8.decode(bytes);

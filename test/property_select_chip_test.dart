@@ -6,17 +6,16 @@ void main() {
   Widget harness({
     required String? value,
     required ValueChanged<String> onChanged,
-  }) =>
-      MaterialApp(
-        home: Scaffold(
-          body: PropertySelectChip(
-            value: value,
-            options: articleStatusOptions,
-            labels: articleStatusLabels,
-            onChanged: onChanged,
-          ),
-        ),
-      );
+  }) => MaterialApp(
+    home: Scaffold(
+      body: PropertySelectChip(
+        value: value,
+        options: articleStatusOptions,
+        labels: articleStatusLabels,
+        onChanged: onChanged,
+      ),
+    ),
+  );
 
   testWidgets('hit area meets the 48dp minimum tap target even though the '
       'painted pill stays small', (tester) async {
@@ -32,10 +31,7 @@ void main() {
       'its value', (tester) async {
     String? picked;
     await tester.pumpWidget(
-      harness(
-        value: 'unread',
-        onChanged: (value) => picked = value,
-      ),
+      harness(value: 'unread', onChanged: (value) => picked = value),
     );
     await tester.pumpAndSettle();
 

@@ -1413,10 +1413,9 @@ class TyLogDocument {
     final local = start - hit.start;
     final lineStart = local == 0 ? 0 : text.lastIndexOf('\n', local - 1) + 1;
     // No `^`: matchAsPrefix anchors at lineStart, and `^` would pin to 0.
-    final marker = RegExp(r'([ \t]*)(•|\d+\.)[ \t]*').matchAsPrefix(
-      text,
-      lineStart,
-    );
+    final marker = RegExp(
+      r'([ \t]*)(•|\d+\.)[ \t]*',
+    ).matchAsPrefix(text, lineStart);
     if (marker == null ||
         local < lineStart + marker[1]!.length + marker[2]!.length ||
         local > marker.end) {

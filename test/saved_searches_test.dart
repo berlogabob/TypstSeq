@@ -22,10 +22,7 @@ void main() {
   });
 
   test('SavedSearch JSON round-trip with null fields', () {
-    final search = SavedSearch(
-      name: 'Simple',
-      query: 'test',
-    );
+    final search = SavedSearch(name: 'Simple', query: 'test');
     final json = search.toJson();
     final restored = SavedSearch.fromJson(json);
 
@@ -65,16 +62,8 @@ void main() {
     addTearDown(() => dir.delete(recursive: true));
 
     final searches = [
-      SavedSearch(
-        name: 'Tagged Notes',
-        query: 'flutter',
-        tag: 'dart',
-      ),
-      SavedSearch(
-        name: 'Tasks',
-        query: '',
-        status: 'todo',
-      ),
+      SavedSearch(name: 'Tagged Notes', query: 'flutter', tag: 'dart'),
+      SavedSearch(name: 'Tasks', query: '', status: 'todo'),
     ];
 
     final store = SavedSearchStore(LocalVaultStorage(dir));
@@ -94,8 +83,9 @@ void main() {
     addTearDown(() => dir.delete(recursive: true));
     await Directory('${dir.path}/_system').create();
 
-    await File('${dir.path}/_system/saved-searches.json')
-        .writeAsString('{ invalid json');
+    await File(
+      '${dir.path}/_system/saved-searches.json',
+    ).writeAsString('{ invalid json');
 
     final store = SavedSearchStore(LocalVaultStorage(dir));
     final searches = await store.load();

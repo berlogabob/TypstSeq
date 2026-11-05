@@ -370,7 +370,7 @@ void main() {
         'ext',
         '_system/enrich/audio',
         '_system/enrich',
-        '$decisionsDir',
+        decisionsDir,
         '_system',
       ]) {
         try {

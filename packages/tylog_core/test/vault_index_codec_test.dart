@@ -19,8 +19,11 @@ void main() {
 
   test('gzip round trip preserves the index', () {
     final bytes = sample().let(encodeVaultIndexBytes);
-    expect(bytes.length >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b, isTrue,
-        reason: 'index cache must be gzip on disk');
+    expect(
+      bytes.length >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b,
+      isTrue,
+      reason: 'index cache must be gzip on disk',
+    );
     final decoded = decodeVaultIndexBytes(bytes);
     expect(decoded.notes.single.title, 'Alpha');
   });

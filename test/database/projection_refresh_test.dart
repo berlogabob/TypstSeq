@@ -17,9 +17,7 @@ void main() {
     final db = TyLogDatabase(NativeDatabase.memory());
     addTearDown(db.close);
     // First projection: the screenshot's Text section is still empty.
-    await db.projectNodes([
-      _shot('== Description\nA concert\n== Text\n'),
-    ]);
+    await db.projectNodes([_shot('== Description\nA concert\n== Text\n')]);
     // The OCR producer later writes the Text section into the same file.
     await db.projectNodes([
       _shot('== Description\nA concert\n== Text\nMONSANTOS'),

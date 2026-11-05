@@ -6,7 +6,8 @@ void main() {
   group('convert a legacy note to a managed header', () {
     test('rebuilds tylog.note.with(...) from a NoteRef, body untouched', () {
       // A fallback-parsed note: no managed header, just body content.
-      const legacy = '#import "/_system/tylog.typ" as tylog\n\n'
+      const legacy =
+          '#import "/_system/tylog.typ" as tylog\n\n'
           'Some body text.\n- a bullet\n';
       const note = NoteRef(
         id: 'barbara',
@@ -42,10 +43,7 @@ void main() {
         outgoingLinks: [],
       );
 
-      final updated = replaceNoteHeader(
-        raw,
-        NoteMetadataDraft.fromNote(note),
-      );
+      final updated = replaceNoteHeader(raw, NoteMetadataDraft.fromNote(note));
 
       // Import must precede the managed header, and the raw body is kept.
       expect(updated, startsWith('#import "/_system/tylog.typ" as tylog'));
@@ -56,12 +54,16 @@ void main() {
       );
       expect(updated, contains('#set page(margin: 2cm)'));
       // Exactly one import even when re-run on the now-managed note.
-      final again = replaceNoteHeader(updated, NoteMetadataDraft.fromNote(note));
+      final again = replaceNoteHeader(
+        updated,
+        NoteMetadataDraft.fromNote(note),
+      );
       expect('#import "/_system/tylog.typ"'.allMatches(again).length, 1);
     });
 
     test('replaces an existing header instead of stacking a second one', () {
-      const withHeader = '#import "/_system/tylog.typ" as tylog\n'
+      const withHeader =
+          '#import "/_system/tylog.typ" as tylog\n'
           '#show: tylog.note.with(\n  id: "x",\n  title: "Old",\n  kind: "note",\n)\n\nBody.';
       const note = NoteRef(
         id: 'x',
@@ -86,21 +88,29 @@ void main() {
 void _repairTests() {
   group('repairArticleTypst', () {
     test('breaks inline-function field access (.word)', () {
-      expect(repairArticleTypst('#emph[confident guessing].Instead of'),
-          '#emph[confident guessing]. Instead of');
+      expect(
+        repairArticleTypst('#emph[confident guessing].Instead of'),
+        '#emph[confident guessing]. Instead of',
+      );
       expect(repairArticleTypst('#strong[x].Нужно'), '#strong[x]. Нужно');
     });
     test('spaces a content block abutting ( or [ (not legit )[ )', () {
-      expect(repairArticleTypst('#link("u")[label](2024).'),
-          '#link("u")[label] (2024).');
+      expect(
+        repairArticleTypst('#link("u")[label](2024).'),
+        '#link("u")[label] (2024).',
+      );
       // Legit link call syntax `)[` must be untouched.
       expect(repairArticleTypst('#link("u")[label]'), '#link("u")[label]');
     });
     test('escapes bare emails but not those inside strings', () {
-      expect(repairArticleTypst('write to andre@x.com please'),
-          r'write to andre\@x.com please');
-      expect(repairArticleTypst('#link("mailto:a@x.com")[a\\@x.com]'),
-          '#link("mailto:a@x.com")[a\\@x.com]');
+      expect(
+        repairArticleTypst('write to andre@x.com please'),
+        r'write to andre\@x.com please',
+      );
+      expect(
+        repairArticleTypst('#link("mailto:a@x.com")[a\\@x.com]'),
+        '#link("mailto:a@x.com")[a\\@x.com]',
+      );
     });
     test('is idempotent and leaves clean prose alone', () {
       const clean = 'Just #emph[some] prose with a #link("u")[link] and text.';

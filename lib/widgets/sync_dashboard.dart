@@ -190,7 +190,8 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
             leading: const Icon(AppIcons.cloud),
             title: const Text("Keep Nextcloud's version"),
             subtitle: const Text('Overwrites each local copy'),
-            onTap: () => Navigator.pop(sheet, SyncConflictResolution.keepRemote),
+            onTap: () =>
+                Navigator.pop(sheet, SyncConflictResolution.keepRemote),
           ),
         ],
       ),
@@ -376,10 +377,11 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
                         if (value.conflicts.length > 1)
                           TextButton(
                             onPressed: _resolving.isEmpty
-                                ? () =>
-                                      unawaited(_resolveAll(value.conflicts))
+                                ? () => unawaited(_resolveAll(value.conflicts))
                                 : null,
-                            child: Text('Resolve all ${value.conflicts.length}'),
+                            child: Text(
+                              'Resolve all ${value.conflicts.length}',
+                            ),
                           ),
                       ],
                     ),
@@ -576,8 +578,7 @@ class _SyncIconButtonState extends State<SyncIconButton> {
       SyncStatusKind.paused => AppIcons.syncPaused,
       SyncStatusKind.conflicts => AppIcons.warning,
       SyncStatusKind.ready => AppIcons.syncReady,
-      SyncStatusKind.upToDate ||
-      SyncStatusKind.synced => AppIcons.syncOk,
+      SyncStatusKind.upToDate || SyncStatusKind.synced => AppIcons.syncOk,
     };
     return IconButton(
       onPressed: w.onPressed,
@@ -727,8 +728,7 @@ class _SyncStatusCard extends StatelessWidget {
       SyncStatusKind.paused => AppIcons.syncPaused,
       SyncStatusKind.conflicts => AppIcons.warning,
       SyncStatusKind.ready => AppIcons.syncReady,
-      SyncStatusKind.upToDate ||
-      SyncStatusKind.synced => AppIcons.syncOk,
+      SyncStatusKind.upToDate || SyncStatusKind.synced => AppIcons.syncOk,
     };
     final title = syncStatusTitle(kind, conflicts: conflicts);
     final subtitle = switch (kind) {

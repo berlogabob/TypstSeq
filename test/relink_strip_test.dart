@@ -18,8 +18,7 @@ void main() {
   const body = '#import "x"\n\n= Title\n\nBody text.';
 
   test('stripAutoRelated removes an appended block and is idempotent', () {
-    final withBlock =
-        '$body\n\n$marker\n== Related\n#tylog.ref-note("a")[A]\n';
+    final withBlock = '$body\n\n$marker\n== Related\n#tylog.ref-note("a")[A]\n';
     final stripped = stripAutoRelated(withBlock);
     expect(stripped, body, reason: 'block and its trailing whitespace removed');
 
@@ -49,26 +48,29 @@ void main() {
     expect(stripAutoRelated(plain), plain);
   });
 
-  test('relinkCandidates skips articles article-pipeline linked with an LLM', () {
-    final notes = [
-      _article('plain'),
-      _article('llm', properties: {'llm_provider': 'ollama'}),
-      _article('empty-provider', properties: {'llm_provider': ''}),
-      // A non-string value must not throw the way a bare `as String?` would.
-      _article('odd-provider', properties: {'llm_provider': 42}),
-      const NoteRef(
-        id: 'n',
-        path: 'notes/n.typ',
-        title: 'N',
-        kind: 'note',
-        outgoingLinks: [],
-      ),
-    ];
+  test(
+    'relinkCandidates skips articles article-pipeline linked with an LLM',
+    () {
+      final notes = [
+        _article('plain'),
+        _article('llm', properties: {'llm_provider': 'ollama'}),
+        _article('empty-provider', properties: {'llm_provider': ''}),
+        // A non-string value must not throw the way a bare `as String?` would.
+        _article('odd-provider', properties: {'llm_provider': 42}),
+        const NoteRef(
+          id: 'n',
+          path: 'notes/n.typ',
+          title: 'N',
+          kind: 'note',
+          outgoingLinks: [],
+        ),
+      ];
 
-    expect(
-      relinkCandidates(notes).map((n) => n.id),
-      ['plain', 'empty-provider', 'odd-provider'],
-      reason: 'only articles, and only those without real LLM-written links',
-    );
-  });
+      expect(
+        relinkCandidates(notes).map((n) => n.id),
+        ['plain', 'empty-provider', 'odd-provider'],
+        reason: 'only articles, and only those without real LLM-written links',
+      );
+    },
+  );
 }

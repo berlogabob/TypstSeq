@@ -29,6 +29,7 @@ Future<(VmService, String)> _connect() async {
   return (service, vm.isolates!.firstWhere((i) => i.name == 'main').id!);
 }
 
+// ignore: unused_element
 Future<int?> _heapBytes() async {
   final (service, isolate) = await _connect();
   try {

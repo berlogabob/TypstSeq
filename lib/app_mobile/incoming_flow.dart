@@ -6,8 +6,9 @@ extension _IncomingFlow on _HomeScreenState {
     final device = vaultRegistry?.deviceId;
     if (v == null ||
         device == null ||
-        index?.notesByPath[proposal.note]?.kind != 'audio')
+        index?.notesByPath[proposal.note]?.kind != 'audio') {
       return;
+    }
     if (accept) {
       await workspace.mutateNote(proposal.note, (source) {
         final id = proposal.id.replaceFirst('audio:', 'audio-');
@@ -44,8 +45,9 @@ extension _IncomingFlow on _HomeScreenState {
         target: proposal.note,
       ),
     );
-    if (accept)
+    if (accept) {
       unawaited(workspace.refreshIndex(updateStatus: false, always: true));
+    }
   }
 
   Future<void> _decideIncoming(NoteRef note, String action) async {

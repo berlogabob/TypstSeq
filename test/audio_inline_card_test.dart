@@ -6,25 +6,29 @@ import 'package:tylog/widgets/audio_note_screen.dart';
 import 'package:tylog/widgets/audio_inline_card.dart';
 
 void main() {
-  testWidgets('sidecar peaks skip loading audio and codec backfill', (tester) async {
+  testWidgets('sidecar peaks skip loading audio and codec backfill', (
+    tester,
+  ) async {
     var reads = 0;
     var backfills = 0;
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: AudioInlineCard(
-          label: 'lesson.mp3',
-          peaks: const [],
-          readPeaks: () async => [0, 128, 255],
-          readBytes: () async {
-            reads++;
-            throw StateError('audio should stay unloaded');
-          },
-          extension: 'mp3',
-          onExpand: (_) async {},
-          onPeaks: (_, _) => backfills++,
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AudioInlineCard(
+            label: 'lesson.mp3',
+            peaks: const [],
+            readPeaks: () async => [0, 128, 255],
+            readBytes: () async {
+              reads++;
+              throw StateError('audio should stay unloaded');
+            },
+            extension: 'mp3',
+            onExpand: (_) async {},
+            onPeaks: (_, _) => backfills++,
+          ),
         ),
       ),
-    ));
+    );
     await tester.pump();
     final wave = tester.widget<WaveformSeekBar>(find.byType(WaveformSeekBar));
     expect(wave.peaks, [0, 128, 255]);
@@ -35,8 +39,9 @@ void main() {
   bars();
   tearDown(() => TyLogEditingController.audioBuilder = null);
 
-  testWidgets('audio attachment renders through audioBuilder, with or without /',
-      (tester) async {
+  testWidgets('audio attachment renders through audioBuilder, with or without /', (
+    tester,
+  ) async {
     final seen = <String>[];
     TyLogEditingController.audioBuilder = (path, label) {
       seen.add(path);
@@ -65,7 +70,10 @@ void bars() {
     final quiet = displayBars([for (var i = 0; i < 30; i++) 10 + (i % 5) * 10]);
     expect(quiet.length, 64);
     expect(quiet.reduce((a, b) => a > b ? a : b), greaterThan(200));
-    expect(displayBars(List.filled(110, 30)).toSet().length, 1); // flat, visible
+    expect(
+      displayBars(List.filled(110, 30)).toSet().length,
+      1,
+    ); // flat, visible
   });
 
   test('audio inserts as its own block, splitting the paragraph', () {
@@ -87,7 +95,9 @@ void bars() {
     expect(
       src,
       matches(
-        RegExp(r'^before\s*\n\n#tylog\.attachment\([^\n]*\)\[x\.m4a\]\n\nafter$'),
+        RegExp(
+          r'^before\s*\n\n#tylog\.attachment\([^\n]*\)\[x\.m4a\]\n\nafter$',
+        ),
       ),
     );
   });

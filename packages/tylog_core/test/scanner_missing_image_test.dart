@@ -100,13 +100,15 @@ void main() {
       ..createSync(recursive: true)
       ..writeAsStringSync('#image("/assets/missing.png")');
 
-    List<int> compile() => Process.runSync('typst', [
-      'compile',
-      '--root',
-      root.path,
-      note.path,
-      '${root.path}/out.pdf',
-    ]).exitCode == 0
+    List<int> compile() =>
+        Process.runSync('typst', [
+              'compile',
+              '--root',
+              root.path,
+              note.path,
+              '${root.path}/out.pdf',
+            ]).exitCode ==
+            0
         ? const [0]
         : const [1];
 

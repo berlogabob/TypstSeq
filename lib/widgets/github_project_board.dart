@@ -201,8 +201,9 @@ class _GitHubProjectBoardState extends State<GitHubProjectBoard> {
                                                       ),
                                                     ),
                                                   );
-                                                  if (!board.canMove)
+                                                  if (!board.canMove) {
                                                     return card;
+                                                  }
                                                   return LongPressDraggable<
                                                     ProjectItem
                                                   >(

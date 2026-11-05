@@ -18,8 +18,9 @@ import 'package:tylog_core/tylog_core.dart';
 /// Optional AUDIT_STRIDE=N samples every Nth note (default 1 = all).
 
 String _bucketError(String raw) {
-  final line = raw.split('\n').firstWhere((l) => l.trim().isNotEmpty,
-      orElse: () => raw);
+  final line = raw
+      .split('\n')
+      .firstWhere((l) => l.trim().isNotEmpty, orElse: () => raw);
   final l = line.toLowerCase();
   if (l.contains('unknown variable') && l.contains('tylog')) {
     return 'missing/incompatible tylog import';
@@ -40,25 +41,22 @@ void main() {
       markTestSkipped('set AUDIT_VAULT=1 to run the sweep');
       return;
     }
-    final vault =
-        Directory('${Platform.environment['HOME']}/Nextcloud/TyLogVault');
+    final vault = Directory(
+      '${Platform.environment['HOME']}/Nextcloud/TyLogVault',
+    );
     if (!vault.existsSync()) {
       markTestSkipped('configured audit vault is unavailable');
       return;
     }
-    final stride = int.tryParse(Platform.environment['AUDIT_STRIDE'] ?? '1') ?? 1;
+    final stride =
+        int.tryParse(Platform.environment['AUDIT_STRIDE'] ?? '1') ?? 1;
     // Match the real scanner's note roots (excludes _system, .tylog backups).
     const noteRoots = ['daily/', 'notes/', 'projects/', 'articles/'];
-    final files = vault
-        .listSync(recursive: true)
-        .whereType<File>()
-        .where((f) {
-          if (!f.path.endsWith('.typ')) return false;
-          final rel = f.path.replaceAll('${vault.path}/', '');
-          return noteRoots.any(rel.startsWith);
-        })
-        .toList()
-      ..sort((a, b) => a.path.compareTo(b.path));
+    final files = vault.listSync(recursive: true).whereType<File>().where((f) {
+      if (!f.path.endsWith('.typ')) return false;
+      final rel = f.path.replaceAll('${vault.path}/', '');
+      return noteRoots.any(rel.startsWith);
+    }).toList()..sort((a, b) => a.path.compareTo(b.path));
 
     final inspector = CliTypstInspector(vault, executable: 'typst');
     var query = 0, fallback = 0, failed = 0, scanned = 0;
@@ -75,7 +73,9 @@ void main() {
       final sw = Stopwatch()..start();
       try {
         final records = await inspector
-            .inspect(TypstDocumentInput(path: rel, source: f.readAsStringSync()))
+            .inspect(
+              TypstDocumentInput(path: rel, source: f.readAsStringSync()),
+            )
             .timeout(const Duration(seconds: 30));
         sw.stop();
         final meta = decodeTylogMetadataRecords(records);
@@ -89,8 +89,9 @@ void main() {
       } catch (e) {
         sw.stop();
         failed++;
-        final bucket =
-            e is TimeoutException ? 'TIMEOUT (poisons native pass)' : _bucketError('$e');
+        final bucket = e is TimeoutException
+            ? 'TIMEOUT (poisons native pass)'
+            : _bucketError('$e');
         errorBuckets.update(bucket, (v) => v + 1, ifAbsent: () => 1);
         errorExample.putIfAbsent(bucket, () => rel);
       }
@@ -106,7 +107,9 @@ void main() {
     // ignore: avoid_print
     print('\n============ METADATA PARSING AUDIT ============');
     // ignore: avoid_print
-    print('vault notes total ${files.length}; scanned $scanned (stride $stride)');
+    print(
+      'vault notes total ${files.length}; scanned $scanned (stride $stride)',
+    );
     // ignore: avoid_print
     print('DISTRIBUTION:');
     // ignore: avoid_print
@@ -116,11 +119,15 @@ void main() {
     // ignore: avoid_print
     print('  query-failed (compile err) $failed  (${pct(failed)})');
     // ignore: avoid_print
-    print('PROPERTIES GAP: $propsGap verified notes carry non-empty properties '
-        'that _fallbackNote drops ($fallback fallback notes are already stripped)');
+    print(
+      'PROPERTIES GAP: $propsGap verified notes carry non-empty properties '
+      'that _fallbackNote drops ($fallback fallback notes are already stripped)',
+    );
     // ignore: avoid_print
-    print('POISONING RISK: $slow notes took >5s (max ${maxMs}ms; native worker '
-        'times out at 30s and poisons the rest of the pass)');
+    print(
+      'POISONING RISK: $slow notes took >5s (max ${maxMs}ms; native worker '
+      'times out at 30s and poisons the rest of the pass)',
+    );
     for (final s in slowNotes) {
       // ignore: avoid_print
       print('    slow: $s');

@@ -59,14 +59,11 @@ void main() {
     final root = await Directory.systemTemp.createTemp('tylog_core_props_');
     addTearDown(() => root.delete(recursive: true));
     final storage = LocalVaultStorage(root);
-    await storage.writeText(
-      'notes/entity.typ',
-      '''#show: tylog.note.with(
+    await storage.writeText('notes/entity.typ', '''#show: tylog.note.with(
   id: "entity",
   title: "Entity",
   properties: ("email": "a@b.com", "rating": "4"),
-)''',
-    );
+)''');
 
     final index = await scanVaultStorage(storage);
 
@@ -172,64 +169,63 @@ void main() {
       );
       // All three notes went through the inspector: one timeout does not
       // drop it for the rest of the pass.
-      expect(
-        inspector.queried,
-        ['notes/fine.typ', 'notes/poison.typ', 'notes/z-after.typ'],
-      );
+      expect(inspector.queried, [
+        'notes/fine.typ',
+        'notes/poison.typ',
+        'notes/z-after.typ',
+      ]);
       // z-after.typ was queried successfully by the delegate, so it is
       // neither a fallback note nor a failed query.
       expect(
-        index.problems
-            .where((problem) => problem.subject == 'notes/z-after.typ'),
+        index.problems.where(
+          (problem) => problem.subject == 'notes/z-after.typ',
+        ),
         isEmpty,
       );
     },
   );
 
-  test(
-    'sustained consecutive timeouts still abandon the worker for the rest '
-    'of the pass',
-    () async {
-      final root = await Directory.systemTemp.createTemp('tylog_core_wedge_');
-      final previousTimeout = typstInspectTimeout;
-      final previousMaxConsecutive = maxConsecutiveInspectTimeouts;
-      typstInspectTimeout = const Duration(milliseconds: 100);
-      maxConsecutiveInspectTimeouts = 2;
-      addTearDown(() async {
-        typstInspectTimeout = previousTimeout;
-        maxConsecutiveInspectTimeouts = previousMaxConsecutive;
-        await root.delete(recursive: true);
-      });
-      final storage = LocalVaultStorage(root);
-      for (var i = 0; i < 4; i++) {
-        await storage.writeText(
-          'notes/n$i.typ',
-          '#show: tylog.note.with(id: "n$i", title: "N$i")',
-        );
-      }
-      // Hangs on every note: with the threshold at 2, the first two notes
-      // each record their own timeout before the worker is abandoned; the
-      // remaining notes then fall back without ever being queried.
-      final inspector = _HangingInspector('', matchAll: true);
-
-      final index = await scanVaultStorage(
-        storage,
-        inspector: inspector,
-      ).timeout(const Duration(seconds: 10));
-
-      expect(index.notes, hasLength(4));
-      expect(
-        index.problems
-            .where((problem) => problem.code == 'metadata-query-failed'),
-        isNotEmpty,
+  test('sustained consecutive timeouts still abandon the worker for the rest '
+      'of the pass', () async {
+    final root = await Directory.systemTemp.createTemp('tylog_core_wedge_');
+    final previousTimeout = typstInspectTimeout;
+    final previousMaxConsecutive = maxConsecutiveInspectTimeouts;
+    typstInspectTimeout = const Duration(milliseconds: 100);
+    maxConsecutiveInspectTimeouts = 2;
+    addTearDown(() async {
+      typstInspectTimeout = previousTimeout;
+      maxConsecutiveInspectTimeouts = previousMaxConsecutive;
+      await root.delete(recursive: true);
+    });
+    final storage = LocalVaultStorage(root);
+    for (var i = 0; i < 4; i++) {
+      await storage.writeText(
+        'notes/n$i.typ',
+        '#show: tylog.note.with(id: "n$i", title: "N$i")',
       );
-      expect(
-        index.problems
-            .where((problem) => problem.code == 'metadata-fallback'),
-        isNotEmpty,
-      );
-    },
-  );
+    }
+    // Hangs on every note: with the threshold at 2, the first two notes
+    // each record their own timeout before the worker is abandoned; the
+    // remaining notes then fall back without ever being queried.
+    final inspector = _HangingInspector('', matchAll: true);
+
+    final index = await scanVaultStorage(
+      storage,
+      inspector: inspector,
+    ).timeout(const Duration(seconds: 10));
+
+    expect(index.notes, hasLength(4));
+    expect(
+      index.problems.where(
+        (problem) => problem.code == 'metadata-query-failed',
+      ),
+      isNotEmpty,
+    );
+    expect(
+      index.problems.where((problem) => problem.code == 'metadata-fallback'),
+      isNotEmpty,
+    );
+  });
 
   test(
     'a wedged recoverable worker is rebuilt so the rest of the pass is queried',
@@ -264,7 +260,9 @@ void main() {
       expect(inspector.recoverCount, 1);
       // The two tail notes recovered — queried, not fallback.
       final tailProblems = index.problems
-          .where((p) => p.subject == 'notes/n2.typ' || p.subject == 'notes/n3.typ')
+          .where(
+            (p) => p.subject == 'notes/n2.typ' || p.subject == 'notes/n3.typ',
+          )
           .toList();
       expect(tailProblems, isEmpty);
       // Only the two pre-recovery notes remained as query failures.
@@ -331,35 +329,35 @@ void main() {
 
       expect(healthyInspector.calls, 2);
       expect(
-        second.problems.where(
-          (problem) => problem.code == 'metadata-fallback',
-        ),
+        second.problems.where((problem) => problem.code == 'metadata-fallback'),
         isEmpty,
       );
     },
   );
 
-  test('a note with no managed header is not a failure, and is not retried',
-      () async {
-    // Six of the seven fallbacks in the real vault are hand-written dailies:
-    // the query ran, succeeded, and found no metadata because there is none to
-    // find. Marking that the same way as a *failed* inspection would have the
-    // retry recompile them on every scan forever, for an answer that cannot
-    // change while the bytes do not.
-    final root = await Directory.systemTemp.createTemp('tylog_core_bare_');
-    addTearDown(() => root.delete(recursive: true));
-    final storage = LocalVaultStorage(root);
-    await storage.writeText('daily/2026-08-20.typ', 'a hand-written day\n');
+  test(
+    'a note with no managed header is not a failure, and is not retried',
+    () async {
+      // Six of the seven fallbacks in the real vault are hand-written dailies:
+      // the query ran, succeeded, and found no metadata because there is none to
+      // find. Marking that the same way as a *failed* inspection would have the
+      // retry recompile them on every scan forever, for an answer that cannot
+      // change while the bytes do not.
+      final root = await Directory.systemTemp.createTemp('tylog_core_bare_');
+      addTearDown(() => root.delete(recursive: true));
+      final storage = LocalVaultStorage(root);
+      await storage.writeText('daily/2026-08-20.typ', 'a hand-written day\n');
 
-    final inspector = _EmptyInspector();
-    final first = await scanVaultStorage(storage, inspector: inspector);
-    expect(inspector.calls, 1);
-    expect(first.notes.single.metadataSource, 'no-metadata');
+      final inspector = _EmptyInspector();
+      final first = await scanVaultStorage(storage, inspector: inspector);
+      expect(inspector.calls, 1);
+      expect(first.notes.single.metadataSource, 'no-metadata');
 
-    final second = _EmptyInspector();
-    await scanVaultStorage(storage, inspector: second, previous: first);
-    expect(second.calls, 0, reason: 'nothing to learn from asking again');
-  });
+      final second = _EmptyInspector();
+      await scanVaultStorage(storage, inspector: second, previous: first);
+      expect(second.calls, 0, reason: 'nothing to learn from asking again');
+    },
+  );
 
   test('a failed inspection is retried, so it is not permanent', () async {
     // The marker was written to mean "try again", and nothing consumed it: a
@@ -396,45 +394,49 @@ void main() {
     );
   });
 
-  test('but only a few per scan, so a broken vault cannot pin the CPU',
-      () async {
-    // The reason it was never retried at all: a vault with hundreds of
-    // genuinely broken notes would spend the whole budget recompiling them
-    // every scan and never upgrade a never-inspected one. The retry gets its
-    // own small slice instead of the whole cap.
-    final root = await Directory.systemTemp.createTemp('tylog_core_retry_cap_');
-    addTearDown(() => root.delete(recursive: true));
-    final storage = LocalVaultStorage(root);
-    for (var i = 0; i < maxFailedReinspectionsPerScan + 4; i++) {
-      await storage.writeText(
-        'notes/n$i.typ',
-        '#show: tylog.note.with(id: "n$i", title: "N$i")',
+  test(
+    'but only a few per scan, so a broken vault cannot pin the CPU',
+    () async {
+      // The reason it was never retried at all: a vault with hundreds of
+      // genuinely broken notes would spend the whole budget recompiling them
+      // every scan and never upgrade a never-inspected one. The retry gets its
+      // own small slice instead of the whole cap.
+      final root = await Directory.systemTemp.createTemp(
+        'tylog_core_retry_cap_',
       );
-    }
+      addTearDown(() => root.delete(recursive: true));
+      final storage = LocalVaultStorage(root);
+      for (var i = 0; i < maxFailedReinspectionsPerScan + 4; i++) {
+        await storage.writeText(
+          'notes/n$i.typ',
+          '#show: tylog.note.with(id: "n$i", title: "N$i")',
+        );
+      }
 
-    final first = await scanVaultStorage(
-      storage,
-      inspector: _FailingInspector(),
-    );
-    expect(
-      first.notes.every((n) => n.metadataSource == 'fallback-inspected'),
-      isTrue,
-    );
+      final first = await scanVaultStorage(
+        storage,
+        inspector: _FailingInspector(),
+      );
+      expect(
+        first.notes.every((n) => n.metadataSource == 'fallback-inspected'),
+        isTrue,
+      );
 
-    final healthy = _SourceInspector();
-    final second = await scanVaultStorage(
-      storage,
-      inspector: healthy,
-      previous: first,
-    );
+      final healthy = _SourceInspector();
+      final second = await scanVaultStorage(
+        storage,
+        inspector: healthy,
+        previous: first,
+      );
 
-    expect(healthy.calls, maxFailedReinspectionsPerScan);
-    expect(
-      second.notes.where((n) => n.metadataSource == 'typst-query'),
-      hasLength(maxFailedReinspectionsPerScan),
-      reason: 'the rest wait for the next scan',
-    );
-  });
+      expect(healthy.calls, maxFailedReinspectionsPerScan);
+      expect(
+        second.notes.where((n) => n.metadataSource == 'typst-query'),
+        hasLength(maxFailedReinspectionsPerScan),
+        reason: 'the rest wait for the next scan',
+      );
+    },
+  );
 
   test('editing an inspected fallback triggers a fresh inspection', () async {
     final root = await Directory.systemTemp.createTemp(
@@ -515,7 +517,10 @@ void main() {
     );
 
     expect(inspector.calls, 2);
-    expect(second.problems.where((p) => p.code == 'metadata-fallback'), hasLength(2));
+    expect(
+      second.problems.where((p) => p.code == 'metadata-fallback'),
+      hasLength(2),
+    );
   });
 
   test('local storage rejects traversal', () async {
@@ -725,7 +730,6 @@ void main() {
       expect(stripLogseqNoise(once), same(once));
     });
   });
-
 }
 
 class _SourceInspector implements TypstInspector {

@@ -11,7 +11,9 @@ void main() {
       isTrue,
     );
     expect(
-      isOrphanedTempPath('articles/.A Note - Blog.typ.tylog-449257966368947.tmp'),
+      isOrphanedTempPath(
+        'articles/.A Note - Blog.typ.tylog-449257966368947.tmp',
+      ),
       isTrue,
     );
     // LocalVaultStorage's form: `${path}.${micros}.tmp`, no `tylog-` marker.
@@ -24,8 +26,10 @@ void main() {
     expect(isOrphanedTempPath('notes/scratch.tmp'), isFalse);
     expect(isOrphanedTempPath('notes/draft-v2.tmp'), isFalse);
     // The backup orphan has its own predicate and is swept unconditionally.
-    expect(isOrphanedTempPath('.tylog/.sync_state.json.tylog-12345.backup'),
-        isFalse);
+    expect(
+      isOrphanedTempPath('.tylog/.sync_state.json.tylog-12345.backup'),
+      isFalse,
+    );
   });
 
   test('the grace period is long enough to outlast an in-flight write', () {

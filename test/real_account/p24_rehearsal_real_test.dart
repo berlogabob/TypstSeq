@@ -43,8 +43,9 @@ void main() {
       final sample = await _copySample(source, aDir);
       // The vault marker makes the copy a valid v5 vault, as in production.
       await Directory('${aDir.path}/.tylog').create();
-      await File('${source.path}/.tylog/settings.json')
-          .copy('${aDir.path}/.tylog/settings.json');
+      await File(
+        '${source.path}/.tylog/settings.json',
+      ).copy('${aDir.path}/.tylog/settings.json');
       final sourceBefore = await _hashPaths(source, sample);
       var a = Vault(aDir);
       var b = Vault(bDir);
@@ -152,8 +153,10 @@ void main() {
       } catch (error) {
         interruptError = error;
       }
-      print('P24 interrupt error: ${interruptError.runtimeType} '
-          '${'$interruptError'.split('\n').first.replaceAll(RegExp(r'https?://\S+'), '<url>')}');
+      print(
+        'P24 interrupt error: ${interruptError.runtimeType} '
+        '${'$interruptError'.split('\n').first.replaceAll(RegExp(r'https?://\S+'), '<url>')}',
+      );
       expect(interruptError, isNotNull);
       // Uploads run in parallel, so the abort can land before any PUT
       // completes; the dropped PUT is what this step must prove.
@@ -172,9 +175,11 @@ void main() {
       final differ = aManifest.keys.where(
         (k) => bManifest.containsKey(k) && bManifest[k] != aManifest[k],
       );
-      print('P24 restore diff: onlyA=${onlyA.length} ${onlyA.take(5).toList()} '
-          'onlyB=${onlyB.length} ${onlyB.take(5).toList()} '
-          'differ=${differ.length} ${differ.take(5).toList()}');
+      print(
+        'P24 restore diff: onlyA=${onlyA.length} ${onlyA.take(5).toList()} '
+        'onlyB=${onlyB.length} ${onlyB.take(5).toList()} '
+        'differ=${differ.length} ${differ.take(5).toList()}',
+      );
       expect(bManifest, aManifest);
       expect(
         (await dbB.select(dbB.nodes).get()).map((n) => n.id).toSet(),

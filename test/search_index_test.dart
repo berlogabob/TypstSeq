@@ -33,7 +33,10 @@ void main() {
       },
       backlinksByTarget: const {},
     );
-    final search = await PkmsSearchIndex.buildStorage(LocalVaultStorage(dir), index);
+    final search = await PkmsSearchIndex.buildStorage(
+      LocalVaultStorage(dir),
+      index,
+    );
     final file = File('${dir.path}/search.json.gz');
     await search.saveStorage(LocalVaultStorage(dir), 'search.json.gz');
     final loaded = await PkmsSearchIndex.loadStorage(
@@ -83,19 +86,28 @@ void main() {
         ),
       ],
     );
-    final search = await PkmsSearchIndex.buildStorage(LocalVaultStorage(dir), index);
+    final search = await PkmsSearchIndex.buildStorage(
+      LocalVaultStorage(dir),
+      index,
+    );
 
     // Search for all tasks
     final allTasks = search.search('').where((r) => r.kind == 'task').toList();
     expect(allTasks.length, equals(3));
 
     // Filter by status: todo
-    final todoTasks = search.search('', status: 'todo').where((r) => r.kind == 'task').toList();
+    final todoTasks = search
+        .search('', status: 'todo')
+        .where((r) => r.kind == 'task')
+        .toList();
     expect(todoTasks.length, equals(2));
     expect(todoTasks.every((r) => r.id == 'task1' || r.id == 'task3'), isTrue);
 
     // Filter by status: done
-    final doneTasks = search.search('', status: 'done').where((r) => r.kind == 'task').toList();
+    final doneTasks = search
+        .search('', status: 'done')
+        .where((r) => r.kind == 'task')
+        .toList();
     expect(doneTasks.length, equals(1));
     expect(doneTasks.first.id, equals('task2'));
   });

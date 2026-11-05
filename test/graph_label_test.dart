@@ -15,10 +15,7 @@ void main() {
     });
 
     test('cyrillic slugs get spaces and keep their letters', () {
-      expect(
-        prettyGraphLabel('машинное-обучение'),
-        'Машинное обучение',
-      );
+      expect(prettyGraphLabel('машинное-обучение'), 'Машинное обучение');
     });
   });
 

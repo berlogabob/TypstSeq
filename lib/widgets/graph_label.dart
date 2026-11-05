@@ -46,11 +46,8 @@ GraphLabelSpec? graphLabelSpec(Size sizePx) {
   final budget = sizePx.height * 0.8;
   final nameLine = fontSize * 1.2;
   final countLine = fontSize * kGraphCountScale * 1.2;
-  GraphLabelSpec spec(bool count, int lines) => GraphLabelSpec(
-    fontSize: fontSize,
-    showCount: count,
-    maxLines: lines,
-  );
+  GraphLabelSpec spec(bool count, int lines) =>
+      GraphLabelSpec(fontSize: fontSize, showCount: count, maxLines: lines);
   if (2 * nameLine + countLine <= budget) return spec(true, 2);
   if (nameLine + countLine <= budget) return spec(true, 1);
   if (2 * nameLine <= budget) return spec(false, 2);

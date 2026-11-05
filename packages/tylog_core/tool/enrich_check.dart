@@ -2,7 +2,6 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:tylog_core/tylog_core.dart';
-import 'package:tylog_core/storage.dart';
 
 Future<void> main(List<String> args) async {
   final storage = LocalVaultStorage(Directory(args[0]));
@@ -15,7 +14,9 @@ Future<void> main(List<String> args) async {
     if (note == null || !file.existsSync()) continue;
     final m = EnrichMentions.tryParse(jsonDecode(file.readAsStringSync()))!;
     for (final d in resolveMentions(m, note, memory)) {
-      print('$day ${d.status.name.padRight(7)} ${d.mention.surface} -> ${d.target?.title ?? ''}');
+      print(
+        '$day ${d.status.name.padRight(7)} ${d.mention.surface} -> ${d.target?.title ?? ''}',
+      );
     }
   }
 }

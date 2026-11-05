@@ -68,10 +68,11 @@ void main() {
     final root = await Directory.systemTemp.createTemp('tylog_search_repro_');
     addTearDown(() => root.delete(recursive: true));
     final storage = LocalVaultStorage(root);
-    for (final file in Directory(sample)
-        .listSync(recursive: true)
-        .whereType<File>()
-        .where((file) => file.path.endsWith('.typ'))) {
+    for (final file
+        in Directory(sample)
+            .listSync(recursive: true)
+            .whereType<File>()
+            .where((file) => file.path.endsWith('.typ'))) {
       final path = file.path.substring(sample.length + 1);
       await storage.writeText(path, await file.readAsString());
     }

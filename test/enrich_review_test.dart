@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/widgets/enrich_review.dart';
-import 'package:tylog_core/enrich.dart';
 import 'package:tylog_core/tylog_core.dart';
 
 void main() {

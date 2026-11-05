@@ -15,24 +15,27 @@ void main() {
 
   test('entityKindChoices appends used kinds sorted, normalised, deduped, '
       'and drops app kinds and blanks', () {
-    expect(entityKindChoices(<String>[
-      ' Castle',
-      'club',
-      'article',
-      'daily',
-      'person',
-      '',
-      'Club',
-    ]), <String>[
-      'person',
-      'place',
-      'organization',
-      'event',
-      'project',
-      'website',
-      'castle',
-      'club',
-    ]);
+    expect(
+      entityKindChoices(<String>[
+        ' Castle',
+        'club',
+        'article',
+        'daily',
+        'person',
+        '',
+        'Club',
+      ]),
+      <String>[
+        'person',
+        'place',
+        'organization',
+        'event',
+        'project',
+        'website',
+        'castle',
+        'club',
+      ],
+    );
   });
 
   test('entityFieldsForKind for person', () {
@@ -47,7 +50,7 @@ void main() {
     expect(entityFieldsForKind('organization'), <String>[
       'email',
       'address',
-      'link'
+      'link',
     ]);
   });
 

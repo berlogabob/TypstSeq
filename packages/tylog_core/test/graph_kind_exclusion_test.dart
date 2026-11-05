@@ -25,8 +25,11 @@ void main() {
     final map = buildConceptMap(index(), minNotes: 2, minCoOccur: 2);
     final titles = map.nodes.map((n) => n.title).toList();
     expect(titles, contains('rust'));
-    expect(titles, isNot(contains('article')),
-        reason: 'a kind alias on every article is not a concept');
+    expect(
+      titles,
+      isNot(contains('article')),
+      reason: 'a kind alias on every article is not a concept',
+    );
   });
 
   test('kind-alias tags do not feed tagToNotes', () {

@@ -1,4 +1,3 @@
-import 'dart:collection';
 import 'dart:math' show min;
 import 'dart:typed_data';
 
@@ -59,7 +58,7 @@ class _JournalFeedState extends State<JournalFeed> {
   List<NoteRef>? _cachedDays;
   final _tasksByNote = <String, Map<String, TaskRef>>{};
   static const _sourceCacheLimit = 32;
-  final _sources = LinkedHashMap<String, Future<String>>();
+  final _sources = <String, Future<String>>{};
   final _loadedPaths = <String>{};
   Set<String> _activeSourcePaths = {};
   Set<String> _buildingSourcePaths = {};

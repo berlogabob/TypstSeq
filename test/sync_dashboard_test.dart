@@ -1,4 +1,3 @@
-
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -22,22 +21,22 @@ SyncDashboardData _data({
   List<SyncConflict>? conflicts,
   String? error,
 }) => SyncDashboardData(
-      storageName: 'TyLog',
-      storageLocation: 'TyLog',
-      cloud: const NextcloudConfig(
-        serverUrl: 'https://example.invalid',
-        username: 'u',
-        password: 'p',
-        remoteFolder: 'TyLogVault',
-      ),
-      syncing: syncing,
-      vaultOpen: true,
-      desktopManaged: false,
-      storageHealthy: true,
-      conflicts: conflicts ?? const [],
-      error: error,
-      events: const [],
-    );
+  storageName: 'TyLog',
+  storageLocation: 'TyLog',
+  cloud: const NextcloudConfig(
+    serverUrl: 'https://example.invalid',
+    username: 'u',
+    password: 'p',
+    remoteFolder: 'TyLogVault',
+  ),
+  syncing: syncing,
+  vaultOpen: true,
+  desktopManaged: false,
+  storageHealthy: true,
+  conflicts: conflicts ?? const [],
+  error: error,
+  events: const [],
+);
 
 SyncConflict _conflict(String path) => SyncConflict(
   id: 'c-$path',
@@ -192,8 +191,14 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.byKey(const ValueKey('conflict-c-notes/A.typ')), findsOneWidget);
-    expect(find.byKey(const ValueKey('conflict-c-notes/B.typ')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('conflict-c-notes/A.typ')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('conflict-c-notes/B.typ')),
+      findsOneWidget,
+    );
   });
 
   // Two independent mechanisms hid failures, and either alone was enough.
@@ -336,7 +341,9 @@ void main() {
     );
     // And the button cannot start a second batch over the first.
     expect(
-      tester.widget<TextButton>(find.widgetWithText(TextButton, 'Resolve all 2')).onPressed,
+      tester
+          .widget<TextButton>(find.widgetWithText(TextButton, 'Resolve all 2'))
+          .onPressed,
       isNull,
     );
 

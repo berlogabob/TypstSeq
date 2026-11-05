@@ -55,7 +55,10 @@ class LibraryToolbar extends StatelessWidget {
                           ? null
                           : IconButton(
                               tooltip: 'Clear search',
-                              icon: const Icon(AppIcons.close, size: kIconSmall),
+                              icon: const Icon(
+                                AppIcons.close,
+                                size: kIconSmall,
+                              ),
                               onPressed: () {
                                 controller.clear();
                                 onChanged('');

@@ -504,14 +504,11 @@ List<(NoteRef, bool)> _candidates(EnrichMention mention, EnrichMemory memory) {
     for (final key in keys) ...?memory._nameIndex['w$key'],
     ...?memory._accepted[surfaceKey]?.keys,
   };
-  final pool =
-      [
-        for (final id in ids)
-          if (memory.entities[id] case final entity?) entity,
-      ]..sort(
-        (a, b) =>
-            memory._entityOrder[a.id]!.compareTo(memory._entityOrder[b.id]!),
-      );
+  final pool = [for (final id in ids) ?memory.entities[id]]
+    ..sort(
+      (a, b) =>
+          memory._entityOrder[a.id]!.compareTo(memory._entityOrder[b.id]!),
+    );
   List<(NoteRef, bool)> match(Iterable<NoteRef> pool) => [
     for (final entity in pool)
       if (_match(entity, mention, keys, surfaceKey, memory) case final exact?)

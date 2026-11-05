@@ -39,8 +39,9 @@ Future<List<HealthFinding>> loadHealthFindings(VaultStorage storage) async {
   final report = jsonDecode(await storage.readText(reports.last)) as Map;
   final findings = <HealthFinding>[];
   for (final issue in report['issues'] as List) {
-    if (issue is! Map || issue['path'] is! String || issue['code'] is! String)
+    if (issue is! Map || issue['path'] is! String || issue['code'] is! String) {
       continue;
+    }
     final path = issue['path'] as String;
     final parts = path.split('/');
     if (parts.length < 2 ||
@@ -59,8 +60,9 @@ Future<List<HealthFinding>> loadHealthFindings(VaultStorage storage) async {
           'screenshots',
           'ext',
         }.contains(parts.first) ||
-        !path.endsWith('.typ'))
+        !path.endsWith('.typ')) {
       continue;
+    }
     findings.add(HealthFinding(path, issue['code'] as String));
   }
   return findings;
@@ -105,10 +107,12 @@ Future<List<OcrReviewRow>> loadOcrReviewRows(
       try {
         final manifest =
             jsonDecode(await storage.readText('$root/manifest.json')) as Map;
-        if (manifest['template_id'] is String)
+        if (manifest['template_id'] is String) {
           template = manifest['template_id'] as String;
-        if (manifest['created'] is String)
+        }
+        if (manifest['created'] is String) {
           created = manifest['created'] as String;
+        }
       } catch (_) {}
       final text = await storage.readText('$root/rows.jsonl');
       for (final line in const LineSplitter().convert(text)) {
@@ -119,8 +123,9 @@ Future<List<OcrReviewRow>> loadOcrReviewRows(
           if (row['review'] != true ||
               hash is! String ||
               hash.isEmpty ||
-              fields is! Map)
+              fields is! Map) {
             continue;
+          }
           final id = 'ocr:$mount:$hash';
           if (decided.contains(id)) continue;
           result.add(
@@ -197,8 +202,9 @@ class ActionableSidecarSummary {
         var created = '';
         try {
           final data = jsonDecode(manifestText) as Map;
-          if (data['template_id'] is String)
+          if (data['template_id'] is String) {
             template = data['template_id'] as String;
+          }
           if (data['created'] is String) created = data['created'] as String;
         } catch (_) {}
         final file = await storage.stat('$root/rows.jsonl');
@@ -241,8 +247,9 @@ class ActionableSidecarSummary {
     if (cacheable &&
         old != null &&
         old.size == file.size &&
-        old.modified == file.modified)
+        old.modified == file.modified) {
       return old;
+    }
     final text = await _readTextBounded(storage, file.path);
     final parsed = parse == null
         ? (file.path.endsWith('.json') ? _parseAudio(text) : empty())
@@ -306,8 +313,11 @@ List<AudioProposal> _parseAudio(String text) {
   try {
     final data = jsonDecode(text) as Map;
     final note = data['note'];
-    if (note is! String || !note.startsWith('notes/') || !note.endsWith('.typ'))
+    if (note is! String ||
+        !note.startsWith('notes/') ||
+        !note.endsWith('.typ')) {
       return [];
+    }
     return [
       for (final item in data['items'] as List)
         if (item is Map &&
@@ -349,8 +359,9 @@ List<OcrReviewRow> _parseOcr(
       if (row['review'] != true ||
           hash is! String ||
           hash.isEmpty ||
-          fields is! Map)
+          fields is! Map) {
         continue;
+      }
       rows.add(
         OcrReviewRow(
           'ocr:$mount:$hash',
@@ -396,15 +407,17 @@ Future<List<AudioProposal>> loadAudioProposals(
         final note = data['note'];
         if (note is! String ||
             !note.startsWith('notes/') ||
-            !note.endsWith('.typ'))
+            !note.endsWith('.typ')) {
           continue;
+        }
         for (final item in data['items'] as List) {
           if (item is! Map ||
               item['id'] is! String ||
               item['text'] is! String ||
               (item['text'] as String).trim().isEmpty ||
-              decided.contains(item['id']))
+              decided.contains(item['id'])) {
             continue;
+          }
           final date = item['date'];
           result.add(
             AudioProposal(

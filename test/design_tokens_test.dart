@@ -165,7 +165,9 @@ void main() {
     },
   );
 
-  testWidgets('app component themes are set in light and dark modes', (tester) async {
+  testWidgets('app component themes are set in light and dark modes', (
+    tester,
+  ) async {
     for (final brightness in Brightness.values) {
       late ThemeData theme;
       await tester.pumpWidget(
@@ -196,11 +198,17 @@ void main() {
       expect(theme.snackBarTheme.behavior, SnackBarBehavior.floating);
       // Regression: a global outline border boxed the borderless editor field.
       expect(theme.inputDecorationTheme.border, InputBorder.none);
-      expect(theme.listTileTheme.contentPadding,
-          const EdgeInsets.symmetric(horizontal: kSpace16));
+      expect(
+        theme.listTileTheme.contentPadding,
+        const EdgeInsets.symmetric(horizontal: kSpace16),
+      );
       expect(theme.dividerTheme.space, kSpace16);
-      expect(theme.hintColor, brightness == Brightness.light
-          ? kLightHint : theme.colorScheme.onSurfaceVariant);
+      expect(
+        theme.hintColor,
+        brightness == Brightness.light
+            ? kLightHint
+            : theme.colorScheme.onSurfaceVariant,
+      );
     }
   });
 

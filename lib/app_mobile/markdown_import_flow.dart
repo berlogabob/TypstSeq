@@ -356,7 +356,9 @@ extension _MarkdownImportFlow on _HomeScreenState {
     }
     await workspace.waitForMutationRefresh();
     if (!mounted) return;
-    if (ScaffoldMessenger.maybeOf(context) != null) showSnack(context, 'Relinked ${articles.length} articles');
+    if (ScaffoldMessenger.maybeOf(context) != null) {
+      showSnack(context, 'Relinked ${articles.length} articles');
+    }
   }
 
   Future<_MarkdownDuplicateDecision> _resolveMarkdownDuplicate({
@@ -427,7 +429,9 @@ extension _MarkdownImportFlow on _HomeScreenState {
                   maxLines: null,
                   minLines: null,
                   textAlignVertical: TextAlignVertical.top,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(fontFamily: 'monospace'),
                   decoration: const InputDecoration(
                     border: OutlineInputBorder(),
                     labelText: 'Manual merged Typst source',
@@ -499,7 +503,9 @@ extension _MarkdownImportFlow on _HomeScreenState {
             padding: const EdgeInsets.all(kSpace8),
             child: SelectableText(
               source,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(fontFamily: 'monospace'),
+              style: Theme.of(
+                context,
+              ).textTheme.labelSmall?.copyWith(fontFamily: 'monospace'),
             ),
           ),
         ),

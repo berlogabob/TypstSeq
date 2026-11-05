@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-
 import 'vault_storage.dart';
 
 /// Single-owner gate for a sync+reindex pass over one vault.
