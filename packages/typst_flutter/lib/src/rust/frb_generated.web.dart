@@ -8,6 +8,7 @@
 
 import 'api/embedding.dart';
 import 'api/markdown_import.dart';
+import 'api/p2p_harness.dart';
 import 'api/typst.dart';
 import 'api/vault_import.dart';
 import 'dart:async';
@@ -168,6 +169,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   RenderResult dco_decode_render_result(dynamic raw);
 
   @protected
+  ScratchTransfer dco_decode_scratch_transfer(dynamic raw);
+
+  @protected
   TypstCompileError dco_decode_typst_compile_error(dynamic raw);
 
   @protected
@@ -181,6 +185,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   int dco_decode_u_32(dynamic raw);
+
+  @protected
+  BigInt dco_decode_u_64(dynamic raw);
 
   @protected
   int dco_decode_u_8(dynamic raw);
@@ -361,6 +368,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   RenderResult sse_decode_render_result(SseDeserializer deserializer);
 
   @protected
+  ScratchTransfer sse_decode_scratch_transfer(SseDeserializer deserializer);
+
+  @protected
   TypstCompileError sse_decode_typst_compile_error(
     SseDeserializer deserializer,
   );
@@ -378,6 +388,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   int sse_decode_u_32(SseDeserializer deserializer);
+
+  @protected
+  BigInt sse_decode_u_64(SseDeserializer deserializer);
 
   @protected
   int sse_decode_u_8(SseDeserializer deserializer);
@@ -598,6 +611,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_render_result(RenderResult self, SseSerializer serializer);
 
   @protected
+  void sse_encode_scratch_transfer(
+    ScratchTransfer self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_typst_compile_error(
     TypstCompileError self,
     SseSerializer serializer,
@@ -620,6 +639,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_u_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_u_64(BigInt self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_8(int self, SseSerializer serializer);

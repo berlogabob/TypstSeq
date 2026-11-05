@@ -5,6 +5,7 @@
 
 import 'api/embedding.dart';
 import 'api/markdown_import.dart';
+import 'api/p2p_harness.dart';
 import 'api/typst.dart';
 import 'api/vault_import.dart';
 import 'dart:async';
@@ -67,7 +68,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => -1854961483;
+  int get rustContentHash => 1651627476;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -159,6 +160,12 @@ abstract class RustLibApi extends BaseApi {
   });
 
   String crateApiTypstGetTypstVersion();
+
+  Future<ScratchTransfer> crateApiP2PHarnessReceiveScratch({
+    required String ticket,
+  });
+
+  Future<String> crateApiP2PHarnessStartScratch({required String text});
 
   RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_CompiledDocument;
@@ -756,6 +763,64 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiTypstGetTypstVersionConstMeta =>
       const TaskConstMeta(debugName: "get_typst_version", argNames: []);
 
+  @override
+  Future<ScratchTransfer> crateApiP2PHarnessReceiveScratch({
+    required String ticket,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(ticket, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 17,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_scratch_transfer,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiP2PHarnessReceiveScratchConstMeta,
+        argValues: [ticket],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiP2PHarnessReceiveScratchConstMeta =>
+      const TaskConstMeta(debugName: "receive_scratch", argNames: ["ticket"]);
+
+  @override
+  Future<String> crateApiP2PHarnessStartScratch({required String text}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(text, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 18,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiP2PHarnessStartScratchConstMeta,
+        argValues: [text],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiP2PHarnessStartScratchConstMeta =>
+      const TaskConstMeta(debugName: "start_scratch", argNames: ["text"]);
+
   RustArcIncrementStrongCountFnType
   get rust_arc_increment_strong_count_CompiledDocument => wire
       .rust_arc_increment_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerCompiledDocument;
@@ -1071,6 +1136,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  ScratchTransfer dco_decode_scratch_transfer(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return ScratchTransfer(
+      text: dco_decode_String(arr[0]),
+      bytes: dco_decode_u_64(arr[1]),
+      elapsedMs: dco_decode_u_64(arr[2]),
+    );
+  }
+
+  @protected
   TypstCompileError dco_decode_typst_compile_error(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -1118,6 +1196,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   int dco_decode_u_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as int;
+  }
+
+  @protected
+  BigInt dco_decode_u_64(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dcoDecodeU64(raw);
   }
 
   @protected
@@ -1582,6 +1666,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  ScratchTransfer sse_decode_scratch_transfer(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_text = sse_decode_String(deserializer);
+    var var_bytes = sse_decode_u_64(deserializer);
+    var var_elapsedMs = sse_decode_u_64(deserializer);
+    return ScratchTransfer(
+      text: var_text,
+      bytes: var_bytes,
+      elapsedMs: var_elapsedMs,
+    );
+  }
+
+  @protected
   TypstCompileError sse_decode_typst_compile_error(
     SseDeserializer deserializer,
   ) {
@@ -1632,6 +1729,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   int sse_decode_u_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getUint32();
+  }
+
+  @protected
+  BigInt sse_decode_u_64(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getBigUint64();
   }
 
   @protected
@@ -2098,6 +2201,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_scratch_transfer(
+    ScratchTransfer self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.text, serializer);
+    sse_encode_u_64(self.bytes, serializer);
+    sse_encode_u_64(self.elapsedMs, serializer);
+  }
+
+  @protected
   void sse_encode_typst_compile_error(
     TypstCompileError self,
     SseSerializer serializer,
@@ -2142,6 +2256,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_u_32(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putUint32(self);
+  }
+
+  @protected
+  void sse_encode_u_64(BigInt self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putBigUint64(self);
   }
 
   @protected

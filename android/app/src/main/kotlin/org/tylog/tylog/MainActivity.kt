@@ -26,6 +26,8 @@ class MainActivity : FlutterActivity() {
         const val RECORD_ACTION = "org.tylog.tylog.RECORD"
     }
 
+    private external fun initP2p(context: android.content.Context): Boolean
+
     private lateinit var safBridge: SafBridge
     private lateinit var shareChannel: MethodChannel
     private val pendingShares = java.util.ArrayDeque<Map<String, String>>()
@@ -113,6 +115,13 @@ class MainActivity : FlutterActivity() {
         shareChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "org.tylog.tylog/share")
         shareChannel.setMethodCallHandler { call, result ->
             if (call.method == "getPendingShare") result.success(pendingShares.poll())
+            else if (call.method == "isProfileTest") {
+                if (packageName != "org.tylog.tylog.profiletest") result.success(false)
+                else try {
+                    System.loadLibrary("typst_flutter")
+                    result.success(initP2p(applicationContext))
+                } catch (e: UnsatisfiedLinkError) { result.success(false) }
+            }
             else result.notImplemented()
         }
         receiveShare(intent)
