@@ -79,6 +79,55 @@ void main() {
       expect(await storage.exists('notes/c.typ'), isTrue);
     },
   );
+  test('merges a cross-folder body containing a web URL', () async {
+    final root = await Directory.systemTemp.createTemp('merge-url-');
+    final storage = LocalVaultStorage(root);
+    final vault = Vault.withStorage(storage);
+    await vault.ensureCreated();
+    final workspace = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      reconcileTasks: (_) async {},
+    )..vault = vault;
+    addTearDown(() async {
+      workspace.dispose();
+      await root.delete(recursive: true);
+    });
+    await storage.createDirectory('notes/other');
+    await storage.writeText(
+      'notes/a.typ',
+      replaceNoteHeader(
+        'Keep.\n',
+        const NoteMetadataDraft(id: 'a', title: 'A'),
+      ),
+    );
+    await storage.writeText(
+      'notes/other/b.typ',
+      replaceNoteHeader(
+        'See https://example.com/path.\n',
+        const NoteMetadataDraft(id: 'b', title: 'B'),
+      ),
+    );
+    workspace.index = await scanVaultStorage(storage);
+    final preview = await workspace.previewDuplicateMerge(
+      'notes/a.typ',
+      'notes/other/b.typ',
+    );
+    await workspace.mergeDuplicate(preview);
+    expect(
+      await storage.readText('notes/a.typ'),
+      contains('See https://example.com/path.'),
+    );
+    expect(await storage.exists('notes/other/b.typ'), isFalse);
+    expect(await loadDecisions(storage), hasLength(1));
+    final compile = Process.runSync('typst', [
+      'compile',
+      '--root',
+      root.path,
+      '${root.path}/notes/a.typ',
+      '${root.path}/out.pdf',
+    ]);
+    expect(compile.exitCode, 0, reason: '${compile.stderr}');
+  });
   test('merges headings and lists from another folder', () async {
     final root = await Directory.systemTemp.createTemp('merge-list-');
     final storage = LocalVaultStorage(root);
