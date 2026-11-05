@@ -106,3 +106,61 @@ Future<Directory> restoreScratchSnapshot(
   }
   return destination;
 }
+
+/// Transfer changed files against the deterministic synthetic baseline only.
+String createScratchDelta(String baseline, String changed) {
+  final original = jsonDecode(baseline) as Map<String, dynamic>;
+  final updated = jsonDecode(changed) as Map<String, dynamic>;
+  final before = {for (final f in original['files'] as List) f['path']: f};
+  final after = updated['files'] as List;
+  if (before.length != after.length ||
+      after.any((f) => !before.containsKey(f['path']))) {
+    throw const FormatException('Scratch baseline paths changed');
+  }
+  return jsonEncode({
+    'version': 1,
+    'baselineSha256': sha256.convert(utf8.encode(baseline)).toString(),
+    'files': [
+      for (final f in after)
+        if (f['sha256'] != before[f['path']]['sha256']) f,
+    ],
+  });
+}
+
+Future<String> createChangedScratchDelta(Directory root) async {
+  final baseline = await createRepresentativeScratchSnapshot(root);
+  final changed = jsonDecode(baseline) as Map<String, dynamic>;
+  final first = (changed['files'] as List).first as Map<String, dynamic>;
+  final bytes = utf8.encode('= Changed synthetic scratch note\n');
+  first['data'] = base64Encode(bytes);
+  first['sha256'] = sha256.convert(bytes).toString();
+  return createScratchDelta(baseline, jsonEncode(changed));
+}
+
+Future<Directory> restoreScratchDelta(String delta, Directory root) async {
+  final baseline = await createRepresentativeScratchSnapshot(root);
+  final decoded = jsonDecode(delta);
+  if (decoded is! Map ||
+      decoded['version'] != 1 ||
+      decoded['files'] is! List ||
+      decoded['baselineSha256'] !=
+          sha256.convert(utf8.encode(baseline)).toString()) {
+    throw const FormatException('Invalid scratch delta or baseline');
+  }
+  final snapshot = jsonDecode(baseline) as Map<String, dynamic>;
+  final files = snapshot['files'] as List;
+  final positions = <String, int>{
+    for (var i = 0; i < files.length; i++) files[i]['path'] as String: i,
+  };
+  final seen = <String>{};
+  for (final file in decoded['files'] as List) {
+    if (file is! Map ||
+        file['path'] is! String ||
+        !positions.containsKey(file['path']) ||
+        !seen.add(file['path'] as String)) {
+      throw const FormatException('Invalid changed file');
+    }
+    files[positions[file['path']]!] = file;
+  }
+  return restoreScratchSnapshot(jsonEncode(snapshot), root);
+}

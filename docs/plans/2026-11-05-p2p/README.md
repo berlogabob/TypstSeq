@@ -136,3 +136,18 @@ Use the isolated native harness builds and restore the normal build setup as
 above. The coordinator forwards scratch tickets over the local network; run it
 only on a trusted network. The test compares the complete received snapshot and
 restores it under a temporary directory, which it deletes afterward.
+
+## P2P5-rest-rest changed synthetic blob slice (2026-11-05)
+The developer harness can create a ticket for one modified synthetic note.
+Only changed file data is sent against the deterministic generated 200-note
+baseline; the receiver regenerates that baseline, checks its SHA-256, validates
+each resulting file hash, and restores the complete result in a fresh app-owned
+directory. Use **Create changed scratch ticket** and **Receive changed scratch
+folder** on the two peers. The baseline must match exactly. The experiment does
+not support adding or deleting paths, actual user folders, retry or resume. It
+is not a synchronization or reconciliation protocol, and retains the native
+1 MiB message limit. Tests exercise reconstruction and baseline mismatch; no
+new cross-device throughput, CPU, route or battery-consumption measurements
+were made for this slice. On the A24, battery service reported AC power and
+100% at inspection; this is not an unplugged measurement. The P2P3 no-go
+remains until the outstanding gates in P2P5-rest-rest-rest are met.

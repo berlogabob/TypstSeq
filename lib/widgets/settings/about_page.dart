@@ -47,6 +47,17 @@ class _AboutPageState extends State<AboutPage> {
               await getTemporaryDirectory(),
             ),
           ),
+          startDelta: () async => p2p.startP2pScratch(
+            await createChangedScratchDelta(await getTemporaryDirectory()),
+          ),
+          receiveDelta: (ticket) async {
+            final transfer = await p2p.receiveP2pScratch(ticket);
+            final directory = await restoreScratchDelta(
+              transfer.text,
+              await getApplicationSupportDirectory(),
+            );
+            return 'Restored changed synthetic folder to ${directory.path}\n${transfer.bytes} bytes in ${transfer.elapsedMs} ms';
+          },
           receiveSnapshot: (ticket) async {
             final transfer = await p2p.receiveP2pScratch(ticket);
             final root = await getApplicationSupportDirectory();

@@ -8,7 +8,11 @@ class P2pScratchPage extends StatefulWidget {
     required this.receive,
     this.startSnapshot,
     this.receiveSnapshot,
+    this.startDelta,
+    this.receiveDelta,
   });
+  final Future<String> Function()? startDelta;
+  final Future<String> Function(String)? receiveDelta;
   final Future<String> Function()? startSnapshot;
   final Future<String> Function(String)? receiveSnapshot;
   final Future<String> Function(String) start;
@@ -69,6 +73,11 @@ class _P2pScratchPageState extends State<P2pScratchPage> {
             onPressed: busy ? null : () => run(widget.startSnapshot!),
             child: const Text('Create synthetic folder ticket'),
           ),
+        if (widget.startDelta != null)
+          ElevatedButton(
+            onPressed: busy ? null : () => run(widget.startDelta!),
+            child: const Text('Create changed scratch ticket'),
+          ),
         TextField(
           key: const ValueKey('scratch-ticket'),
           controller: ticket,
@@ -85,6 +94,13 @@ class _P2pScratchPageState extends State<P2pScratchPage> {
                 ? null
                 : () => run(() => widget.receiveSnapshot!(ticket.text)),
             child: const Text('Receive synthetic folder'),
+          ),
+        if (widget.receiveDelta != null)
+          ElevatedButton(
+            onPressed: busy
+                ? null
+                : () => run(() => widget.receiveDelta!(ticket.text)),
+            child: const Text('Receive changed scratch folder'),
           ),
         if (busy) const CircularProgressIndicator(),
         if (result.isNotEmpty) SelectableText(result),

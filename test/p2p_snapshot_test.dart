@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:crypto/crypto.dart';
 import 'package:tylog/widgets/settings/p2p_snapshot.dart';
 
 void main() {
@@ -35,6 +36,33 @@ void main() {
     expect(
       await File('${restored.path}/assets/payload.bin').length(),
       128 * 1024,
+    );
+  });
+
+  test('changed scratch blobs restore a complete fresh snapshot', () async {
+    final root = await Directory.systemTemp.createTemp('p2p-delta-');
+    addTearDown(() => root.delete(recursive: true));
+    final baseline = await createRepresentativeScratchSnapshot(root);
+    final changed = jsonDecode(baseline) as Map<String, dynamic>;
+    final files = changed['files'] as List<dynamic>;
+    final first = files.first as Map<String, dynamic>;
+    final replacement = utf8.encode('Changed synthetic note');
+    first['data'] = base64Encode(replacement);
+    first['sha256'] = sha256.convert(replacement).toString();
+    final delta = createScratchDelta(baseline, jsonEncode(changed));
+    expect((jsonDecode(delta)['files'] as List).length, 1);
+    expect(utf8.encode(delta).length, lessThan(utf8.encode(baseline).length));
+    final restored = await restoreScratchDelta(delta, root);
+    expect(
+      await File('${restored.path}/${first['path']}').readAsBytes(),
+      replacement,
+    );
+    expect(await Directory('${restored.path}/notes').list().length, 200);
+    final bad = jsonDecode(delta) as Map<String, dynamic>;
+    bad['baselineSha256'] = 'wrong';
+    expect(
+      () => restoreScratchDelta(jsonEncode(bad), root),
+      throwsFormatException,
     );
   });
 
