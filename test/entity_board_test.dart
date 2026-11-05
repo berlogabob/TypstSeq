@@ -841,6 +841,32 @@ void main() {
     expect(client.state, 'open');
     expect(source, contains('"tylog-issue-status": "todo"'));
     expect(source, contains('unsaved edit'));
+
+    client.failIssueAfterMove = true;
+    await move('doing');
+    for (var i = 0; i < 30 && !source.contains('"doing"'); i++) {
+      await io();
+    }
+    expect(source, contains('"tylog-issue-status": "doing"'));
+    expect(source, contains('unsaved edit'));
+    final recovered = await tester.runAsync(
+      () => vault.storage.readText('_system/decisions/github.jsonl'),
+    );
+    expect(recovered, contains('could not be verified individually'));
+
+    client.failIssueAfterMove = false;
+    client.issueUnavailable = false;
+    client.failAfterReopen = true;
+    client.failIssueOnFailedMove = true;
+    await move('done');
+    for (var i = 0; i < 30 && !source.contains('"todo"'); i++) {
+      await io();
+    }
+    expect(source, contains('"tylog-issue-status": "todo"'));
+    final failed = await tester.runAsync(
+      () => vault.storage.readText('_system/decisions/github.jsonl'),
+    );
+    expect(failed, contains('move to done failed'));
   });
 
   testWidgets('sends and syncs linked issues using a fake client', (
@@ -975,12 +1001,21 @@ class _FakeGitHub extends GitHubClient {
           if (remoteStatus == 'doing') {'name': 'doing'},
         ],
       },
+      {
+        'number': 123,
+        'title': 'Linked issue',
+        'state': state,
+        'labels': [
+          if (linkedDoing) {'name': 'doing'},
+        ],
+      },
     ];
   }
 
   String state = 'open';
   bool linkedDoing = false;
   bool failAfterReopen = false;
+  bool failIssueOnFailedMove = false;
   int? closed;
   List<String>? labels;
   @override
@@ -999,6 +1034,7 @@ class _FakeGitHub extends GitHubClient {
         state = 'open';
         linkedDoing = false;
       }
+      issueUnavailable = failIssueOnFailedMove;
       throw StateError('label update failed');
     }
     if (number == 42) {
@@ -1008,6 +1044,7 @@ class _FakeGitHub extends GitHubClient {
     } else {
       state = column == 'done' ? 'closed' : 'open';
       linkedDoing = column == 'doing';
+      issueUnavailable = failIssueAfterMove;
     }
     return {};
   }
@@ -1029,8 +1066,7 @@ class _FakeGitHub extends GitHubClient {
 
   @override
   Future<Map<String, dynamic>> issue(String repo, int number) async {
-    if (!failIssueAfterMove) issueUnavailable = false;
-    if (number == 42 && issueUnavailable) throw StateError('issue unavailable');
+    if (issueUnavailable) throw StateError('issue unavailable');
     return number == 42
         ? {
             'state': remoteStatus == 'done' ? 'closed' : 'open',
