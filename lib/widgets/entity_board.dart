@@ -212,10 +212,20 @@ class _EntityBoardState extends State<EntityBoard> {
             try {
               actual = await client.issue(repository, issue.githubNumber!);
             } catch (_) {
-              final rows = await client.repositoryIssues(repository);
-              actual = rows.firstWhere(
-                (row) => row['number'] == issue.githubNumber,
-              );
+              try {
+                final rows = await client.repositoryIssues(repository);
+                actual = rows.firstWhere(
+                  (row) => row['number'] == issue.githubNumber,
+                );
+              } catch (_) {
+                await _recordUnknownMove(
+                  repository,
+                  issue.githubNumber!,
+                  column,
+                  error,
+                );
+                return;
+              }
             }
             target = _remoteColumn(actual);
             await _recordConflict(
@@ -228,9 +238,7 @@ class _EntityBoardState extends State<EntityBoard> {
             );
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('GitHub move refreshed: $error'),
-                ),
+                SnackBar(content: Text('GitHub move refreshed: $error')),
               );
             }
           }
@@ -415,10 +423,15 @@ class _EntityBoardState extends State<EntityBoard> {
           try {
             actual = await client.issue(repository, number);
           } catch (_) {
-            final rows = await client.repositoryIssues(repository);
-            actual = rows.firstWhere((row) => row['number'] == number);
-            if (mounted && repo == repository) {
-              setState(() => remoteIssues = rows);
+            try {
+              final rows = await client.repositoryIssues(repository);
+              actual = rows.firstWhere((row) => row['number'] == number);
+              if (mounted && repo == repository) {
+                setState(() => remoteIssues = rows);
+              }
+            } catch (_) {
+              await _recordUnknownMove(repository, number, column, error);
+              return;
             }
           }
           await _recordConflict(
@@ -449,6 +462,27 @@ class _EntityBoardState extends State<EntityBoard> {
     }
   }
 
+  Future<void> _recordUnknownMove(
+    String repository,
+    int number,
+    String column,
+    Object error,
+  ) async {
+    await _recordConflict(
+      repository,
+      number,
+      'unknown',
+      'move to $column could not be reconciled: $error; remote status unknown',
+    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('GitHub status unknown; refresh to reconcile'),
+        ),
+      );
+    }
+  }
+
   Future<void> _recordConflict(
     String repository,
     int number,
@@ -467,7 +501,8 @@ class _EntityBoardState extends State<EntityBoard> {
             source: 'issue',
             action: 'seen',
             target: target,
-            context: 'GitHub conflict: $detail; GitHub won',
+            context:
+                'GitHub conflict: $detail${target == 'unknown' ? '' : '; GitHub won'}',
           ),
         ]),
       ),

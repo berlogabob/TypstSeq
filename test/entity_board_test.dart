@@ -514,6 +514,114 @@ void main() {
     );
   });
 
+  testWidgets('repository card reconciles after both reloads fail', (
+    tester,
+  ) async {
+    final dir = await tester.runAsync(
+      () => Directory.systemTemp.createTemp('remote-recovery'),
+    );
+    if (dir == null) throw StateError('No temp directory');
+    addTearDown(() => deleteTempDir(dir));
+    final vault = Vault(dir);
+    await tester.runAsync(
+      () => writeBoard(
+        vault.storage,
+        Board.fromJson({
+          'id': 'board',
+          'title': 'P',
+          'scopeEntity': 'p',
+          'github_repo': 'owner/repo',
+        }),
+      ),
+    );
+    const entity = NoteRef(
+      id: 'p',
+      path: 'p.typ',
+      title: 'P',
+      outgoingLinks: [],
+    );
+    const index = VaultIndex(
+      notesByPath: {'p.typ': entity},
+      backlinksByTarget: {},
+    );
+    final client = _FakeGitHub()
+      ..failIssueAfterMove = true
+      ..failListAfterMove = true;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EntityBoard(
+          boardId: 'board',
+          entity: entity,
+          vault: vault,
+          index: index,
+          setStatus: (_, _) async {},
+          mutateNote: (_, _) async => false,
+          refreshIndex: () async => index,
+          githubClient: () async => client,
+        ),
+      ),
+    );
+    Future<void> io() async {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 80)),
+      );
+      await tester.pump();
+    }
+
+    for (
+      var i = 0;
+      i < 40 && find.text('Remote issue').evaluate().isEmpty;
+      i++
+    ) {
+      await io();
+    }
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('Remote issue')),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.moveTo(
+      tester.getBottomLeft(find.byKey(const ValueKey('board-column-doing'))) +
+          const Offset(100, -30),
+    );
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+    String? log;
+    for (var i = 0; i < 40; i++) {
+      await io();
+      log = await tester.runAsync(() async {
+        const path = '_system/decisions/github.jsonl';
+        return await vault.storage.exists(path)
+            ? vault.storage.readText(path)
+            : '';
+      });
+      if (log?.contains('remote status unknown') == true) break;
+    }
+    expect(client.remoteStatus, 'doing');
+    expect(log, contains('remote status unknown'));
+    await io();
+    client.issueUnavailable = false;
+    await tester.tap(find.byTooltip('Sync with GitHub'));
+    for (var i = 0; i < 40; i++) {
+      await io();
+      if (find
+          .descendant(
+            of: find.byKey(const ValueKey('board-column-doing')),
+            matching: find.text('Remote issue'),
+          )
+          .evaluate()
+          .isNotEmpty)
+        break;
+    }
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('board-column-doing')),
+        matching: find.text('Remote issue'),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('dragging a card to done writes the task status', (tester) async {
     final dir = await tester.runAsync(
       () => Directory.systemTemp.createTemp('entity-board'),
@@ -867,6 +975,29 @@ void main() {
       () => vault.storage.readText('_system/decisions/github.jsonl'),
     );
     expect(failed, contains('move to done failed'));
+
+    client.issueUnavailable = false;
+    client.failIssueOnFailedMove = false;
+    client.failIssueAfterMove = true;
+    client.failListAfterMove = true;
+    await move('doing');
+    String? unknown;
+    for (var i = 0; i < 30; i++) {
+      await io();
+      unknown = await tester.runAsync(
+        () => vault.storage.readText('_system/decisions/github.jsonl'),
+      );
+      if (unknown?.contains('remote status unknown') == true) break;
+    }
+    expect(unknown, contains('remote status unknown'));
+    await io();
+    expect(source, contains('"tylog-issue-status": "todo"'));
+    client.issueUnavailable = false;
+    await tester.tap(find.byTooltip('Sync with GitHub'));
+    for (var i = 0; i < 30 && !source.contains('"doing"'); i++) {
+      await io();
+    }
+    expect(source, contains('"tylog-issue-status": "doing"'));
   });
 
   testWidgets('sends and syncs linked issues using a fake client', (
@@ -983,6 +1114,7 @@ class _FakeGitHub extends GitHubClient {
   String remoteStatus = 'todo';
   String? moveResult;
   bool failNextList = false;
+  bool failListAfterMove = false;
   bool failIssueAfterMove = false;
   bool issueUnavailable = false;
   @override
@@ -1036,6 +1168,10 @@ class _FakeGitHub extends GitHubClient {
       }
       issueUnavailable = failIssueOnFailedMove;
       throw StateError('label update failed');
+    }
+    if (failListAfterMove) {
+      failNextList = true;
+      failListAfterMove = false;
     }
     if (number == 42) {
       remoteStatus = moveResult ?? column;

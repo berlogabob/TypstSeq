@@ -473,7 +473,8 @@ Issues found:
 - [x] S6-rest-rest-rest-rest-rest-rest-rest Reconcile repository cards after successful moves and preserve the refreshed card if the repository reload fails.
 - [x] S6-rest-rest-rest-rest-rest-rest-rest-rest Recover repository-only issue cards from the repository listing when their individual reload fails after a move.
 - [x] S6-rest-rest-rest-rest-rest-rest-rest-rest-rest Recover linked issue moves using the repository listing when individual issue reload fails, including failed and successfully submitted moves.
-- [ ] S6-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Protect other issue state and doing-label changes between preflight and update; recover moves interrupted before reconciliation and linked or repository-only moves when both reloads fail. GitHub issue updates are not conditional and status and labels use separate requests.
+- [x] S6-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Record an unknown remote status when both reloads fail after a linked or repository-only move, preserve the local card, and reconcile on manual sync.
+- [ ] S6-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Protect other issue state and doing-label changes between preflight and update; recover moves interrupted before reconciliation. GitHub issue updates are not conditional and status and labels use separate requests.
 - [x] S7 OLT rooms tree + equipment stock levels on the whiteboard
 - [x] S8 Pack update check: weekly GitHub release check, "update available" in Extensions
 - [x] S9 Mention chooser: select a ranked candidate or search pages from Incoming and daily review.
