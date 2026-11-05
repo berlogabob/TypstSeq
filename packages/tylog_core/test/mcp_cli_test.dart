@@ -3,8 +3,87 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:test/test.dart';
+import 'package:tylog_core/tylog_core.dart';
 
 void main() {
+  test(
+    'propose_mention queues a daily mention without changing the note',
+    () async {
+      final vault = await Directory.systemTemp.createTemp('tylog_mcp_mention_');
+      addTearDown(() => vault.delete(recursive: true));
+      final settings = File('${vault.path}/.tylog/settings.json');
+      await settings.parent.create(recursive: true);
+      await settings.writeAsString('{"version":5}');
+      final note = File('${vault.path}/daily/2026/11/2026-11-05.typ');
+      await note.parent.create(recursive: true);
+      const source =
+          '#let tylog = (note: (..args) => body => body)\n'
+          '#show: tylog.note.with(id: "2026-11-05", title: "Day", kind: "daily", date: "2026-11-05")\n'
+          'Met Alex today.\n';
+      await note.writeAsString(source);
+      final process = await Process.start(Platform.resolvedExecutable, [
+        'run',
+        'bin/tylog.dart',
+        'mcp',
+        vault.path,
+      ]);
+      final responses = StreamIterator(
+        process.stdout.transform(utf8.decoder).transform(const LineSplitter()),
+      );
+      Future<Map> call(int id, String surface) async {
+        process.stdin.writeln(
+          jsonEncode({
+            'jsonrpc': '2.0',
+            'id': id,
+            'method': 'tools/call',
+            'params': {
+              'name': 'propose_mention',
+              'arguments': {
+                'id': '2026-11-05',
+                'surface': surface,
+                'type': 'person',
+                'line': 3,
+              },
+            },
+          }),
+        );
+        expect(await responses.moveNext(), true);
+        return (jsonDecode(responses.current) as Map)['result'] as Map;
+      }
+
+      expect((await call(1, 'Alex'))['isError'], isNot(true));
+      expect(await note.readAsString(), source);
+      final sidecar = File(
+        '${vault.path}/${enrichMentionsPath('daily/2026/11/2026-11-05.typ')}',
+      );
+      final proposal = EnrichMentions.tryParse(
+        jsonDecode(await sidecar.readAsString()),
+      )!;
+      expect(proposal.contentSha, enrichContentSha(source));
+      expect(proposal.mentions.single.surface, 'Alex');
+      final ledger = File('${vault.path}/_system/decisions/mcp.jsonl');
+      expect(
+        const LineSplitter().convert(await ledger.readAsString()),
+        hasLength(1),
+      );
+      expect((await call(2, 'Missing'))['isError'], true);
+      await note.writeAsString('{"revision":{},"node":{}}');
+      expect((await call(3, 'Alex'))['isError'], true);
+      expect(
+        const LineSplitter().convert(await ledger.readAsString()),
+        hasLength(1),
+      );
+      expect(
+        EnrichMentions.tryParse(
+          jsonDecode(await sidecar.readAsString()),
+        )!.mentions,
+        hasLength(1),
+      );
+      await process.stdin.close();
+      expect(await process.exitCode, 0);
+      await responses.cancel();
+    },
+  );
   test('add_task writes a compilable task and refuses non-notes', () async {
     final vault = await Directory.systemTemp.createTemp('tylog_mcp_task_');
     addTearDown(() => vault.delete(recursive: true));
@@ -418,6 +497,7 @@ void main() {
         'incoming_list',
         'daily_append',
         'add_task',
+        'propose_mention',
       ]),
     );
     expect(rows[2]['result']['content'][0]['text'], contains('Apple'));

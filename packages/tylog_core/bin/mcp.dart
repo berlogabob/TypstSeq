@@ -9,6 +9,23 @@ import 'tylog.dart' show generateHealthReport;
 
 const _tools = [
   {
+    'name': 'propose_mention',
+    'description': 'Queue a mention from a daily note for Incoming review.',
+    'inputSchema': {
+      'type': 'object',
+      'properties': {
+        'id': {'type': 'string', 'minLength': 1},
+        'surface': {'type': 'string', 'minLength': 1},
+        'type': {
+          'type': 'string',
+          'enum': ['person', 'place', 'organization', 'project', 'event'],
+        },
+        'line': {'type': 'integer', 'minimum': 1},
+      },
+      'required': ['id', 'surface', 'type', 'line'],
+    },
+  },
+  {
     'name': 'add_task',
     'description': 'Add a task to an existing note by its unique ID.',
     'inputSchema': {
@@ -168,6 +185,118 @@ Future<Object> _call(Directory root, Object? params) async {
   }
   final name = params['name'];
   final args = params['arguments'] as Map;
+  if (name == 'propose_mention') {
+    final id = args['id'],
+        surface = args['surface'],
+        type = args['type'],
+        line = args['line'];
+    if (id is! String ||
+        id.trim().isEmpty ||
+        surface is! String ||
+        surface.trim().isEmpty ||
+        RegExp(r'[\x00-\x1f\x7f]').hasMatch(surface) ||
+        ![
+          'person',
+          'place',
+          'organization',
+          'project',
+          'event',
+        ].contains(type) ||
+        line is! int ||
+        line < 1) {
+      return reply('Invalid arguments', error: true);
+    }
+    try {
+      final storage = LocalVaultStorage(root);
+      final index = await scanVaultStorage(ReadOnlyVaultStorage(storage));
+      final matches = index.notes.where((note) => note.id == id).toList();
+      if (matches.length != 1) {
+        throw const FormatException('Note not found or ID is ambiguous');
+      }
+      final note = matches.single;
+      if (!note.path.startsWith('daily/') || note.kind != 'daily') {
+        throw const FormatException('Target is not a daily note');
+      }
+      final sidecar = enrichMentionsPath(note.path);
+      for (final path in [note.path, sidecar, '_system/decisions/mcp.jsonl']) {
+        final parts = path.split('/');
+        for (var i = 1; i <= parts.length; i++) {
+          final actual = await FileSystemEntity.type(
+            '${root.path}/${parts.take(i).join('/')}',
+            followLinks: false,
+          );
+          final expected = i == parts.length
+              ? FileSystemEntityType.file
+              : FileSystemEntityType.directory;
+          if (actual != expected &&
+              (path == note.path || actual != FileSystemEntityType.notFound)) {
+            throw const FileSystemException('Unsafe path');
+          }
+        }
+      }
+      final source = await storage.readText(note.path);
+      guardNoteWrite(note.path, utf8.encode(source));
+      if (!RegExp(
+            r'^\s*#show\s*:\s*tylog\.note\.with\s*\([\s\S]*?\)',
+            multiLine: true,
+          ).hasMatch(source) ||
+          scanNote(note.path, source).id != id ||
+          scanNote(note.path, source).kind != 'daily') {
+        throw const FormatException('Target is not a note');
+      }
+      final lines = source.split('\n');
+      if (line > lines.length || !lines[line - 1].contains(surface)) {
+        throw const FormatException('Mention is not on the specified line');
+      }
+      final sha = enrichContentSha(source);
+      Map<String, dynamic> data;
+      if (await storage.exists(sidecar)) {
+        final decoded = jsonDecode(await storage.readText(sidecar));
+        final parsed = EnrichMentions.tryParse(decoded);
+        if (parsed == null ||
+            parsed.note != note.path ||
+            parsed.contentSha != sha ||
+            decoded['mentions'] is! List) {
+          throw const FormatException(
+            'Existing suggestions are invalid or stale',
+          );
+        }
+        data = Map<String, dynamic>.from(decoded);
+      } else {
+        data = {
+          'schema': 1,
+          'note': note.path,
+          'content_sha': sha,
+          'mentions': <Object>[],
+        };
+      }
+      (data['mentions'] as List).add({
+        'surface': surface,
+        'type': type,
+        'line': line,
+      });
+      await storage.writeText(sidecar, '${jsonEncode(data)}\n');
+      await storage.appendBytes(
+        '_system/decisions/mcp.jsonl',
+        utf8.encode(
+          encodeDecisions([
+            Decision(
+              at: DateTime.now().toUtc().toIso8601String(),
+              device: 'mcp',
+              item: note.path,
+              source: 'mcp',
+              action: 'sent',
+              target: sidecar,
+              context: surface,
+            ),
+          ]),
+        ),
+      );
+      return reply(jsonEncode({'path': note.path, 'proposal': sidecar}));
+    } catch (error) {
+      return reply('Unable to propose mention: $error', error: true);
+    }
+  }
   if (name == 'add_task') {
     final id = args['id'];
     final text = args['text'];
