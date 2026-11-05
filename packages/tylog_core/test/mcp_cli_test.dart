@@ -5,6 +5,58 @@ import 'dart:io';
 import 'package:test/test.dart';
 
 void main() {
+  test('incoming_list returns new-attention notes without writing', () async {
+    final vault = await Directory.systemTemp.createTemp('tylog_mcp_incoming_');
+    addTearDown(() => vault.delete(recursive: true));
+    final settings = File('${vault.path}/.tylog/settings.json');
+    await settings.parent.create(recursive: true);
+    await settings.writeAsString('{"version":5}');
+    final notes = Directory('${vault.path}/notes');
+    await notes.create();
+    final fresh = File('${notes.path}/a.typ');
+    const source =
+        '#show: tylog.note.with(id: "a", title: "Idea", kind: "idea", date: "2026-11-05")\n';
+    await fresh.writeAsString(source);
+    await File('${notes.path}/b.typ').writeAsString(
+      '#show: tylog.note.with(id: "b", title: "Kept", kind: "idea", properties: (attention: "kept"))\n',
+    );
+    await File(
+      '${notes.path}/c.typ',
+    ).writeAsString('#show: tylog.note.with(id: "c", title: "Ordinary")\n');
+    final process = await Process.start(Platform.resolvedExecutable, [
+      'run',
+      'bin/tylog.dart',
+      'mcp',
+      vault.path,
+    ]);
+    process.stdin.writeln(
+      jsonEncode({
+        'jsonrpc': '2.0',
+        'id': 1,
+        'method': 'tools/call',
+        'params': {'name': 'incoming_list', 'arguments': <String, Object>{}},
+      }),
+    );
+    await process.stdin.close();
+    final rows = await process.stdout
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .toList();
+    expect(await process.exitCode, 0);
+    final result = (jsonDecode(rows.single) as Map)['result'];
+    expect(result['isError'], isNot(true));
+    expect(jsonDecode(result['content'][0]['text'] as String), [
+      {
+        'id': 'a',
+        'title': 'Idea',
+        'path': 'notes/a.typ',
+        'kind': 'idea',
+        'date': '2026-11-05',
+      },
+    ]);
+    expect(await fresh.readAsString(), source);
+    expect(await Directory('${vault.path}/_system').exists(), false);
+  });
   test(
     'health_report returns the latest saved report without writing',
     () async {
@@ -218,6 +270,7 @@ void main() {
         'backlinks',
         'list_tasks',
         'health_report',
+        'incoming_list',
       ]),
     );
     expect(rows[2]['result']['content'][0]['text'], contains('Apple'));

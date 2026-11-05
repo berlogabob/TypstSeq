@@ -7,6 +7,11 @@ import 'tylog.dart' show generateHealthReport;
 
 const _tools = [
   {
+    'name': 'incoming_list',
+    'description': 'List vault notes with new attention.',
+    'inputSchema': {'type': 'object', 'properties': {}},
+  },
+  {
     'name': 'health_report',
     'description':
         'Read the latest saved health report or generate a fresh one.',
@@ -210,7 +215,7 @@ Future<Object> _call(Directory root, Object? params) async {
     }
   }
   final value = args[name == 'search' ? 'query' : 'id'];
-  if (name == 'list_tasks' || name == 'backlinks') {
+  if (name == 'list_tasks' || name == 'backlinks' || name == 'incoming_list') {
     if (name == 'backlinks' && (value is! String || value.trim().isEmpty)) {
       return reply('Invalid arguments', error: true);
     }
@@ -218,6 +223,23 @@ Future<Object> _call(Directory root, Object? params) async {
       final index = await scanVaultStorage(
         ReadOnlyVaultStorage(LocalVaultStorage(root)),
       );
+      if (name == 'incoming_list') {
+        final notes =
+            index.notes.where((note) => attentionOf(note) == 'new').toList()
+              ..sort((a, b) => a.path.compareTo(b.path));
+        return reply(
+          jsonEncode([
+            for (final note in notes)
+              {
+                'id': note.id,
+                'title': note.title,
+                'path': note.path,
+                'kind': note.kind,
+                'date': note.date,
+              },
+          ]),
+        );
+      }
       if (name == 'list_tasks') {
         return reply(
           jsonEncode([for (final task in index.tasks) task.toJson()]),
