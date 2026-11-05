@@ -7,6 +7,7 @@ import 'package:tylog_core/search_index.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_registry.dart';
 import 'package:tylog/vault_worker.dart';
+import 'support/temp_dir.dart';
 
 /// The worker's only automated coverage that CI actually runs.
 ///
@@ -23,7 +24,7 @@ import 'package:tylog/vault_worker.dart';
 void main() {
   Future<({Directory root, VaultEntry entry})> seed(int notes) async {
     final root = await Directory.systemTemp.createTemp('tylog_worker_unit_');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final vault = Vault(root);
     await vault.ensureCreated();
     for (var i = 0; i < notes; i++) {
@@ -45,7 +46,7 @@ void main() {
   test('worker indexes and removes mounted notes', () async {
     final seeded = await seed(0);
     final folder = await Directory.systemTemp.createTemp('worker_mount_');
-    addTearDown(() => folder.delete(recursive: true));
+    addTearDown(() => deleteTempDir(folder));
     await File('${folder.path}/external.typ').writeAsString('= Mounted note');
     final worker = await VaultWorkerClient.spawn(entry: seeded.entry);
     addTearDown(worker.dispose);
@@ -317,7 +318,7 @@ void main() {
     final root = await Directory.systemTemp.createTemp(
       'tylog_worker_cyrillic_',
     );
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final vault = Vault(root);
     await vault.ensureCreated();
     await vault.saveNote(

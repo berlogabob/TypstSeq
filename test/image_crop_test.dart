@@ -11,6 +11,7 @@ import 'package:tylog/image_crop.dart';
 import 'package:tylog/rich_editor.dart';
 import 'package:tylog/tylog_assets.dart';
 import 'package:tylog_core/storage.dart';
+import 'support/temp_dir.dart';
 
 Future<Uint8List> _png({int width = 120, int height = 60}) async {
   final recorder = ui.PictureRecorder();
@@ -360,7 +361,7 @@ void main() {
     'cropped PNG asset is reused and rewritten source compiles with real Typst',
     () async {
       final dir = await Directory.systemTemp.createTemp('tylog_crop_');
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       final storage = LocalVaultStorage(dir);
       final assets = await TylogAssets.load();
       for (final entry in assets.managedVaultFiles.entries) {
@@ -407,7 +408,7 @@ void main() {
     'crop chain saves beside original and rejects a content-prefix collision',
     () async {
       final dir = await Directory.systemTemp.createTemp('tylog_crop_chain_');
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       final storage = LocalVaultStorage(dir);
       final original = await _png();
       await storage.writeBytes('assets/nested/x.png', original);

@@ -7,11 +7,12 @@ import 'package:tylog/scanner.dart';
 import 'package:tylog/retrieval/hybrid_search.dart';
 import 'package:tylog/vault_storage.dart';
 import 'package:tylog_core/search_index.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   test('real copied vault screenshot keyword paths', () async {
     final root = await Directory.systemTemp.createTemp('tylog_ocr_search_');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final storage = LocalVaultStorage(root);
     final sample = Platform.environment['TYLOG_SEARCH_SAMPLE'];
     if (sample != null) {
@@ -66,7 +67,7 @@ void main() {
     final sample = Platform.environment['TYLOG_SEARCH_SAMPLE'];
     if (sample == null) return;
     final root = await Directory.systemTemp.createTemp('tylog_search_repro_');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final storage = LocalVaultStorage(root);
     for (final file
         in Directory(sample)

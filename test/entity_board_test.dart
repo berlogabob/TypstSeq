@@ -7,6 +7,7 @@ import 'package:tylog/vault.dart';
 import 'package:tylog/github/github_client.dart';
 import 'package:tylog/widgets/entity_board.dart';
 import 'package:tylog/widgets/unified_board.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   testWidgets('large columns build cards lazily and scroll to the end', (
@@ -16,7 +17,7 @@ void main() {
       () => Directory.systemTemp.createTemp('large-board'),
     );
     if (dir == null) throw StateError('No temp directory');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     const entity = NoteRef(
       id: 'p',
       path: 'p.typ',
@@ -68,7 +69,7 @@ void main() {
       () => Directory.systemTemp.createTemp('ordered-board'),
     );
     if (dir == null) throw StateError('No temp directory');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     const entity = NoteRef(
       id: 'p',
@@ -150,7 +151,7 @@ void main() {
         () => Directory.systemTemp.createTemp('repo-board'),
       );
       if (dir == null) throw StateError('No temp directory');
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       final vault = Vault(dir);
       final client = _FakeGitHub();
       const entity = NoteRef(
@@ -223,7 +224,7 @@ void main() {
       () => Directory.systemTemp.createTemp('phone-repo-board'),
     );
     if (dir == null) throw StateError('No temp directory');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     await tester.runAsync(
       () => writeBoard(
@@ -297,7 +298,7 @@ void main() {
       () => Directory.systemTemp.createTemp('remote-board'),
     );
     if (dir == null) throw StateError('No temp directory');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     await tester.runAsync(
       () => writeBoard(
@@ -428,7 +429,7 @@ void main() {
       () => Directory.systemTemp.createTemp('remote-recovery'),
     );
     if (dir == null) throw StateError('No temp directory');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     await tester.runAsync(
       () => writeBoard(
@@ -518,7 +519,7 @@ void main() {
       () => Directory.systemTemp.createTemp('entity-board'),
     );
     if (dir == null) throw StateError('Could not create test vault');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     const entity = NoteRef(
       id: 'project',
@@ -599,7 +600,7 @@ void main() {
       () => Directory.systemTemp.createTemp('board-subtitle'),
     );
     if (dir == null) throw StateError('Could not create test vault');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     const entity = NoteRef(
       id: 'p',
       path: 'notes/p.typ',
@@ -647,7 +648,7 @@ void main() {
       () => Directory.systemTemp.createTemp('issue-board'),
     );
     if (dir == null) throw StateError('Could not create test vault');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     const root = NoteRef(
       id: 'root',
@@ -741,7 +742,7 @@ void main() {
       () => Directory.systemTemp.createTemp('linked-move'),
     );
     if (dir == null) throw StateError('No temp directory');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     final client = _FakeGitHub();
     const project = NoteRef(
@@ -849,7 +850,7 @@ void main() {
       () => Directory.systemTemp.createTemp('github-issue'),
     );
     if (dir == null) throw StateError('No temp directory');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     final client = _FakeGitHub();
     const project = NoteRef(

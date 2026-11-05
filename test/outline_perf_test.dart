@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/rich_editor.dart';
 import 'package:tylog/widgets/fold_store.dart';
+import 'support/temp_dir.dart';
 
 /// Typing rebuilds the editor's span on every keystroke, so outline work for
 /// folding must stay cheap on long imported pages.
@@ -16,7 +17,7 @@ void main() {
     final dir = (await tester.runAsync(
       () => Directory.systemTemp.createTemp('outline-perf-'),
     ))!;
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     FoldStore.instance = (await tester.runAsync(
       () => FoldStore.open(File('${dir.path}/fold_state.json')),
     ))!;

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/review_queue.dart';
 import 'package:tylog_core/tylog_core.dart';
+import 'support/temp_dir.dart';
 
 class _CountingStorage extends LocalVaultStorage {
   _CountingStorage(super.root);
@@ -33,7 +34,7 @@ void main() {
 
   test('health queue reads only the latest dated report', () async {
     final dir = await Directory.systemTemp.createTemp('health-review');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final storage = LocalVaultStorage(dir);
     await storage.writeText(
       '_system/health/2026-11-03.json',
@@ -52,7 +53,7 @@ void main() {
 
   test('audio proposals load and decisions hide them', () async {
     final dir = await Directory.systemTemp.createTemp('audio-review');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final storage = LocalVaultStorage(dir);
     await storage.writeText(
       '_system/enrich/audio/a.json',
@@ -75,7 +76,7 @@ void main() {
     'actionable sidecar summary reuses unchanged reads and invalidates edits',
     () async {
       final dir = await Directory.systemTemp.createTemp('review-summary');
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       final storage = _CountingStorage(dir);
       final summary = ActionableSidecarSummary();
       await storage.writeText(
@@ -110,7 +111,7 @@ void main() {
 
   test('actionable sidecar reads have a fixed byte ceiling', () async {
     final dir = await Directory.systemTemp.createTemp('review-bound');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final storage = _CountingStorage(dir);
     final summary = ActionableSidecarSummary();
     await storage.writeText(
@@ -123,7 +124,7 @@ void main() {
 
   test('audio and OCR sidecars return bounded pages in stable order', () async {
     final dir = await Directory.systemTemp.createTemp('review-pages');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final storage = LocalVaultStorage(dir);
     await storage.writeText(
       '_system/enrich/audio/a.json',
@@ -163,7 +164,7 @@ void main() {
     'OCR review rows are loaded from mounts and ledger decisions hide them',
     () async {
       final dir = await Directory.systemTemp.createTemp('review-queue');
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       final storage = LocalVaultStorage(dir);
       await storage.writeText(
         'ext/forms/manifest.json',
@@ -188,7 +189,7 @@ void main() {
   );
   test('review rows work in a mounted dataset without a manifest', () async {
     final root = await Directory.systemTemp.createTemp('review-mount');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final main = LocalVaultStorage(Directory('${root.path}/vault'));
     final dataset = LocalVaultStorage(Directory('${root.path}/dataset'));
     await dataset.writeText(

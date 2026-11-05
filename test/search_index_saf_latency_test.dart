@@ -5,13 +5,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/scanner.dart';
 import 'package:tylog_core/search_index.dart';
 import 'package:tylog/vault_storage.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   test(
     'buildStorage parallelizes cold reads instead of awaiting them serially',
     () async {
       final dir = await Directory.systemTemp.createTemp('tylog_saf_latency_');
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       final notesDir = await Directory('${dir.path}/notes').create();
       const noteCount = 1500;
       for (var i = 0; i < noteCount; i++) {

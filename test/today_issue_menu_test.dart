@@ -7,6 +7,7 @@ import 'package:tylog/rich_editor.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/widgets/work_surface.dart';
 import 'package:tylog_core/tylog_core.dart';
+import 'support/temp_dir.dart';
 
 class FakeGithub extends GitHubClient {
   int creates = 0;
@@ -31,7 +32,7 @@ void main() {
   testWidgets('Today issue line menu sends and links issue', (tester) async {
     final dir = await tester.runAsync(() => Directory.systemTemp.createTemp());
     if (dir == null) throw StateError('No temp directory');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     final client = FakeGithub();
     const issue = IssueRef(

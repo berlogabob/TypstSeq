@@ -13,6 +13,7 @@ import 'package:tylog/nextcloud_sync.dart';
 import 'package:tylog/pdf/pdf_extraction.dart';
 import 'package:tylog/pdf/pdf_reader_store.dart';
 import 'package:tylog/vault.dart';
+import '../support/temp_dir.dart';
 
 final _env = Platform.environment;
 final _configured = [
@@ -36,7 +37,7 @@ void main() {
 
       Future<(Vault, TyLogDatabase, PdfExtraction)> device() async {
         final dir = await Directory.systemTemp.createTemp('tylog_p19_');
-        addTearDown(() => dir.delete(recursive: true));
+        addTearDown(() => deleteTempDir(dir));
         final vault = Vault(dir);
         await vault.ensureCreated();
         final db = TyLogDatabase(NativeDatabase.memory());

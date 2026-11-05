@@ -8,6 +8,7 @@ import 'package:tylog/scanner.dart';
 import 'package:tylog/task_scheduler.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/workspace_controller.dart';
+import 'support/temp_dir.dart';
 
 const _audio = NoteRef(
   id: 'recording',
@@ -62,7 +63,7 @@ void main() {
     'open as page creates once, preserves edits, and reopens after restart',
     () async {
       final root = await Directory.systemTemp.createTemp('audio_text_page_');
-      addTearDown(() => root.delete(recursive: true));
+      addTearDown(() => deleteTempDir(root));
       final workspace = _TextPageWorkspace()..vault = Vault(root);
       addTearDown(workspace.dispose);
       final lines = [
@@ -126,7 +127,7 @@ void main() {
     );
     if ((await Process.run('typst', ['--version'])).exitCode != 0) return;
     final root = await Directory.systemTemp.createTemp('audio_export_');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     await File('${root.path}/export.typ').writeAsString(source);
     final result = await Process.run('typst', [
       'compile',

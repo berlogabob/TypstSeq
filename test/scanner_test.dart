@@ -4,13 +4,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog/scanner.dart';
 import 'package:tylog/vault_storage.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   test(
     'v5 scanner extracts Typst metadata, backlinks, dates, files, and tasks',
     () async {
       final dir = await Directory.systemTemp.createTemp('tylog_scanner_');
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       await Directory('${dir.path}/notes').create(recursive: true);
       await File('${dir.path}/notes/A.typ').writeAsString(
         '''#import "/_system/tylog.typ" as tylog
@@ -70,7 +71,7 @@ void main() {
 
   test('broken Typst body does not block backlinks', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_broken_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     await Directory('${dir.path}/notes').create(recursive: true);
     await File('${dir.path}/notes/A.typ').writeAsString(
       '''#show: tylog.note.with(id: "a", title: "A")
@@ -88,7 +89,7 @@ void main() {
 
   test('legacy source:: URLs are not registered as note links', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_srclink_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     await Directory('${dir.path}/articles').create(recursive: true);
     await File('${dir.path}/articles/Auto.typ').writeAsString(
       '''#show: tylog.note.with(id: "auto", title: "Auto", kind: "article")
@@ -123,7 +124,7 @@ source:: [[real-id]]
     'cached URL outgoing links do not produce broken-link problems',
     () async {
       final dir = await Directory.systemTemp.createTemp('tylog_srccache_');
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       await Directory('${dir.path}/articles').create(recursive: true);
       await File('${dir.path}/articles/A.typ').writeAsString(
         '#show: tylog.note.with(id: "a", title: "A", kind: "article")',
@@ -151,7 +152,7 @@ source:: [[real-id]]
 
   test('escaped source:: wiki links resolve or stay silent', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_escsrc_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     await Directory('${dir.path}/articles').create(recursive: true);
     // The importer escapes Typst markup, so a Logseq `source:: [[habr.com]]`
     // arrives as `source:: \[\[habr.com\]\]`.
@@ -187,7 +188,7 @@ source:: \\[\\[3dnews.ru\\]\\]
 
   test('cached escaped-garbage link targets stay silent too', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_escache_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     await Directory('${dir.path}/articles').create(recursive: true);
     await File('${dir.path}/articles/A.typ').writeAsString(
       '#show: tylog.note.with(id: "a", title: "A", kind: "article")',
@@ -232,7 +233,7 @@ More prose that Typst now reads as raw text.
 
   test('stranded SAF write temps are recovered into missing notes', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_stranded_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     await Directory('${dir.path}/articles').create(recursive: true);
     const content =
         '#show: tylog.note.with(id: "lost", title: "Lost note", kind: "article")';
@@ -422,7 +423,7 @@ Text "#tylog.tag(\"ignored\")"
 
   test('forced rebuild can be cancelled without a partial index', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_cancel_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     await Directory('${dir.path}/notes').create(recursive: true);
     await File(
       '${dir.path}/notes/a.typ',

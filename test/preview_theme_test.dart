@@ -9,11 +9,12 @@ import 'package:tylog/report.dart' show withPaper;
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_registry.dart';
 import 'package:tylog_core/src/vault.dart' show legacyManagedTheme;
+import 'support/temp_dir.dart';
 
 void main() {
   test('managed theme upgrades v1 but preserves edited v1 and v2', () async {
     final root = await Directory.systemTemp.createTemp('tylog-theme-');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final vault = Vault(root);
     await vault.ensureCreated();
     final theme = File('${root.path}/_system/theme.typ');
@@ -37,7 +38,7 @@ void main() {
 
   test('PDF paper defaults to A4 and saves in the existing registry', () async {
     final root = await Directory.systemTemp.createTemp('tylog-paper-');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final registry = VaultRegistry(File('${root.path}/vaults.json'), [], '');
     expect(registry.pdfPaper, 'a4');
     await registry.setPdfPaper('us-letter');
@@ -107,7 +108,7 @@ void main() {
   ]) {
     test('theme compiles $label with expected page dimensions', () async {
       final root = await Directory.systemTemp.createTemp('tylog-layout-');
-      addTearDown(() => root.delete(recursive: true));
+      addTearDown(() => deleteTempDir(root));
       await File('typst/vault/theme.typ').copy('${root.path}/theme.typ');
       await File('${root.path}/note.typ').writeAsString(
         '#import "theme.typ": document\n#show: document\n'
@@ -158,7 +159,7 @@ void main() {
     'a note without the template still exports at the chosen paper',
     () async {
       final root = await Directory.systemTemp.createTemp('tylog-plain-');
-      addTearDown(() => root.delete(recursive: true));
+      addTearDown(() => deleteTempDir(root));
       await File('${root.path}/note.typ').writeAsString(
         withPaper('= Plain note\nNo tylog.note template here.\n', 'us-letter'),
       );

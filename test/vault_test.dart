@@ -8,13 +8,14 @@ import 'package:tylog_core/models.dart';
 import 'package:tylog_core/scanner.dart';
 import 'package:tylog_core/values.dart';
 import 'package:tylog_core/vault.dart' show decodeVaultIndexBytes, writeNoMedia;
+import 'support/temp_dir.dart';
 
 void main() {
   test(
     'local receipts retain only the newest 32 hashes across reopen',
     () async {
       final dir = await Directory.systemTemp.createTemp('tylog_receipts_');
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       final vault = Vault(dir);
       const path = 'notes/receipt.typ';
       for (var i = 0; i < 34; i++) {
@@ -53,7 +54,7 @@ void main() {
 
   test('legacy receipts use write order and never expire by age', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_legacy_receipts_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     const path = 'notes/receipt.typ';
     await vault.storage.writeText(path, 'local');
@@ -82,7 +83,7 @@ void main() {
 
   test('receipt order survives a clock moving backwards', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_receipt_clock_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     const path = 'notes/receipt.typ';
     await vault.rememberLocalRevision(path, '0' * 64);
@@ -110,7 +111,7 @@ void main() {
     'user index files retain pending-write protection and dirtiness',
     () async {
       final dir = await Directory.systemTemp.createTemp('tylog_pending_index_');
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       final vault = Vault(dir);
       for (final path in [
         '_system/index/custom.typ',
@@ -128,7 +129,7 @@ void main() {
 
   test('default vault prefers Nextcloud on desktop', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_nextcloud_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     await Directory('${dir.path}/Nextcloud').create();
     expect(
       defaultVaultDirectory(
@@ -153,7 +154,7 @@ void main() {
 
   test('writeNoMedia leaves one empty .nomedia at the vault root', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_nomedia_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     await vault.ensureCreated();
     await writeNoMedia(vault.storage);
@@ -163,7 +164,7 @@ void main() {
 
   test('empty folder becomes a complete v5 vault', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_v5_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     await vault.ensureCreated();
 
@@ -194,7 +195,7 @@ void main() {
 
   test('exact legacy helper upgrades without rewriting notes', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_upgrade_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final assets = await TylogAssets.load();
     await Directory('${dir.path}/.tylog').create(recursive: true);
     await Directory('${dir.path}/_system').create(recursive: true);
@@ -219,7 +220,7 @@ void main() {
 
   test('custom helper and theme are preserved; package is repaired', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_custom_package_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     await vault.ensureCreated();
     const custom = '#let note(..args) = [custom]';
@@ -241,7 +242,7 @@ void main() {
 
   test('missing vault marker is rejected without mutation', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_missing_marker_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
 
     await expectLater(
       Vault(dir).ensureCreated(createIfMissing: false),
@@ -254,7 +255,7 @@ void main() {
 
   test('old vault is rejected without mutation', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_old_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     await Directory('${dir.path}/journal').create();
     await File('${dir.path}/journal/old.typ').writeAsString('old');
 
@@ -265,7 +266,7 @@ void main() {
 
   test('vault creates nested daily note and named content kinds', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_notes_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     await vault.ensureCreated();
 
@@ -291,7 +292,7 @@ void main() {
   // triage would manufacture duplicate-note-id errors instead of fixing links.
   test('a batch of Cyrillic pages shares one id namespace', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_triage_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     await vault.ensureCreated();
 
@@ -318,7 +319,7 @@ void main() {
 
   test('todayNote stays in memory until its first edit', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_daily_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     await vault.ensureCreated();
 
@@ -343,7 +344,7 @@ void main() {
     'page creates once and atomic save preserves existing content',
     () async {
       final dir = await Directory.systemTemp.createTemp('tylog_page_');
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       final vault = Vault(dir);
       await vault.ensureCreated();
       final page = await vault.page('Fast Win');
@@ -362,7 +363,7 @@ void main() {
   test('a page title with Typst syntax in it produces valid source', () async {
     final hasTypst = Process.runSync('which', ['typst']).exitCode == 0;
     final dir = await Directory.systemTemp.createTemp('tylog_title_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     await vault.ensureCreated();
 
@@ -418,7 +419,7 @@ void main() {
     'snapshotNotes copies notes as they are, under a stamped folder',
     () async {
       final dir = await Directory.systemTemp.createTemp('tylog_snapshot_');
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       final vault = Vault(dir);
       await vault.ensureCreated();
       final a = await vault.page('Alpha');
@@ -444,7 +445,7 @@ void main() {
 
   test('snapshotNotes throws rather than half-copying', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_snapshot_fail_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     await vault.ensureCreated();
     final a = await vault.page('Alpha');
@@ -464,7 +465,7 @@ void main() {
     'ensureCreated keeps device-local caches out of a desktop sync',
     () async {
       final dir = await Directory.systemTemp.createTemp('tylog_exclude_');
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       final vault = Vault(dir);
 
       await vault.ensureCreated();
@@ -488,7 +489,7 @@ void main() {
 
   test('vault refuses to replace a Typst note with empty content', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_empty_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     await vault.ensureCreated();
     final note = await vault.todayNote(DateTime(2026, 7, 4));
@@ -507,7 +508,7 @@ void main() {
   test('nextTaskId avoids collisions with existing task ids so two inserted '
       'tasks never share an id', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_task_id_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     await vault.ensureCreated();
     final now = DateTime(2026, 7, 15, 9, 30, 0);
@@ -530,7 +531,7 @@ void main() {
 
   test('index is deterministic and rebuilds v5 backlinks', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_index_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     await vault.ensureCreated();
     final root = await vault.page('Root');
@@ -569,7 +570,7 @@ void main() {
 
     Future<Vault> newVault(String prefix) async {
       final dir = await Directory.systemTemp.createTemp(prefix);
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       final vault = Vault(dir);
       await vault.ensureCreated();
       return vault;
@@ -869,7 +870,7 @@ void main() {
 
   test('nextTaskId uses known IDs without reading the startup index', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_known_id_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     final id = await vault.nextTaskId(
       'milk',
@@ -882,7 +883,7 @@ void main() {
 
   test('nextTaskId avoids reserved ids', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_reserved_id_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     await vault.ensureCreated();
     final now = DateTime(2026, 8, 3, 14, 22, 0);

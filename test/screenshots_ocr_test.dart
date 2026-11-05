@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:tylog/screenshots_ocr.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   test(
@@ -45,7 +46,7 @@ void main() {
 
   test('installedScreenshotMode reports off when no agents exist', () async {
     final home = await homeDir('off').create(recursive: true);
-    addTearDown(() => home.delete(recursive: true));
+    addTearDown(() => deleteTempDir(home));
     expect(await installedScreenshotMode(home: home.path), 'off');
   });
 
@@ -53,7 +54,7 @@ void main() {
     'installedScreenshotMode reports watch for a lone ollama agent',
     () async {
       final home = await homeDir('watch').create(recursive: true);
-      addTearDown(() => home.delete(recursive: true));
+      addTearDown(() => deleteTempDir(home));
       await writeAgent(
         home,
         'org.tylog.screenshots.plist',
@@ -67,7 +68,7 @@ void main() {
     'installedScreenshotMode reports both when agents are present',
     () async {
       final home = await homeDir('both').create(recursive: true);
-      addTearDown(() => home.delete(recursive: true));
+      addTearDown(() => deleteTempDir(home));
       await writeAgent(
         home,
         'org.tylog.screenshots.plist',
@@ -115,7 +116,7 @@ void main() {
 
   test('findUv finds uv under the home folder', () async {
     final home = await Directory.systemTemp.createTemp('uv-home-');
-    addTearDown(() => home.delete(recursive: true));
+    addTearDown(() => deleteTempDir(home));
     await File('${home.path}/.local/bin/uv').create(recursive: true);
     expect(
       await findUv(home: home.path, system: const []),
@@ -126,7 +127,7 @@ void main() {
 
   test('missing scripts folder gives a health line, not an error', () async {
     final dir = await Directory.systemTemp.createTemp('shots-');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     expect(
       screenshotScriptsHealth(dir.path),
       'Screenshot scripts not found in ${dir.path}',
@@ -157,7 +158,7 @@ void main() {
     'agents survive launchctl reporting error 5 or a slow bootout',
     () async {
       final home = await Directory.systemTemp.createTemp('agents-home-');
-      addTearDown(() => home.delete(recursive: true));
+      addTearDown(() => deleteTempDir(home));
       await File('${home.path}/.local/bin/uv').create(recursive: true);
       final calls = <String>[];
       var printsUntilLoaded = 2;

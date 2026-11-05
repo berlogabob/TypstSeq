@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog/widgets/share_from_sheet.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   const person = NoteRef(
@@ -82,7 +83,7 @@ void main() {
         expect(saved, contains('From: #tylog.ref-note("day")[Today]'));
         await tester.runAsync(() async {
           final dir = await Directory.systemTemp.createTemp('share_from_');
-          addTearDown(() => dir.delete(recursive: true));
+          addTearDown(() => deleteTempDir(dir));
           await Directory('${dir.path}/_system').create();
           await File(
             'typst/tylog/lib.typ',

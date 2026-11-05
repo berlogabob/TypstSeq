@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/nextcloud_sync.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_storage.dart';
+import 'support/temp_dir.dart';
 
 const _statePath = '.tylog/sync_state.json';
 const _config = NextcloudConfig(
@@ -21,7 +22,7 @@ void main() {
 
   setUp(() async {
     final root = await Directory.systemTemp.createTemp('sync-state-cache-');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     storage = _CountingStorage(LocalVaultStorage(root));
     vault = Vault.withStorage(storage);
     sync = NextcloudSync(_config);

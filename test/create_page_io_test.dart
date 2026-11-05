@@ -10,6 +10,7 @@ import 'package:tylog/vault.dart';
 import 'package:tylog/vault_registry.dart';
 import 'package:tylog/vault_storage.dart';
 import 'package:tylog/workspace_controller.dart';
+import 'support/temp_dir.dart';
 
 class _CountingStorage extends LocalVaultStorage {
   _CountingStorage(super.root);
@@ -61,7 +62,7 @@ void main() {
     'creation writes once, projects the assigned id, and avoids disk index',
     () async {
       final root = await Directory.systemTemp.createTemp('tylog-create-io-');
-      addTearDown(() => root.delete(recursive: true));
+      addTearDown(() => deleteTempDir(root));
       final storage = _CountingStorage(root);
       final database = TyLogDatabase(NativeDatabase.memory());
       final controller = WorkspaceController(
@@ -104,7 +105,7 @@ void main() {
 
   test('local allocations reserve ids across unindexed creations', () async {
     final root = await Directory.systemTemp.createTemp('tylog-create-ids-');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final storage = _CountingStorage(root)..countIndex = true;
     final vault = Vault.withStorage(storage);
     final now = DateTime(2026, 10, 13, 12);

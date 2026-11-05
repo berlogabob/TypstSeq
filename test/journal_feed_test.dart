@@ -36,6 +36,7 @@ import 'package:tylog/rich_editor.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_registry.dart';
 import 'package:tylog/widgets/journal_feed.dart';
+import 'support/temp_dir.dart';
 
 const _pathProviderChannel = MethodChannel('plugins.flutter.io/path_provider');
 
@@ -194,7 +195,7 @@ void main() {
     tester,
   ) async {
     final root = await Directory.systemTemp.createTemp('journal_index_cache_');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final vault = Vault(root);
     const path = 'daily/2026-10-08.typ';
     await vault.storage.writeText(path, longJournalBody());
@@ -227,7 +228,7 @@ void main() {
     'journal indexes task rows once per index and preserves note identity',
     (tester) async {
       final root = await Directory.systemTemp.createTemp('journal_tasks_');
-      addTearDown(() => root.delete(recursive: true));
+      addTearDown(() => deleteTempDir(root));
       final vault = Vault(root);
       const path = 'daily/2026-10-08.typ';
       await vault.storage.writeText(
@@ -279,7 +280,7 @@ void main() {
     tester,
   ) async {
     final root = await Directory.systemTemp.createTemp('tylog_journal_retry_');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final vault = Vault(root);
     const path = 'daily/2026-10-08.typ';
     await tester.pumpWidget(
@@ -319,7 +320,7 @@ void main() {
     tester,
   ) async {
     final root = await Directory.systemTemp.createTemp('journal_invalidate_');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final vault = Vault(root);
     const path = 'daily/2026-10-08.typ';
     await vault.storage.writeText(path, 'Original journal prose');
@@ -355,7 +356,7 @@ void main() {
     tester,
   ) async {
     final root = await Directory.systemTemp.createTemp('tylog_journal_events_');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final vault = Vault(root);
     final now = DateTime.now();
     final yesterday = isoDay(now.subtract(const Duration(days: 1)));
@@ -423,7 +424,7 @@ void main() {
     tester,
   ) async {
     final base = await Directory.systemTemp.createTemp('tylog_journal_card_');
-    addTearDown(() => base.delete(recursive: true));
+    addTearDown(() => deleteTempDir(base));
     final vault = Vault(Directory('${base.path}/vault'));
     final day = DateTime(2026, 8, 4);
     final path = await vault.todayNote(day);

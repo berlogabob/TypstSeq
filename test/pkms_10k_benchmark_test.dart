@@ -5,13 +5,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/scanner.dart';
 import 'package:tylog_core/search_index.dart';
 import 'package:tylog/vault_storage.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   test(
     '10k note rebuild, warm open, determinism, and search release gate',
     () async {
       final dir = await Directory.systemTemp.createTemp('tylog_10k_');
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       final pages = await Directory('${dir.path}/notes').create();
       for (var batch = 0; batch < 100; batch++) {
         await Future.wait([

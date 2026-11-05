@@ -4,11 +4,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog_core/search_index.dart';
 import 'package:tylog/vault_storage.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   test('search index persists, ranks titles, and filters tags', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_search_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     await Directory('${dir.path}/notes').create();
     await File('${dir.path}/notes/A.typ').writeAsString('alpha body knowledge');
     await File('${dir.path}/notes/B.typ').writeAsString('alpha body');
@@ -51,7 +52,7 @@ void main() {
 
   test('search index filters by task status', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_search_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     await Directory('${dir.path}/notes').create();
     await File('${dir.path}/notes/tasks.typ').writeAsString('task notes');
     final index = VaultIndex(

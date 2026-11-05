@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/nextcloud_sync.dart';
 import 'package:tylog/vault_registry.dart';
 import 'package:tylog/vault_storage.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -58,7 +59,7 @@ void main() {
 
   test('new app-local vault uses a safe absolute support path', () async {
     final base = await Directory.systemTemp.createTemp('app-local-create-');
-    addTearDown(() => base.delete(recursive: true));
+    addTearDown(() => deleteTempDir(base));
     final registry = VaultRegistry(File('${base.path}/vaults.json'), [], '');
     final entry = await registry.createAppLocal(
       '../My vault',
@@ -74,7 +75,7 @@ void main() {
     'copy preserves hidden bytes and mtimes, skips index and lock, reports progress',
     () async {
       final base = await Directory.systemTemp.createTemp('vault-copy-');
-      addTearDown(() => base.delete(recursive: true));
+      addTearDown(() => deleteTempDir(base));
       final source = LocalVaultStorage(Directory('${base.path}/source'));
       final destination = LocalVaultStorage(
         Directory('${base.path}/destination'),
@@ -133,7 +134,7 @@ void main() {
   for (final failure in ['copy', 'verification', 'open', 'none']) {
     test('move to app storage transaction: $failure', () async {
       final base = await Directory.systemTemp.createTemp('vault-move-');
-      addTearDown(() => base.delete(recursive: true));
+      addTearDown(() => deleteTempDir(base));
       final source = LocalVaultStorage(Directory('${base.path}/source'));
       await source.writeText('notes/a.typ', 'original');
       await source.writeText('.tylog/sync_state.json', 'cursor');
@@ -242,7 +243,7 @@ void main() {
     'vault registry switches, keeps cloud settings separate, and forgets',
     () async {
       final base = await Directory.systemTemp.createTemp('tylog_registry_');
-      addTearDown(() => base.delete(recursive: true));
+      addTearDown(() => deleteTempDir(base));
       final first = await Directory('${base.path}/first').create();
       final second = await Directory('${base.path}/second').create();
       final file = File('${base.path}/vaults.json');
@@ -289,7 +290,7 @@ void main() {
 
   test('Android tree deletion removes the root before forgetting it', () async {
     final base = await Directory.systemTemp.createTemp('tylog_tree_delete_');
-    addTearDown(() => base.delete(recursive: true));
+    addTearDown(() => deleteTempDir(base));
     const channel = MethodChannel('org.tylog.tylog/saf');
     final calls = <String>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -320,7 +321,7 @@ void main() {
 
   test('failed Android tree deletion keeps the vault registered', () async {
     final base = await Directory.systemTemp.createTemp('tylog_tree_failure_');
-    addTearDown(() => base.delete(recursive: true));
+    addTearDown(() => deleteTempDir(base));
     const channel = MethodChannel('org.tylog.tylog/saf');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
@@ -351,7 +352,7 @@ void main() {
 
   test('forgetting an active Android vault only releases its grant', () async {
     final base = await Directory.systemTemp.createTemp('tylog_tree_forget_');
-    addTearDown(() => base.delete(recursive: true));
+    addTearDown(() => deleteTempDir(base));
     const channel = MethodChannel('org.tylog.tylog/saf');
     final calls = <String>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -398,7 +399,7 @@ void main() {
           },
         );
     final base = await Directory.systemTemp.createTemp('tylog_forget_');
-    addTearDown(() => base.delete(recursive: true));
+    addTearDown(() => deleteTempDir(base));
     final first = await Directory('${base.path}/first').create();
     final second = await Directory('${base.path}/second').create();
     final file = File('${base.path}/vaults.json');
@@ -416,7 +417,7 @@ void main() {
     'forgetting the last vault empties the registry and active id',
     () async {
       final base = await Directory.systemTemp.createTemp('tylog_forget_last_');
-      addTearDown(() => base.delete(recursive: true));
+      addTearDown(() => deleteTempDir(base));
       final root = await Directory('${base.path}/only').create();
       final file = File('${base.path}/vaults.json');
       final registry = VaultRegistry(file, [], '');
@@ -436,7 +437,7 @@ void main() {
 
   test('first-run onboarding completion is persisted', () async {
     final base = await Directory.systemTemp.createTemp('tylog_onboarding_');
-    addTearDown(() => base.delete(recursive: true));
+    addTearDown(() => deleteTempDir(base));
     final file = File('${base.path}/vaults.json');
     final registry = VaultRegistry(file, [], '', onboardingComplete: false);
 
@@ -448,7 +449,7 @@ void main() {
 
   test('reading preferences use legacy defaults and survive reload', () async {
     final base = await Directory.systemTemp.createTemp('tylog_reading_prefs_');
-    addTearDown(() => base.delete(recursive: true));
+    addTearDown(() => deleteTempDir(base));
     const pathProvider = MethodChannel('plugins.flutter.io/path_provider');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
@@ -493,7 +494,7 @@ void main() {
 
   test('article-shelf prefs persist through save and reload', () async {
     final base = await Directory.systemTemp.createTemp('tylog_shelf_prefs_');
-    addTearDown(() => base.delete(recursive: true));
+    addTearDown(() => deleteTempDir(base));
     const pathProvider = MethodChannel('plugins.flutter.io/path_provider');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
@@ -601,7 +602,7 @@ void main() {
     'deviceId is generated once, persisted, and honored when supplied',
     () async {
       final base = await Directory.systemTemp.createTemp('tylog_registry_');
-      addTearDown(() => base.delete(recursive: true));
+      addTearDown(() => deleteTempDir(base));
       final file = File('${base.path}/vaults.json');
 
       final generated = VaultRegistry(file, [], '');

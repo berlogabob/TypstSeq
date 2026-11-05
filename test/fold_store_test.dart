@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/rich_editor.dart';
 import 'package:tylog/widgets/constants.dart';
 import 'package:tylog/widgets/fold_store.dart';
+import 'support/temp_dir.dart';
 
 final _png = base64Decode(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
@@ -31,7 +32,7 @@ void main() {
 
   test('fold state persists across reopen and stays out of notes', () async {
     final dir = await Directory.systemTemp.createTemp('fold-');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final file = File('${dir.path}/fold_state.json');
     final store = await FoldStore.open(file);
     expect(store.isFolded('asset:/assets/a.png'), isFalse);
@@ -63,7 +64,7 @@ void main() {
     final dir = (await tester.runAsync(
       () => Directory.systemTemp.createTemp('fold-late-'),
     ))!;
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final tall = (await tester.runAsync(_tallPng))!;
     await tester.pumpWidget(
       MaterialApp(
@@ -90,7 +91,7 @@ void main() {
       final dir = (await tester.runAsync(
         () => Directory.systemTemp.createTemp('fold-ui-'),
       ))!;
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       FoldStore.instance = (await tester.runAsync(
         () => FoldStore.open(File('${dir.path}/fold_state.json')),
       ))!;
@@ -145,7 +146,7 @@ void main() {
     final dir = (await tester.runAsync(
       () => Directory.systemTemp.createTemp('fold-read-'),
     ))!;
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     FoldStore.instance = (await tester.runAsync(
       () => FoldStore.open(File('${dir.path}/fold_state.json')),
     ))!;

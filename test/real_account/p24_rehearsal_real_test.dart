@@ -14,6 +14,7 @@ import 'package:tylog/database/tylog_database.dart';
 import 'package:tylog/nextcloud_sync.dart';
 import 'package:tylog/vault.dart';
 import 'package:unorm_dart/unorm_dart.dart' as unorm;
+import '../support/temp_dir.dart';
 
 final _env = Platform.environment;
 final _configured = [
@@ -36,7 +37,7 @@ void main() {
       );
       addTearDown(() => _deleteRemote(config, folder));
       final root = await Directory.systemTemp.createTemp('tylog_p24_');
-      addTearDown(() => root.delete(recursive: true));
+      addTearDown(() => deleteTempDir(root));
       final aDir = await Directory('${root.path}/a').create();
       final bDir = await Directory('${root.path}/b').create();
       final source = Directory(_env['P24_VAULT_ROOT']!);

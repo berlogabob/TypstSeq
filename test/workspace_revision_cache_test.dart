@@ -13,6 +13,7 @@ import 'package:tylog/task_scheduler.dart';
 import 'package:tylog/vault_registry.dart';
 import 'package:tylog/vault_storage.dart';
 import 'package:tylog/workspace_controller.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -29,7 +30,7 @@ void main() {
         final directory = await Directory.systemTemp.createTemp(
           'revision-cache-',
         );
-        addTearDown(() => directory.delete(recursive: true));
+        addTearDown(() => deleteTempDir(directory));
         final storage = _CountingStorage(directory, omitListMetadata);
         final database = TyLogDatabase(NativeDatabase.memory());
         addTearDown(database.close);
@@ -209,7 +210,7 @@ void main() {
   test('desktop-managed vault without an in-app account still publishes '
       'revisions from the poll timer', () async {
     final directory = await Directory.systemTemp.createTemp('desktop-rev-');
-    addTearDown(() => directory.delete(recursive: true));
+    addTearDown(() => deleteTempDir(directory));
     final storage = _CountingStorage(directory, false);
     final database = TyLogDatabase(NativeDatabase.memory());
     addTearDown(database.close);

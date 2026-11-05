@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/saved_searches.dart';
 import 'package:tylog/vault_storage.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   test('SavedSearch JSON round-trip with all fields', () {
@@ -49,7 +50,7 @@ void main() {
 
   test('SavedSearchStore load missing file returns empty list', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_saved_searches_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
 
     final store = SavedSearchStore(LocalVaultStorage(dir));
     final searches = await store.load();
@@ -59,7 +60,7 @@ void main() {
 
   test('SavedSearchStore save and load round-trip', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_saved_searches_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
 
     final searches = [
       SavedSearch(name: 'Tagged Notes', query: 'flutter', tag: 'dart'),
@@ -80,7 +81,7 @@ void main() {
 
   test('SavedSearchStore corrupt file returns empty list', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_saved_searches_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     await Directory('${dir.path}/_system').create();
 
     await File(

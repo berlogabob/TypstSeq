@@ -9,6 +9,7 @@ import 'package:tylog/task_scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/rich_editor.dart';
 import 'package:tylog/editor_autocomplete.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   testWidgets('/task palette entry keeps /todo as an alias', (tester) async {
@@ -392,7 +393,7 @@ void main() {
     tester,
   ) async {
     final root = Directory.systemTemp.createTempSync('tylog_future_mention_');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final vault = Vault(root);
     final workspace = WorkspaceController(taskScheduler: TaskScheduler());
     addTearDown(workspace.dispose);

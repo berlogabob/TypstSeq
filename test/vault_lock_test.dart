@@ -5,11 +5,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/vault_lock.dart';
 import 'package:tylog/vault_service.dart';
 import 'package:tylog_core/storage.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   test('an absolute deadline is not extended by delayed acquisition', () async {
     final root = await Directory.systemTemp.createTemp('tylog_lock_absolute_');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final storage = LocalVaultStorage(root);
     final deadline = DateTime.now().subtract(const Duration(seconds: 1));
 
@@ -51,7 +52,7 @@ void main() {
 
   test('a declared deadline expires without waiting for staleAfter', () async {
     final root = await Directory.systemTemp.createTemp('tylog_lock_deadline_');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final storage = LocalVaultStorage(root);
     await storage.createDirectory('.tylog');
 
@@ -74,7 +75,7 @@ void main() {
 
   test('a declared deadline still blocks before it elapses', () async {
     final root = await Directory.systemTemp.createTemp('tylog_lock_holds_');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final storage = LocalVaultStorage(root);
     await storage.createDirectory('.tylog');
 

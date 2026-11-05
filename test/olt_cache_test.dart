@@ -3,11 +3,12 @@ import 'dart:io';
 import 'package:tylog/olt/olt_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/olt/olt_cache.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   test('pages every cached table until a short page', () async {
     final dir = await Directory.systemTemp.createTemp('olt_pages');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final client = OltClient(
       store: _Store(),
       request: (_, uri, _, _) async {
@@ -30,7 +31,7 @@ void main() {
 
   test('signed out loads cached rows without making requests', () async {
     final dir = await Directory.systemTemp.createTemp('olt_signed_out');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     await File('${dir.path}/places.json').writeAsString('[{"id":1}]');
     final client = OltClient(
       store: _EmptyStore(),
@@ -45,7 +46,7 @@ void main() {
     'failed refresh persists error and last success while keeping rows',
     () async {
       final dir = await Directory.systemTemp.createTemp('olt_error');
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       var fail = false;
       final client = OltClient(
         store: _Store(),
@@ -66,7 +67,7 @@ void main() {
 
   test('403 keeps the entire previous cache', () async {
     final dir = await Directory.systemTemp.createTemp('olt_cache_test');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     await File('${dir.path}/places.json').writeAsString(
       jsonEncode([
         {'id': 1},

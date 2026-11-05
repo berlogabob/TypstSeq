@@ -5,6 +5,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/rich_editor.dart';
 import 'package:tylog/widgets/fold_store.dart';
+import 'support/temp_dir.dart';
 
 const _source =
     '- Ящики.\n'
@@ -94,7 +95,7 @@ void main() {
     final dir = (await tester.runAsync(
       () => Directory.systemTemp.createTemp('outline-fold-'),
     ))!;
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final store = (await tester.runAsync(
       () => FoldStore.open(File('${dir.path}/folds.json')),
     ))!;
@@ -196,7 +197,7 @@ void main() {
     'fold state survives reopening the store and loading a fresh controller',
     () async {
       final dir = await Directory.systemTemp.createTemp('outline-persist-');
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       final file = File('${dir.path}/folds.json');
       final first = await FoldStore.open(file);
       final document = TyLogDocument.parse(_source);
@@ -252,7 +253,7 @@ void main() {
     final dir = (await tester.runAsync(
       () => Directory.systemTemp.createTemp('outline-nested-'),
     ))!;
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     FoldStore.instance = (await tester.runAsync(
       () => FoldStore.open(File('${dir.path}/fold_state.json')),
     ))!;
@@ -319,7 +320,7 @@ void main() {
       final dir = (await tester.runAsync(
         () => Directory.systemTemp.createTemp('outline-gap-'),
       ))!;
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       FoldStore.instance = (await tester.runAsync(
         () => FoldStore.open(File('${dir.path}/fold_state.json')),
       ))!;
@@ -378,7 +379,7 @@ void main() {
     final dir = (await tester.runAsync(
       () => Directory.systemTemp.createTemp('outline-sel-'),
     ))!;
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     FoldStore.instance = (await tester.runAsync(
       () => FoldStore.open(File('${dir.path}/fold_state.json')),
     ))!;

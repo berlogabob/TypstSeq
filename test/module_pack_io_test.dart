@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/module_pack_io.dart';
 import 'package:tylog_core/tylog_core.dart';
+import 'support/temp_dir.dart';
 
 // Set TYLOG_PORTUGUESE_PACK=/path/to/pt-pt-a2b1.tylogpack to run.
 void main() {
@@ -12,7 +13,7 @@ void main() {
     () async {
       final pack = await readModulePack(File(packPath!));
       final dir = await Directory.systemTemp.createTemp('pack_vault_');
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       final storage = LocalVaultStorage(dir);
       final r = await installModule(storage, pack, DateTime(2026, 11, 2));
       expect(r.skipped, isEmpty);

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog/report.dart';
 import 'package:tylog/vault_storage.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   const index = VaultIndex(
@@ -115,7 +116,7 @@ void main() {
     'research workflow writes the filtered cited report to the vault',
     () async {
       final root = await Directory.systemTemp.createTemp('tylog-report-');
-      addTearDown(() => root.delete(recursive: true));
+      addTearDown(() => deleteTempDir(root));
       final path = await writeReportStorage(
         LocalVaultStorage(root),
         'Cited research',

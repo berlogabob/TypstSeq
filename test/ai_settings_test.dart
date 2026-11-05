@@ -8,6 +8,7 @@ import 'package:tylog/ai/ai_settings.dart';
 import 'package:tylog/ai/api_keys.dart';
 import 'package:tylog/ai/provider_presets.dart';
 import 'package:tylog_core/tylog_core.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   test('presets require matching qualities and no model overrides', () {
@@ -160,7 +161,7 @@ void main() {
     FlutterSecureStorage.setMockInitialValues({});
     dir = await Directory.systemTemp.createTemp('tylog_ai_');
     storage = LocalVaultStorage(dir);
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
   });
 
   test(

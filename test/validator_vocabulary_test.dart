@@ -4,11 +4,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog_core/models.dart';
 import 'package:tylog_core/validation.dart';
 import 'package:tylog/vault_storage.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   test('validator reports invalid task status as error', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_validate_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
 
     final index = VaultIndex(
       notesByPath: const {},
@@ -32,7 +33,7 @@ void main() {
 
   test('validator reports invalid task priority as error', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_validate_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
 
     final index = VaultIndex(
       notesByPath: const {},
@@ -56,7 +57,7 @@ void main() {
 
   test('validator reports unknown extension kind as warning', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_validate_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
 
     final index = VaultIndex(
       notesByPath: {

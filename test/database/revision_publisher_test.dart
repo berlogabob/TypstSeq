@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/database/note_persistence.dart';
 import 'package:tylog/database/revision_publisher.dart';
 import 'package:tylog/database/tylog_database.dart';
+import '../support/temp_dir.dart';
 
 void main() {
   test(
@@ -14,7 +15,7 @@ void main() {
       final root = await Directory.systemTemp.createTemp(
         'tylog-session-reopen-',
       );
-      addTearDown(() => root.delete(recursive: true));
+      addTearDown(() => deleteTempDir(root));
       final file = File('${root.path}/vault.sqlite');
       var database = TyLogDatabase(NativeDatabase(file));
       for (var i = 0; i < 20; i++) {

@@ -17,6 +17,7 @@ import 'package:tylog/nextcloud_sync/chunked_upload.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_storage.dart';
 import 'package:tylog/vault_registry.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   test('worker heartbeats are device bookkeeping, not vault content', () {
@@ -33,7 +34,7 @@ void main() {
         final server = await _mutableWebDavServer(remote, uploads: uploads);
         final base = await Directory.systemTemp.createTemp('moved-sync-');
         addTearDown(() => server.close(force: true));
-        addTearDown(() => base.delete(recursive: true));
+        addTearDown(() => deleteTempDir(base));
         final original = Vault(Directory('${base.path}/source'));
         await original.ensureCreated();
         await original.saveNote('notes/kept.typ', 'unchanged bytes');
@@ -80,7 +81,7 @@ void main() {
     );
     final root = await Directory.systemTemp.createTemp('a24-sync-');
     addTearDown(() => server.close(force: true));
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final vault = Vault(root);
     await vault.ensureCreated();
     await vault.saveNote(
@@ -131,7 +132,7 @@ void main() {
         final server = await _mutableWebDavServer(remote);
         final root = await Directory.systemTemp.createTemp('a24-history-');
         addTearDown(() => server.close(force: true));
-        addTearDown(() => root.delete(recursive: true));
+        addTearDown(() => deleteTempDir(root));
         final vault = Vault(root);
         await vault.ensureCreated();
         await vault.saveNote(path, source('z'));
@@ -176,7 +177,7 @@ void main() {
     final server = await _mutableWebDavServer(remote, omitPutEtag: true);
     final root = await Directory.systemTemp.createTemp('a24-receipt-');
     addTearDown(() => server.close(force: true));
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final vault = Vault(root);
     await vault.ensureCreated();
     await vault.storage.writeText(path, 'uploaded text');
@@ -195,7 +196,7 @@ void main() {
       'tylog-receipt-cleanup-',
     );
     addTearDown(() => server.close(force: true));
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final vault = Vault(root);
     await vault.ensureCreated();
     await vault.saveNote('notes/kept.typ', 'kept');
@@ -214,7 +215,7 @@ void main() {
     final server = await _mutableWebDavServer(remote);
     final root = await Directory.systemTemp.createTemp('tylog-receipt-upload-');
     addTearDown(() => server.close(force: true));
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final vault = Vault(root);
     await vault.ensureCreated();
     await vault.saveNote(path, 'uploaded text');
@@ -262,7 +263,7 @@ void main() {
         final vaults = <Vault>[];
         for (var i = 0; i < 3; i++) {
           final root = await Directory.systemTemp.createTemp('tylog-soak-$i-');
-          addTearDown(() => root.delete(recursive: true));
+          addTearDown(() => deleteTempDir(root));
           final vault = Vault(root);
           await vault.ensureCreated();
           vaults.add(vault);
@@ -519,7 +520,7 @@ void main() {
       final server = await _mutableWebDavServer(remote);
       addTearDown(() => server.close(force: true));
       final root = await Directory.systemTemp.createTemp('tylog-both-deleted-');
-      addTearDown(() => root.delete(recursive: true));
+      addTearDown(() => deleteTempDir(root));
       final vault = Vault(root);
       await vault.ensureCreated();
       await NextcloudSync(_config(server)).sync(vault);
@@ -541,7 +542,7 @@ void main() {
     final root = await Directory.systemTemp.createTemp(
       'tylog-conflict-unicode-',
     );
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final vault = Vault(root);
     await vault.ensureCreated();
     const nfd = 'notes/cafe\u0301.typ';
@@ -578,7 +579,7 @@ void main() {
       final root = await Directory.systemTemp.createTemp(
         'tylog-revision-session-',
       );
-      addTearDown(() => root.delete(recursive: true));
+      addTearDown(() => deleteTempDir(root));
       final vault = Vault(root);
       await vault.ensureCreated();
       final paths = <String>{};
@@ -1214,7 +1215,7 @@ void main() {
       final root = await Directory.systemTemp.createTemp(
         'tylog_revision_evidence_',
       );
-      addTearDown(() => root.delete(recursive: true));
+      addTearDown(() => deleteTempDir(root));
       final vault = Vault(root);
       final path = '_system/revisions/note-${'b' * 64}.json';
       await createSyncConflict(
@@ -1418,7 +1419,7 @@ void main() {
       );
       addTearDown(() => server.close(force: true));
       final root = await Directory.systemTemp.createTemp('tylog-outage-');
-      addTearDown(() => root.delete(recursive: true));
+      addTearDown(() => deleteTempDir(root));
       final vault = Vault(root);
       await vault.ensureCreated();
       await vault.saveNote(existing, 'original remote text');
@@ -1526,7 +1527,7 @@ void main() {
       );
       addTearDown(() => server.close(force: true));
       final root = await Directory.systemTemp.createTemp('tylog-sync-undo-');
-      addTearDown(() => root.delete(recursive: true));
+      addTearDown(() => deleteTempDir(root));
       vault = Vault(root);
       await vault.ensureCreated();
       await vault.saveNote(path, 'baseline');
@@ -1570,7 +1571,7 @@ void main() {
     final server = await _mutableWebDavServer(remote);
     addTearDown(() => server.close(force: true));
     final root = await Directory.systemTemp.createTemp('tylog-sync-prune-');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final vault = Vault(root);
     await vault.ensureCreated();
     final now = DateTime.now();
@@ -2614,8 +2615,8 @@ void main() {
     final sourceDir = await Directory.systemTemp.createTemp('webdav-source-');
     final peerDir = await Directory.systemTemp.createTemp('webdav-peer-');
     addTearDown(() => server.close(force: true));
-    addTearDown(() => sourceDir.delete(recursive: true));
-    addTearDown(() => peerDir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(sourceDir));
+    addTearDown(() => deleteTempDir(peerDir));
     final source = Vault(sourceDir);
     await source.ensureCreated();
     await source.saveNote('notes/plain.typ', 'plain WebDAV');
@@ -2645,7 +2646,7 @@ void main() {
       );
       final dir = await Directory.systemTemp.createTemp('webdav-large-');
       addTearDown(() => server.close(force: true));
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       final vault = Vault(dir);
       await vault.ensureCreated();
       await vault.storage.writeBytes(
@@ -5473,7 +5474,7 @@ void main() {
   test('createSyncConflict replaces an existing unresolved record for the '
       'same path instead of stacking', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_dedupe_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     await vault.ensureCreated();
 
@@ -5501,7 +5502,7 @@ void main() {
     final dir = await Directory.systemTemp.createTemp(
       'tylog_concurrent_conflict_',
     );
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     await vault.ensureCreated();
 
@@ -5536,7 +5537,7 @@ void main() {
     final dir = await Directory.systemTemp.createTemp(
       'tylog_excluded_conflicts_',
     );
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     await vault.ensureCreated();
 
@@ -5583,7 +5584,7 @@ void main() {
     'loadSyncConflicts self-heals a record whose snapshots are identical',
     () async {
       final dir = await Directory.systemTemp.createTemp('tylog_selfheal_');
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       final vault = Vault(dir);
       await vault.ensureCreated();
 
@@ -6398,7 +6399,7 @@ void main() {
       await request.response.close();
     });
     final dir = await Directory.systemTemp.createTemp('tylog_nested_remote_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final config = NextcloudConfig(
       serverUrl: 'http://${server.address.address}:${server.port}',
       username: 'alice',
@@ -6454,7 +6455,7 @@ void main() {
       await request.response.close();
     });
     final dir = await Directory.systemTemp.createTemp('tylog_concurrent_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     await vault.ensureCreated();
     for (var i = 1; i <= 6; i++) {

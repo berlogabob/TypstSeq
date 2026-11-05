@@ -4,13 +4,14 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:crypto/crypto.dart';
 import 'package:tylog/widgets/settings/p2p_snapshot.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   test(
     'synthetic folder snapshot verifies and restores into a fresh folder',
     () async {
       final root = await Directory.systemTemp.createTemp('p2p-test-');
-      addTearDown(() => root.delete(recursive: true));
+      addTearDown(() => deleteTempDir(root));
       final snapshot = createScratchSnapshot();
       final destination = await restoreScratchSnapshot(snapshot, root);
       expect(
@@ -28,7 +29,7 @@ void main() {
 
   test('generated scratch folder contains 200 notes and assets', () async {
     final root = await Directory.systemTemp.createTemp('p2p-fixture-');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final snapshot = await createRepresentativeScratchSnapshot(root);
     final restored = await restoreScratchSnapshot(snapshot, root);
     final notes = await Directory('${restored.path}/notes').list().toList();
@@ -41,7 +42,7 @@ void main() {
 
   test('changed scratch blobs restore a complete fresh snapshot', () async {
     final root = await Directory.systemTemp.createTemp('p2p-delta-');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final baseline = await createRepresentativeScratchSnapshot(root);
     final changed = jsonDecode(baseline) as Map<String, dynamic>;
     final files = changed['files'] as List<dynamic>;
@@ -68,7 +69,7 @@ void main() {
 
   test('rejects tampered or unsafe snapshots before creating files', () async {
     final root = await Directory.systemTemp.createTemp('p2p-test-');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final snapshot =
         jsonDecode(createScratchSnapshot()) as Map<String, dynamic>;
     final files = snapshot['files'] as List<dynamic>;

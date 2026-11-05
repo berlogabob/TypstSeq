@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_registry.dart';
 import 'package:tylog/vault_storage.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -15,7 +16,7 @@ void main() {
     'revision JSON cannot replace a daily note through local or SAF storage',
     () async {
       final dir = await Directory.systemTemp.createTemp('tylog_guard_');
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       final local = LocalVaultStorage(dir);
       const path = 'daily/2026/11/2026-11-02.typ';
       const note = '#import "/_system/tylog.typ" as tylog\n\nExisting note';
@@ -54,7 +55,7 @@ void main() {
     'note writes and appends reject invalid UTF-8 and preserve legacy text',
     () async {
       final dir = await Directory.systemTemp.createTemp('tylog_guard_extra_');
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       final storage = LocalVaultStorage(dir);
       const path = 'notes/legacy.typ';
       const legacy = 'A headerless legacy note with {braces}.\n';
@@ -244,7 +245,7 @@ void main() {
         final directory = await Directory.systemTemp.createTemp(
           'tylog_storage_',
         );
-        addTearDown(() => directory.delete(recursive: true));
+        addTearDown(() => deleteTempDir(directory));
         final storage = simulatedSaf
             ? _SimulatedSafStorage(directory)
             : LocalVaultStorage(directory);
@@ -272,7 +273,7 @@ void main() {
 
   test('concurrent local appends preserve both complete lines', () async {
     final directory = await Directory.systemTemp.createTemp('tylog_append_');
-    addTearDown(() => directory.delete(recursive: true));
+    addTearDown(() => deleteTempDir(directory));
     final storage = LocalVaultStorage(directory);
     await Future.wait([
       storage.appendBytes('logs/events.jsonl', utf8.encode('one\n')),
@@ -338,7 +339,7 @@ void main() {
 
   test('concurrent overwrites are atomic and leave no temp files', () async {
     final directory = await Directory.systemTemp.createTemp('tylog_atomic_');
-    addTearDown(() => directory.delete(recursive: true));
+    addTearDown(() => deleteTempDir(directory));
     final storage = LocalVaultStorage(directory);
 
     await storage.writeText('notes/a.typ', 'one');
@@ -364,8 +365,8 @@ void main() {
       final destinationDir = await Directory.systemTemp.createTemp(
         'tylog_destination_',
       );
-      addTearDown(() => sourceDir.delete(recursive: true));
-      addTearDown(() => destinationDir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(sourceDir));
+      addTearDown(() => deleteTempDir(destinationDir));
       final source = LocalVaultStorage(sourceDir);
       final destination = _SimulatedSafStorage(destinationDir);
       final vault = Vault.withStorage(source);
@@ -388,8 +389,8 @@ void main() {
     final destinationDir = await Directory.systemTemp.createTemp(
       'tylog_destination_',
     );
-    addTearDown(() => sourceDir.delete(recursive: true));
-    addTearDown(() => destinationDir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(sourceDir));
+    addTearDown(() => deleteTempDir(destinationDir));
     final source = LocalVaultStorage(sourceDir);
     final vault = Vault.withStorage(source);
     await vault.ensureCreated();
@@ -404,7 +405,7 @@ void main() {
 
   test('simulated SAF storage surfaces permission loss', () async {
     final directory = await Directory.systemTemp.createTemp('tylog_revoked_');
-    addTearDown(() => directory.delete(recursive: true));
+    addTearDown(() => deleteTempDir(directory));
     final storage = _RevocableSafStorage(directory);
     await storage.writeText('notes/a.typ', 'available');
 

@@ -10,6 +10,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/controlled_editor.dart';
 import 'package:tylog/rich_editor.dart';
+import 'support/temp_dir.dart';
 
 final _tinyPng = base64Decode(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
@@ -262,7 +263,7 @@ void main() {
     expect(controller.text, '• a\n  • b');
     expect(sources.last, '- a\n  - b');
     final dir = await Directory.systemTemp.createTemp('indent_nested_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final file = File('${dir.path}/nested.typ')
       ..writeAsStringSync(sources.last);
     final compiled = Process.runSync('typst', [

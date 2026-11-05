@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/controlled_editor.dart';
 import 'package:tylog/rich_editor.dart';
 import 'package:tylog/tylog_assets.dart';
+import 'support/temp_dir.dart';
 
 final _png = base64Decode(
   'iVBORw0KGgoAAAANSUhEUgAAAHgAAAA8CAYAAACtrX6oAAAApUlEQVR4nO3RMQ0AIADAMKQgFWk4Axkko0f/JRtz7UPXeB2AwRiMwZ8yOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjDI4zOM7gOIPjLgwis787iIn5AAAAAElFTkSuQmCC',
@@ -182,7 +183,7 @@ void main() {
       'written $align image compiles with the real Typst engine and tylog package',
       () async {
         final dir = await Directory.systemTemp.createTemp('tylog_image_');
-        addTearDown(() => dir.delete(recursive: true));
+        addTearDown(() => deleteTempDir(dir));
         final assets = await TylogAssets.load();
         for (final entry in assets.managedVaultFiles.entries) {
           final file = File('${dir.path}/${entry.key}');

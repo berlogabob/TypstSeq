@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog_core/tylog_core.dart';
 import 'package:tylog/audio/transcript_jobs.dart';
 import 'package:tylog/processing_jobs.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   late Directory dir;
@@ -13,7 +14,7 @@ void main() {
   setUp(() async {
     dir = await Directory.systemTemp.createTemp('tylog_transcript_jobs_');
     storage = LocalVaultStorage(dir);
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
   });
 
   test(

@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/scanner.dart';
 import 'package:tylog/vault_storage.dart';
 import 'package:tylog/audio/audio_note_doc.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   test(
@@ -26,7 +27,7 @@ void main() {
 
   test('peaks backfill writes a sidecar and preserves note bytes', () async {
     final root = await Directory.systemTemp.createTemp('tylog_peaks_');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final storage = LocalVaultStorage(root);
     const note = '#show: tylog.note.with(id: "audio", title: "Audio")\n';
     await storage.writeText('notes/Audio.typ', note);
@@ -126,7 +127,7 @@ void composedNote() {
 
     if ((await Process.run('typst', ['--version'])).exitCode != 0) return;
     final dir = await Directory.systemTemp.createTemp('audio_note_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     await Directory('${dir.path}/_system').create();
     await File('typst/tylog/lib.typ').copy('${dir.path}/_system/tylog.typ');
     await File('${dir.path}/a.typ').writeAsString(s);

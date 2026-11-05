@@ -6,11 +6,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/diagnostics/startup_trace.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_storage.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   test('startup marks are ordered, bounded, and flushed only once', () async {
     final root = await Directory.systemTemp.createTemp('tylog-startup-');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final vault = Vault.withStorage(LocalVaultStorage(root));
     final trace = File('${root.path}/.tylog/sync_trace.jsonl');
     await flushStartupTrace(vault);

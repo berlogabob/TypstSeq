@@ -7,6 +7,7 @@ import 'package:tylog/markdown_article_import.dart';
 import 'package:tylog_core/models.dart';
 import 'package:tylog_core/storage.dart';
 import 'package:typst_flutter/typst_flutter.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   Future<MarkdownTypstResult> fakeConverter({
@@ -192,7 +193,7 @@ Body
 
   test('adds collision suffixes without overwriting files', () async {
     final root = await Directory.systemTemp.createTemp('tylog-md-path-');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final storage = LocalVaultStorage(root);
     await storage.writeText('articles/Title.typ', 'one');
     await storage.writeText('articles/Title (2).typ', 'two');
@@ -219,7 +220,7 @@ Body
       final base = 'http://${server.address.host}:${server.port}';
 
       final root = await Directory.systemTemp.createTemp('tylog-md-img-');
-      addTearDown(() => root.delete(recursive: true));
+      addTearDown(() => deleteTempDir(root));
       final storage = LocalVaultStorage(root);
 
       final result = await downloadArticleImages(

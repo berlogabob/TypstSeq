@@ -26,6 +26,7 @@ import 'package:tylog/models.dart';
 import 'package:tylog/kind_registry.dart';
 import 'package:tylog/widgets/constants.dart';
 import 'package:tylog/vault.dart' show Vault, emptyDailyTemplate;
+import 'support/temp_dir.dart';
 
 Future<void> _waitUntil(
   bool Function() condition, {
@@ -88,7 +89,7 @@ void main() {
 
   test('GitHub paths isolate vaults and repository refs', () async {
     final root = await Directory.systemTemp.createTemp('mount-paths');
-    addTearDown(() => _deleteDir(root));
+    addTearDown(() => deleteTempDir(root));
     final controller = WorkspaceController(
       taskScheduler: TaskScheduler(),
       inspector: _FakeInspector(),
@@ -166,7 +167,7 @@ void main() {
   });
   test('mounts load, index and disappear after removal and reopen', () async {
     final root = await Directory.systemTemp.createTemp('mount-controller');
-    addTearDown(() => _deleteDir(root));
+    addTearDown(() => deleteTempDir(root));
     final external = Directory('${root.path}/external');
     final vaultDir = Directory('${root.path}/vault');
     await external.create();
@@ -239,7 +240,7 @@ void main() {
   });
   test('save during refresh waits and keeps the edit', () async {
     final root = await Directory.systemTemp.createTemp('mount-race');
-    addTearDown(() => _deleteDir(root));
+    addTearDown(() => deleteTempDir(root));
     final cache = Directory('${root.path}/mounts');
     final mountDir = Directory('${cache.path}/939bb46a04c3/repo-3c48e66eac');
     await mountDir.create(recursive: true);
@@ -298,7 +299,7 @@ void main() {
   });
   test('push mount saves to cache and queues the cached blob sha', () async {
     final root = await Directory.systemTemp.createTemp('mount-push');
-    addTearDown(() => _deleteDir(root));
+    addTearDown(() => deleteTempDir(root));
     final cache = Directory('${root.path}/mounts');
     final mountDir = Directory('${cache.path}/939bb46a04c3/repo-17a31e6abc');
     await mountDir.create(recursive: true);
@@ -387,7 +388,7 @@ void main() {
 
   test('scanned issues survive index publication and later refreshes', () async {
     final dir = await Directory.systemTemp.createTemp('issue-publication');
-    addTearDown(() => _deleteDir(dir));
+    addTearDown(() => deleteTempDir(dir));
     final storage = LocalVaultStorage(dir);
     final controller = WorkspaceController(
       taskScheduler: TaskScheduler(),
@@ -421,7 +422,7 @@ void main() {
 
   test('worker publishes newly scanned issues to the controller', () async {
     final dir = await Directory.systemTemp.createTemp('worker-issues');
-    addTearDown(() => _deleteDir(dir));
+    addTearDown(() => deleteTempDir(dir));
     final storage = LocalVaultStorage(dir);
     await Vault(dir).ensureCreated();
     await storage.writeText(
@@ -3842,7 +3843,7 @@ void main() {
     server.includeRoot = true;
     addTearDown(() => server.server.close(force: true));
     final directory = await Directory.systemTemp.createTemp('tylog_resume_');
-    addTearDown(() => _deleteDir(directory));
+    addTearDown(() => deleteTempDir(directory));
     var now = DateTime.utc(2026);
     final controller = WorkspaceController(
       taskScheduler: TaskScheduler(),
@@ -5588,17 +5589,5 @@ class _PackageGatedStorage extends _MemoryStorage {
       await release.future;
     }
     return super.list(path: path, recursive: recursive);
-  }
-}
-
-/// Background workers may still be flushing files when a test ends (CI race).
-Future<void> _deleteDir(Directory dir) async {
-  for (var i = 0; i < 10; i++) {
-    try {
-      if (await dir.exists()) await dir.delete(recursive: true);
-      return;
-    } on FileSystemException {
-      await Future<void>.delayed(const Duration(milliseconds: 200));
-    }
   }
 }

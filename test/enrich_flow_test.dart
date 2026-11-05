@@ -11,6 +11,7 @@ import 'package:tylog/vault.dart';
 import 'package:tylog/vault_registry.dart';
 import 'package:tylog/widgets/enrich_review.dart';
 import 'package:tylog_core/tylog_core.dart';
+import 'support/temp_dir.dart';
 
 Future<void> _emptyStartup() async {}
 bool _waitForEnrichmentWorker = false;
@@ -820,7 +821,7 @@ void main() {
     expect(saved, contains('assignees: ("kz",)'));
     await tester.runAsync(() async {
       final dir = await Directory.systemTemp.createTemp('audio_proposal_');
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       await Directory('${dir.path}/_system').create();
       await File('typst/tylog/lib.typ').copy('${dir.path}/_system/tylog.typ');
       await File('${dir.path}/audio.typ').writeAsString(saved!);

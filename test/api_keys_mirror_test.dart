@@ -3,11 +3,12 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/ai/api_keys.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   test('worker key file mirrors saved keys for the Mac scripts', () async {
     final home = await Directory.systemTemp.createTemp('keys-home-');
-    addTearDown(() => home.delete(recursive: true));
+    addTearDown(() => deleteTempDir(home));
     final file = File('${home.path}/.tylog/keys.json');
     await mirrorWorkerKey('studio', 'sk-1', home: home.path);
     await mirrorWorkerKey('other', 'sk-2', home: home.path);

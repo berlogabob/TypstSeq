@@ -4,13 +4,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/models.dart';
 import 'package:tylog_core/validation.dart';
 import 'package:tylog/vault_storage.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   test(
     'validator rejects unknown task vocabulary and retains extension kinds',
     () async {
       final dir = await Directory('.dart_tool').createTemp('vocabulary-');
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       final index = VaultIndex(
         notesByPath: const {
           'notes/a.typ': NoteRef(
@@ -51,7 +52,7 @@ void main() {
 
   test('v5 validator reports missing and unsafe Typst attachments', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_validate_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final index = VaultIndex(
       notesByPath: {
         'notes/a.typ': const NoteRef(
@@ -79,7 +80,7 @@ void main() {
 
   test('v5 validator preserves and warns about custom Typst files', () async {
     final dir = await Directory.systemTemp.createTemp('tylog_custom_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     await Directory('${dir.path}/_system').create(recursive: true);
     const custom = '#let note(..args) = [custom]';
     await File('${dir.path}/_system/tylog.typ').writeAsString(custom);

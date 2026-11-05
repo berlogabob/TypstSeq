@@ -18,6 +18,7 @@ import 'package:tylog/widgets/property_select_chip.dart';
 import 'package:tylog/widgets/screenshot_strip.dart';
 import 'package:tylog/widgets/screenshots_settings.dart';
 import 'package:tylog/widgets/work_surface.dart';
+import 'support/temp_dir.dart';
 
 const shot = NoteRef(
   id: 'shot-0123456789abcdef',
@@ -261,7 +262,7 @@ void main() {
 
   test('phone request writes only syncable system state', () async {
     final dir = await Directory.systemTemp.createTemp('screenshots-request-');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final storage = LocalVaultStorage(dir);
     await storage.writeText('daily/2026/10/2026-10-04.typ', 'original daily');
     await requestScreenshotsRun(storage, now: DateTime.utc(2026, 10, 4, 12));
@@ -405,7 +406,7 @@ void main() {
       final dir = await Directory.systemTemp.createTemp(
         'screenshots-settings-',
       );
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() => deleteTempDir(dir));
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(
             const MethodChannel('plugins.flutter.io/path_provider'),

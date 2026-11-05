@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog_core/tylog_core.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/widgets/unified_board.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   testWidgets('switch persists view and saves fallback canvas to entity board', (
@@ -12,7 +13,7 @@ void main() {
     final dir = (await tester.runAsync(
       () => Directory.systemTemp.createTemp('unified-board'),
     ))!;
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     final vault = Vault(dir);
     const entity = NoteRef(
       id: 'project',

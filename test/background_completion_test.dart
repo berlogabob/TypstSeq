@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/vault_service.dart';
 import 'package:tylog/vault_storage.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -46,7 +47,7 @@ void main() {
     'headless unconfigured vault completes without initialization writes',
     () async {
       final root = await Directory('.dart_tool').createTemp('headless-');
-      addTearDown(() => root.delete(recursive: true));
+      addTearDown(() => deleteTempDir(root));
       final registry = File('${root.path}/vaults.json');
       final original = jsonEncode({
         'vaults': [

@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/nextcloud_sync.dart';
 import 'package:tylog/vault.dart';
+import 'support/temp_dir.dart';
 
 /// The 'WebDAV (any server)' backend against a real server: rclone's WebDAV
 /// on loopback. Skipped where rclone is not installed (CI).
@@ -14,7 +15,7 @@ void main() {
     'two vaults converge through rclone serve webdav, large file included',
     () async {
       final root = await Directory.systemTemp.createTemp('rclone-webdav-');
-      addTearDown(() => root.delete(recursive: true));
+      addTearDown(() => deleteTempDir(root));
       final served = await Directory('${root.path}/served').create();
       final probe = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
       final port = probe.port;

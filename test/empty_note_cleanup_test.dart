@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog_core/storage.dart';
+import 'support/temp_dir.dart';
 
 /// Fails `readText` for one path, to prove a bad read never authorises a
 /// delete.
@@ -29,7 +30,7 @@ void main() {
 
   setUp(() async {
     final dir = await Directory.systemTemp.createTemp('tylog_empty_note_');
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
     storage = _UnreadableStorage(dir);
     vault = Vault.withStorage(storage);
   });

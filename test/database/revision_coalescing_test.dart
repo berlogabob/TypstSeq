@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/database/note_persistence.dart';
 import 'package:tylog/database/revision_publisher.dart';
 import 'package:tylog/database/tylog_database.dart';
+import '../support/temp_dir.dart';
 
 void main() {
   late TyLogDatabase database;
@@ -95,7 +96,7 @@ void main() {
     'draft survives restart and the old immutable guard is upgraded',
     () async {
       final directory = await Directory.systemTemp.createTemp('tylog-draft-');
-      addTearDown(() => directory.delete(recursive: true));
+      addTearDown(() => deleteTempDir(directory));
       await database.close();
       final file = File('${directory.path}/vault.db');
       database = TyLogDatabase(NativeDatabase(file));

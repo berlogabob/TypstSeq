@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/audio/processing_policy.dart';
 import 'package:tylog_core/tylog_core.dart';
+import 'support/temp_dir.dart';
 
 void main() {
   late Directory dir;
@@ -13,7 +14,7 @@ void main() {
   setUp(() async {
     dir = await Directory.systemTemp.createTemp('tylog_policy_');
     storage = LocalVaultStorage(dir);
-    addTearDown(() => dir.delete(recursive: true));
+    addTearDown(() => deleteTempDir(dir));
   });
 
   test('missing file means everything off', () async {

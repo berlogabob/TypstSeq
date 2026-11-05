@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/nextcloud_sync.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog_core/storage.dart';
+import 'support/temp_dir.dart';
 
 /// A device that stops sharing its index makes every peer rebuild the whole
 /// vault from scratch. The store has recorded that failure since it stopped
@@ -24,7 +25,7 @@ class _RefusingDonorStorage extends LocalVaultStorage {
 void main() {
   test('a donor publish failure reaches the vault', () async {
     final root = await Directory.systemTemp.createTemp('tylog_donor_health_');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final vault = Vault.withStorage(_RefusingDonorStorage(root));
     await vault.ensureCreated();
 
@@ -39,7 +40,7 @@ void main() {
 
   test('a successful publish leaves no error behind', () async {
     final root = await Directory.systemTemp.createTemp('tylog_donor_ok_');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final vault = Vault(root);
     await vault.ensureCreated();
 
@@ -52,7 +53,7 @@ void main() {
     // Indexing happens whether or not sync is configured, and a device that
     // cannot sync at all is exactly where donor health matters most.
     final root = await Directory.systemTemp.createTemp('tylog_trace_');
-    addTearDown(() => root.delete(recursive: true));
+    addTearDown(() => deleteTempDir(root));
     final vault = Vault(root);
     await vault.ensureCreated();
 
