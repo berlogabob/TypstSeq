@@ -70,81 +70,94 @@ extension _DuplicateMerge on WorkspaceController {
     }
     final before = <String, String>{loser: loserText};
     final after = <String, String>{};
-    for (final n in currentIndex.notes) {
-      if (n.path == loser) continue;
-      final text = n.path == note ? source : await readNote(n.path);
-      var updated = _renameReferences(
-        text,
-        targets,
-        remove.title,
-        keep.id,
-        labelTitle: keep.title,
+    final candidates = currentIndex.notes
+        .where((n) => n.path != loser)
+        .toList();
+    for (var start = 0; start < candidates.length; start += 4) {
+      final batch = candidates.skip(start).take(4).toList();
+      final texts = await Future.wait<String>(
+        batch.map<Future<String>>(
+          (n) async => n.path == note ? source : readNote(n.path),
+        ),
       );
-      if (updated.contains(typstString(remove.id))) {
-        throw StateError(
-          'An unsupported reference to the page ID remains in ${n.path}.',
+      for (var i = 0; i < batch.length; i++) {
+        final n = batch[i];
+        final text = texts[i];
+        var updated = _renameReferences(
+          text,
+          targets,
+          remove.title,
+          keep.id,
+          labelTitle: keep.title,
         );
-      }
-      if (n.path == survivor) {
-        final metadata = scanNote(survivor, updated);
-        if ((draft.date != null &&
-                metadata.date != null &&
-                draft.date != metadata.date) ||
-            (draft.project != null &&
-                metadata.project != null &&
-                draft.project != metadata.project)) {
-          throw StateError('The pages have conflicting dates or projects.');
-        }
-        final aliases = {...metadata.aliases, remove.title, ...remove.aliases}
-          ..remove(metadata.title);
-        if (draft.tags.isNotEmpty &&
-            !text.startsWith(
-              replaceNoteHeader(
-                '',
-                NoteMetadataDraft.fromNote(scanNote(survivor, text)),
-              ),
-            )) {
-          throw StateError('Tagged pages require a canonical survivor header.');
-        }
-        updated = replaceNoteFields(updated, {
-          if (draft.date != null && metadata.date == null)
-            'date': typstString(draft.date!),
-          if (draft.project != null && metadata.project == null)
-            'project': typstString(draft.project!),
-          if (draft.tags.isNotEmpty)
-            'tags':
-                '(${{...metadata.tags, ...draft.tags}.map(typstString).map((s) => '$s,').join(' ')})',
-          'aliases':
-              '(${aliases.map(typstString).map((s) => '$s,').join(' ')})',
-        });
-        updated = replaceNotePartOf(
-          updated,
-          NoteMetadataDraft.fromNote(metadata),
-          {...metadata.partOf, ...remove.partOf}.toList(),
-        );
-        if (body != null && body.trim().isNotEmpty) {
-          final mergedBody = _renameReferences(
-            body,
-            targets,
-            remove.title,
-            keep.id,
-            labelTitle: keep.title,
+        if (updated.contains(typstString(remove.id))) {
+          throw StateError(
+            'An unsupported reference to the page ID remains in ${n.path}.',
           );
-          if (mergedBody.contains(typstString(remove.id))) {
+        }
+        if (n.path == survivor) {
+          final metadata = scanNote(survivor, updated);
+          if ((draft.date != null &&
+                  metadata.date != null &&
+                  draft.date != metadata.date) ||
+              (draft.project != null &&
+                  metadata.project != null &&
+                  draft.project != metadata.project)) {
+            throw StateError('The pages have conflicting dates or projects.');
+          }
+          final aliases = {...metadata.aliases, remove.title, ...remove.aliases}
+            ..remove(metadata.title);
+          if (draft.tags.isNotEmpty &&
+              !text.startsWith(
+                replaceNoteHeader(
+                  '',
+                  NoteMetadataDraft.fromNote(scanNote(survivor, text)),
+                ),
+              )) {
             throw StateError(
-              'An unsupported reference to the page ID remains in $loser.',
+              'Tagged pages require a canonical survivor header.',
             );
           }
-          updated =
-              '$updated\n\n== Merged from ${escapeMarkup(remove.title)}\n\n$mergedBody';
+          updated = replaceNoteFields(updated, {
+            if (draft.date != null && metadata.date == null)
+              'date': typstString(draft.date!),
+            if (draft.project != null && metadata.project == null)
+              'project': typstString(draft.project!),
+            if (draft.tags.isNotEmpty)
+              'tags':
+                  '(${{...metadata.tags, ...draft.tags}.map(typstString).map((s) => '$s,').join(' ')})',
+            'aliases':
+                '(${aliases.map(typstString).map((s) => '$s,').join(' ')})',
+          });
+          updated = replaceNotePartOf(
+            updated,
+            NoteMetadataDraft.fromNote(metadata),
+            {...metadata.partOf, ...remove.partOf}.toList(),
+          );
+          if (body != null && body.trim().isNotEmpty) {
+            final mergedBody = _renameReferences(
+              body,
+              targets,
+              remove.title,
+              keep.id,
+              labelTitle: keep.title,
+            );
+            if (mergedBody.contains(typstString(remove.id))) {
+              throw StateError(
+                'An unsupported reference to the page ID remains in $loser.',
+              );
+            }
+            updated =
+                '$updated\n\n== Merged from ${escapeMarkup(remove.title)}\n\n$mergedBody';
+          }
         }
-      }
-      if (updated != text) {
-        if (n.path.startsWith('ext/')) {
-          throw StateError('A reference is in a read-only mount.');
+        if (updated != text) {
+          if (n.path.startsWith('ext/')) {
+            throw StateError('A reference is in a read-only mount.');
+          }
+          before[n.path] = text;
+          after[n.path] = updated;
         }
-        before[n.path] = text;
-        after[n.path] = updated;
       }
     }
     before.putIfAbsent(

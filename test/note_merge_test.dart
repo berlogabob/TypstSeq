@@ -8,8 +8,52 @@ import 'package:tylog/vault_storage.dart';
 import 'package:tylog/workspace_controller.dart';
 import 'package:tylog_core/tylog_core.dart' show loadDecisions;
 
+class _DelayedStorage extends LocalVaultStorage {
+  _DelayedStorage(super.root);
+
+  int activeReads = 0;
+  int maxActiveReads = 0;
+
+  @override
+  Future<String> readText(String path) async {
+    activeReads++;
+    if (activeReads > maxActiveReads) maxActiveReads = activeReads;
+    try {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      return await super.readText(path);
+    } finally {
+      activeReads--;
+    }
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('merge preview reads candidate notes concurrently', () async {
+    final root = await Directory.systemTemp.createTemp('merge-parallel-');
+    final storage = _DelayedStorage(root);
+    final vault = Vault.withStorage(storage);
+    await vault.ensureCreated();
+    final workspace = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      reconcileTasks: (_) async {},
+    )..vault = vault;
+    addTearDown(() async {
+      workspace.dispose();
+      await root.delete(recursive: true);
+    });
+    for (var i = 0; i < 12; i++) {
+      await storage.writeText(
+        'notes/$i.typ',
+        replaceNoteHeader('', NoteMetadataDraft(id: 'n$i', title: 'N$i')),
+      );
+    }
+    workspace.index = await scanVaultStorage(storage);
+    storage.maxActiveReads = 0;
+    await workspace.previewDuplicateMerge('notes/0.typ', 'notes/1.typ');
+    expect(storage.maxActiveReads, greaterThan(1));
+    expect(storage.maxActiveReads, lessThanOrEqualTo(4));
+  });
   test(
     'preserves a canonical duplicate date and project, rejecting conflicts',
     () async {
