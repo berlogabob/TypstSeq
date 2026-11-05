@@ -12,6 +12,7 @@ import 'package:tylog_core/tylog_core.dart'
         parseMounts,
         mountsSettingsPath,
         CompositeVaultStorage;
+import 'package:tylog_core/enrich.dart' show selfHealAutoEntities;
 
 import 'package:tylog_core/graph.dart';
 import 'package:tylog_core/tylog_core.dart'
@@ -1776,6 +1777,9 @@ class WorkspaceController extends ChangeNotifier {
 
   Future<void> _writeNote(Vault opened, String path, String? value) async {
     if (!identical(vault, opened)) throw StateError('Vault changed');
+    if (value != null && path.endsWith('.typ')) {
+      value = selfHealAutoEntities(value);
+    }
     final mount = _pushMountFor(path);
     if (mount != null && value != null) {
       final relative = path.split('/').skip(2).join('/');

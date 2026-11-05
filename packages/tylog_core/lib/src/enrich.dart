@@ -708,6 +708,57 @@ String stripAutoEntities(String source) {
   return tail.isEmpty ? '$before\n' : '$before\n\n$tail\n';
 }
 
+/// Removes legacy generated mentions while keeping their links as plain text
+/// and promoting generated tags into the note header.
+String selfHealAutoEntities(String source) {
+  if (!source.contains(autoEntitiesMarker)) return source;
+  final lines = source.split('\n');
+  final kept = <String>[];
+  final tags = <String>[];
+  var inBlock = false;
+  var headingSeen = false;
+  for (final line in lines) {
+    if (line.trim() == autoEntitiesMarker) {
+      inBlock = true;
+      headingSeen = false;
+      continue;
+    }
+    if (inBlock &&
+        !headingSeen &&
+        RegExp(r'^\s*==\s+Mentions\s*$').hasMatch(line)) {
+      headingSeen = true;
+      continue;
+    }
+    if (inBlock && RegExp(r'^\s*=+\s').hasMatch(line)) inBlock = false;
+    if (inBlock) {
+      final tagMatches = RegExp(
+        r'#tylog\.tag\("((?:\\.|[^"\\])*)"\)',
+      ).allMatches(line);
+      if (tagMatches.isNotEmpty) {
+        tags.addAll(
+          tagMatches.map(
+            (tag) =>
+                tag.group(1)!.replaceAllMapped(RegExp(r'\\(.)'), (m) => m[1]!),
+          ),
+        );
+        continue;
+      }
+      final link = RegExp(
+        r'^\s*[-+*]\s+(#tylog\.ref-note\(.*)$',
+      ).firstMatch(line);
+      if (link != null) {
+        kept.add(link.group(1)!);
+      } else if (line.trim().isNotEmpty) {
+        kept.add(line);
+      }
+      continue;
+    }
+    kept.add(line);
+  }
+  final cleaned = kept.join('\n');
+  return tags.isEmpty ? cleaned : updateNoteTags(cleaned, add: tags);
+}
+
 /// Rewrites the block from [decisions]: linked mentions the note does not
 /// already link inline, and [tags]. No block when there is nothing to say.
 ///

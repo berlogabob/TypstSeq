@@ -488,6 +488,55 @@ void main() {
     );
   });
 
+  test(
+    'self-heal keeps link items, promotes tags, and preserves later text',
+    () {
+      const source =
+          '#show: tylog.note.with(id: "d", title: "D")\n'
+          '= Day\n\nBody\n\n// tylog:auto-entities\n== Mentions\n'
+          '- #tylog.ref-note("alice")[Alice]\n#tylog.tag("design")\n'
+          '## User heading\nKeep this\n';
+      final result = selfHealAutoEntities(source);
+      expect(result, contains('#tylog.ref-note("alice")[Alice]'));
+      expect(result, contains('tags: ("design",)'));
+      expect(result, contains('## User heading\nKeep this'));
+      expect(result, isNot(contains(autoEntitiesMarker)));
+      expect(selfHealAutoEntities(result), result);
+    },
+  );
+
+  test('self-healed legacy block compiles', () {
+    if (Process.runSync('which', ['typst']).exitCode != 0) {
+      markTestSkipped('typst not on PATH');
+      return;
+    }
+    final root = Directory.current.path.endsWith('packages/tylog_core')
+        ? Directory.current.parent.parent.path
+        : Directory.current.path;
+    final dir = Directory('$root/.dart_tool/tylog_enrich_test')
+      ..createSync(recursive: true);
+    addTearDown(() => dir.deleteSync(recursive: true));
+    const legacy =
+        '#import "/typst/tylog/lib.typ" as tylog\n\n'
+        '#show: tylog.note.with(id: "d", title: "D")\n'
+        '= Day\n// tylog:auto-entities\n== Mentions\n'
+        '- #tylog.ref-note("alice")[Alice]\n#tylog.tag("design")\n';
+    final file = File('${dir.path}/healed.typ')
+      ..writeAsStringSync(selfHealAutoEntities(legacy));
+    final result = Process.runSync('typst', [
+      'compile',
+      '--root',
+      root,
+      file.path,
+      '${file.path}.pdf',
+    ]);
+    expect(
+      result.exitCode,
+      0,
+      reason: '${result.stderr}\n${file.readAsStringSync()}',
+    );
+  });
+
   test('writing the legacy block changes the content hash', () {
     // Real vault: a day ending in "в точку . " plus blank lines lost its
     // trailing blanks to the block, and every device then saw an edit.

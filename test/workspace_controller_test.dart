@@ -2558,6 +2558,44 @@ void main() {
     );
   });
 
+  test(
+    'saving a legacy auto-entities note heals disk without changing editor',
+    () async {
+      final storage = _MemoryStorage();
+      final controller = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _FakeInspector(),
+        reconcileTasks: (_) async {},
+      );
+      addTearDown(controller.dispose);
+      await controller.openVault(
+        const VaultEntry(id: 'legacy-entities', name: 'Legacy', path: '/db'),
+        storage: storage,
+      );
+      await _waitUntil(() => controller.index != null);
+      const legacy =
+          '#import "/_system/tylog.typ" as tylog\n\n'
+          '#show: tylog.note.with(id: "2026-10-22", title: "Day", kind: "daily")\n'
+          '= Day\n\nBody\n\n// tylog:auto-entities\n== Mentions\n'
+          '- #tylog.ref-note("alice")[Alice]\n#tylog.tag("design")\n';
+      controller.edit(legacy);
+      expect(await controller.save(syncAfter: false), isTrue);
+      expect(
+        await storage.readText(controller.note!),
+        contains('tags: ("design",)'),
+      );
+      expect(
+        await storage.readText(controller.note!),
+        contains('#tylog.ref-note("alice")[Alice]'),
+      );
+      expect(
+        await storage.readText(controller.note!),
+        isNot(contains('tylog:auto-entities')),
+      );
+      expect(controller.source, legacy);
+    },
+  );
+
   test('page creation persists; daily stays in memory until edited', () async {
     final storage = _MemoryStorage();
     final database = TyLogDatabase(NativeDatabase.memory());
