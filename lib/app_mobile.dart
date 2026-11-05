@@ -8,6 +8,7 @@ import 'calendar_feeds.dart';
 import 'dart:ui' show AppExitResponse;
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
@@ -2834,7 +2835,31 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (v == null || ix == null) return;
     final notes = ix.notes.toList();
     if (dirty && !await _save(syncAfter: false)) return;
-    final plan = namespacePlan(notes, noteId: noteId);
+    if (!mounted) return;
+    if (noteId == null) {
+      unawaited(
+        showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => const AlertDialog(
+            content: Row(
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(width: 20),
+                Expanded(child: Text('Building namespace preview…')),
+              ],
+            ),
+          ),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+    }
+    final plan = noteId == null
+        ? await Isolate.run(() => namespacePlan(notes))
+        : namespacePlan(notes, noteId: noteId);
+    if (noteId == null && mounted) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
     if (noteId != null && plan.changes.isEmpty) {
       if (mounted) showSnack(context, 'This title cannot be migrated');
       return;
@@ -2853,10 +2878,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 title: const Text('Migrate namespace titles'),
                 content: SizedBox(
                   width: 500,
-                  child: SingleChildScrollView(
-                    child: Text(
-                      lines.isEmpty ? 'No changes needed.' : lines.join('\n'),
-                    ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${plan.changes.where((c) => c.existingId != null).length} updates · '
+                        '${plan.changes.where((c) => c.existingId == null).length} pages to create · '
+                        '${plan.skipped.length} skipped',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: kSpace12),
+                      SizedBox(
+                        height: 320,
+                        child: SingleChildScrollView(
+                          child: Text(
+                            lines.isEmpty
+                                ? 'No changes needed.'
+                                : lines.join('\n'),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 actions: [

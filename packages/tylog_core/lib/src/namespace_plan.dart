@@ -148,6 +148,14 @@ bool _isSkipped(List<String> segments) {
   if (joined.contains('://')) {
     return true;
   }
+  if (segments.any(
+    (segment) =>
+        segment.startsWith('www.') ||
+        segment.split(RegExp(r'\s+')).length > 4 ||
+        RegExp(r'[.!?].+').hasMatch(segment),
+  )) {
+    return true;
+  }
   if (joined.startsWith('r/') || joined.startsWith('u/')) {
     return true;
   }

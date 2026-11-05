@@ -7,8 +7,11 @@ export 'package:tylog_core/namespace_plan.dart' show NamespacePlan;
 import 'vault.dart';
 
 NamespacePlan namespacePlan(Iterable<NoteRef> notes, {String? noteId}) {
+  final candidates = notes.where(
+    (n) => n.kind == 'note' || entityNoteKinds.contains(n.kind),
+  );
   final pages = [
-    for (final n in notes) NamespacePage(n.id, n.title, n.aliases),
+    for (final n in candidates) NamespacePage(n.id, n.title, n.aliases),
   ];
   final plan = planNamespaces([
     if (noteId != null) ...pages.where((p) => p.id == noteId),

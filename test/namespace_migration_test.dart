@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/namespace_migration.dart';
@@ -20,6 +21,82 @@ void main() {
       expect(plan.changes.first.existingId, 'parent');
     },
   );
+
+  test('namespace migration ignores articles and sentence-like titles', () {
+    const notes = [
+      NoteRef(
+        id: 'article',
+        path: 'articles/a.typ',
+        title:
+            'Add DRIVE tensor encoder by amitport · Pull Request #905 · tensorflow',
+        kind: 'article',
+        outgoingLinks: [],
+      ),
+      NoteRef(
+        id: 'screenshot',
+        path: 'screenshots/s.typ',
+        title: 'Screenshots/Imported',
+        kind: 'screenshot',
+        outgoingLinks: [],
+      ),
+      NoteRef(
+        id: 'audio',
+        path: 'audio/a.typ',
+        title: 'Audio/Imported',
+        kind: 'audio',
+        outgoingLinks: [],
+      ),
+      NoteRef(
+        id: 'daily',
+        path: 'daily/d.typ',
+        title: 'Daily/Imported',
+        kind: 'daily',
+        outgoingLinks: [],
+      ),
+      NoteRef(
+        id: 'sentence',
+        path: 'sentence.typ',
+        title: 'A sentence that reads like prose/with a second sentence',
+        outgoingLinks: [],
+      ),
+      NoteRef(
+        id: 'url',
+        path: 'url.typ',
+        title: 'https://example.com/path',
+        outgoingLinks: [],
+      ),
+      NoteRef(
+        id: 'valid',
+        path: 'valid.typ',
+        title: 'A/B/C',
+        outgoingLinks: [],
+      ),
+    ];
+
+    expect(
+      namespacePlan(
+        notes,
+      ).changes.map((change) => change.existingId).whereType<String>(),
+      ['valid'],
+    );
+  });
+
+  test('full namespace preview can be built off the UI isolate', () async {
+    const notes = [
+      NoteRef(
+        id: 'child',
+        path: 'child.typ',
+        title: 'A/B/C',
+        outgoingLinks: [],
+      ),
+    ];
+    final plan = await Isolate.run(() => namespacePlan(notes));
+    expect(plan.changes.map((change) => change.fullPath), [
+      'A',
+      'A/B',
+      'A/B/C',
+    ]);
+  });
 
   test('namespace migration keeps the exact original title as an alias', () {
     const note = NoteRef(
