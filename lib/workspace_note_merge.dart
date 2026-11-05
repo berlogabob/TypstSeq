@@ -45,11 +45,11 @@ extension _DuplicateMerge on WorkspaceController {
             survivor.substring(0, survivor.lastIndexOf('/')) !=
                 loser.substring(0, loser.lastIndexOf('/')) &&
             !RegExp(
-              r"^[\p{L}\p{N}\s.,!?;:'’()*/_=\-]*$",
+              r"^[\p{L}\p{N}\s.,!?;:'’()*/_=`\-]*$",
               unicode: true,
             ).hasMatch(body))) {
       throw StateError(
-        'Only canonical pages can be merged; bodies moved between folders must contain only text, web URLs, emphasis, headings and lists.',
+        'Only canonical pages can be merged; bodies moved between folders must contain only text, web URLs, emphasis, inline raw text, headings and lists.',
       );
     }
     final resolver = LinkResolver(currentIndex.notes);
