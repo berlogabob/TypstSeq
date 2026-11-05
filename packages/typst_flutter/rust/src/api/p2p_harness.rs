@@ -8,6 +8,12 @@ pub struct ScratchTransfer {
 #[cfg(feature = "p2p-harness")]
 const ALPN: &[u8] = b"tylog/scratch/1";
 
+// Checked by tool/assert_source_built.sh so a harness build cannot be shipped
+// accidentally as one of the normal prebuilt libraries.
+#[cfg(feature = "p2p-harness")]
+#[unsafe(no_mangle)]
+pub static TYLOG_P2P_HARNESS_BUILD_MARKER: &[u8] = b"TYLOG_P2P_HARNESS_BUILD_MARKER";
+
 /// Serves only the supplied scratch text, once, for at most five minutes.
 #[cfg(feature = "p2p-harness")]
 fn start_impl(text: String) -> Result<String, String> {

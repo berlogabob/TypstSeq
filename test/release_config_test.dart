@@ -95,5 +95,8 @@ void main() {
     final assertion = File('tool/assert_source_built.sh').readAsStringSync();
     expect(assertion, contains('grep -qx "\$platform" "\$stamp"'));
     expect(assertion, isNot(contains('armeabi-v7a')));
+    expect(assertion, contains('TYLOG_P2P_HARNESS_BUILD_MARKER'));
+    expect(assertion, contains('libtypst_flutter.so'));
+    expect(assertion, contains('unexpected Android .so'));
   });
 }

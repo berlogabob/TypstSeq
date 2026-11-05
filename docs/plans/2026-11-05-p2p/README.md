@@ -39,7 +39,8 @@ cd packages/typst_flutter/rust
 PATH="$HOME/.cargo/bin:$PATH" \
   RUSTC="$(rustup which --toolchain stable rustc)" \
   ANDROID_NDK_HOME="$HOME/Library/Android/sdk/ndk/28.2.13676358" \
-  cargo ndk -t arm64-v8a -o ../.typst_flutter_prebuilt/android \
+  CARGO_TARGET_DIR=../.native-build-p2p-android \
+  cargo ndk -t arm64-v8a -o ../.native-build-p2p-android/jni \
   build --release --features p2p-harness
 ```
 
@@ -51,12 +52,16 @@ for target in aarch64-apple-darwin x86_64-apple-darwin; do
   if [ "$target" = aarch64-apple-darwin ]; then min=11.0; else min=10.15; fi
   MACOSX_DEPLOYMENT_TARGET="$min" CFLAGS="-mmacosx-version-min=$min" \
     RUSTC="$(rustup which --toolchain 1.92.0 rustc)" \
-    CARGO_TARGET_DIR=../.native-build-1.92.0-rustup \
+    CARGO_TARGET_DIR=../.native-build-p2p-1.92.0-rustup \
     rustup run 1.92.0 cargo build --release --target "$target" --features p2p-harness
 done
-lipo -create ../.native-build-1.92.0-rustup/{aarch64,x86_64}-apple-darwin/release/libtypst_flutter.a \
-  -output ../.typst_flutter_prebuilt/macos/libtypst_flutter.a
+lipo -create ../.native-build-p2p-1.92.0-rustup/{aarch64,x86_64}-apple-darwin/release/libtypst_flutter.a \
+  -output ../.native-build-p2p-1.92.0-rustup/libtypst_flutter.a
 ```
+
+Keep harness build outputs under `.native-build-p2p*`; never point `CARGO_TARGET_DIR`
+or `cargo ndk -o` at `.typst_flutter_prebuilt`. The harness libraries are for
+local debug runs only and must not replace the source-built shipping libraries.
 
 Run `pod install` in `macos/` after changing the podspec. Run a Mac debug
 build with `--dart-define=P2P_HARNESS=true`; on Android

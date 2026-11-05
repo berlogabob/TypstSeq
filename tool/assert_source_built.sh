@@ -37,6 +37,29 @@ for platform in "$@"; do
   fi
 done
 
+prebuilt="$root/packages/typst_flutter/.typst_flutter_prebuilt"
+if [ -d "$prebuilt/android" ]; then
+  while IFS= read -r library; do
+    [ -n "$library" ] || continue
+    if [ "$(basename "$library")" != "libtypst_flutter.so" ]; then
+      echo "FAIL: unexpected Android .so in shipped libraries: $library" >&2
+      status=1
+    fi
+  done <<EOF
+$(find "$prebuilt/android" -type f -name '*.so' -print)
+EOF
+fi
+
+while IFS= read -r library; do
+  [ -n "$library" ] || continue
+  if strings -a "$library" | grep -q 'TYLOG_P2P_HARNESS_BUILD_MARKER'; then
+    echo "FAIL: P2P harness feature found in shipped library: $library" >&2
+    status=1
+  fi
+done <<EOF
+$(find "$prebuilt" -type f \( -name '*.so' -o -name '*.a' -o -name '*.dylib' -o -name '*.dll' \) -print)
+EOF
+
 if [ "$status" -ne 0 ]; then
   echo "Source-built platforms: $(tr '\n' ' ' <"$stamp")" >&2
 fi
