@@ -369,10 +369,43 @@ void main() {
     expect(client.remoteStatus, 'done');
     await move('todo');
     expect(client.remoteStatus, 'todo');
-    client.remoteStatus = 'doing';
+    // A successful request can still lose a race, and the list reload can fail.
+    await io();
+    client.moveResult = 'doing';
+    client.failNextList = true;
     await move('done');
     expect(client.remoteStatus, 'doing');
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('board-column-doing')),
+        matching: find.text('Remote issue'),
+      ),
+      findsOneWidget,
+    );
     String? log;
+    for (var i = 0; i < 20; i++) {
+      await io();
+      log = await tester.runAsync(() async {
+        const path = '_system/decisions/github.jsonl';
+        return await vault.storage.exists(path)
+            ? vault.storage.readText(path)
+            : '';
+      });
+      if (log?.contains('status changed during move') == true) break;
+    }
+    expect(log, contains('status changed during move'));
+    await io();
+    expect(client.failNextList, isFalse);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('board-column-doing')),
+        matching: find.text('Remote issue'),
+      ),
+      findsOneWidget,
+    );
+    client.remoteStatus = 'todo';
+    await move('done');
+    expect(client.remoteStatus, 'todo');
     for (var i = 0; i < 20; i++) {
       await io();
       log = await tester.runAsync(() async {
@@ -828,9 +861,15 @@ class _FakeGitHub extends GitHubClient {
   String? repo;
   String remoteTitle = 'Remote issue';
   String remoteStatus = 'todo';
+  String? moveResult;
+  bool failNextList = false;
   @override
   Future<List<Map<String, dynamic>>> repositoryIssues(String repo) async {
     this.repo = repo;
+    if (failNextList) {
+      failNextList = false;
+      throw StateError('list unavailable');
+    }
     return [
       {
         'number': 42,
@@ -867,7 +906,8 @@ class _FakeGitHub extends GitHubClient {
       throw StateError('label update failed');
     }
     if (number == 42) {
-      remoteStatus = column;
+      remoteStatus = moveResult ?? column;
+      moveResult = null;
     } else {
       state = column == 'done' ? 'closed' : 'open';
       linkedDoing = column == 'doing';

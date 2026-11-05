@@ -466,7 +466,8 @@ Issues found:
 - [x] S6-rest-rest-rest-rest Preserve unrelated GitHub labels added concurrently during linked and repository-only card moves.
 - [x] S6-rest-rest-rest-rest-rest Recover failed GitHub issue moves by reloading the remote status, reconciling cards and recording the failure.
 - [x] S6-rest-rest-rest-rest-rest-rest Avoid reopening a concurrently closed issue during moves between open columns; reload linked issues after the move and reconcile their status.
-- [ ] S6-rest-rest-rest-rest-rest-rest-rest Protect other issue state and doing-label changes between preflight and update; recover moves interrupted before reconciliation or when the reload fails. GitHub issue updates are not conditional and status and labels use separate requests.
+- [x] S6-rest-rest-rest-rest-rest-rest-rest Reconcile repository cards after successful moves and preserve the refreshed card if the repository reload fails.
+- [ ] S6-rest-rest-rest-rest-rest-rest-rest-rest Protect other issue state and doing-label changes between preflight and update; recover moves interrupted before reconciliation or when the individual issue reload fails. GitHub issue updates are not conditional and status and labels use separate requests.
 - [x] S7 OLT rooms tree + equipment stock levels on the whiteboard
 - [x] S8 Pack update check: weekly GitHub release check, "update available" in Extensions
 - [x] S9 Mention chooser: select a ranked candidate or search pages from Incoming and daily review.

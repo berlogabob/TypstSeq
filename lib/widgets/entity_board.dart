@@ -377,6 +377,23 @@ class _EntityBoardState extends State<EntityBoard> {
             labels,
             currentColumn: _remoteColumn(current),
           );
+          final actual = await client.issue(repository, number);
+          if (mounted && repo == repository) {
+            setState(
+              () => remoteIssues = [
+                for (final row in remoteIssues)
+                  if (row['number'] == number) {...row, ...actual} else row,
+              ],
+            );
+          }
+          if (_remoteColumn(actual) != column) {
+            await _recordConflict(
+              repository,
+              number,
+              _remoteColumn(actual),
+              'attempted $column; status changed during move',
+            );
+          }
         } catch (error) {
           final actual = await client.issue(repository, number);
           await _recordConflict(
