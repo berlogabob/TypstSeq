@@ -95,7 +95,10 @@ String encodeDecisions(List<Decision> rows) =>
     rows.map((row) => jsonEncode(row.toJson())).join('\n') +
     (rows.isEmpty ? '' : '\n');
 
-Future<List<Decision>> loadDecisions(VaultStorage storage) async {
+Future<List<Decision>> loadDecisions(
+  VaultStorage storage, {
+  bool includeEnrichment = true,
+}) async {
   final decisions = <Decision>[];
   try {
     for (final file in await storage.list(path: decisionsDir)) {
@@ -103,31 +106,33 @@ Future<List<Decision>> loadDecisions(VaultStorage storage) async {
       decisions.addAll(Decision.parseLog(await storage.readText(file.path)));
     }
   } catch (_) {}
-  for (final feedback in await loadEnrichFeedback(storage)) {
-    decisions.add(
-      Decision(
-        at: feedback.at,
-        device: '',
-        item: feedback.note,
-        source: 'enrich',
-        action: feedback.accepted ? 'accepted' : 'rejected',
-        target: feedback.entity,
-        context: feedback.surface,
-      ),
-    );
-  }
-  for (final feedback in await loadEnrichShown(storage)) {
-    decisions.add(
-      Decision(
-        at: feedback.at,
-        device: '',
-        item: feedback.note,
-        source: 'enrich',
-        action: 'seen',
-        target: feedback.entity,
-        context: feedback.surface,
-      ),
-    );
+  if (includeEnrichment) {
+    for (final feedback in await loadEnrichFeedback(storage)) {
+      decisions.add(
+        Decision(
+          at: feedback.at,
+          device: '',
+          item: feedback.note,
+          source: 'enrich',
+          action: feedback.accepted ? 'accepted' : 'rejected',
+          target: feedback.entity,
+          context: feedback.surface,
+        ),
+      );
+    }
+    for (final feedback in await loadEnrichShown(storage)) {
+      decisions.add(
+        Decision(
+          at: feedback.at,
+          device: '',
+          item: feedback.note,
+          source: 'enrich',
+          action: 'seen',
+          target: feedback.entity,
+          context: feedback.surface,
+        ),
+      );
+    }
   }
   return decisions;
 }

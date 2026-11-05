@@ -542,8 +542,6 @@ extension _EnrichIncoming on _HomeScreenState {
       String? refreshPath,
     }) async {
       final indexRevision = workspace.indexRevision;
-      final memory = await _enrichMemory(v, currentIndex);
-      if (workspace.indexRevision != indexRevision) return {};
       if (paths == null) {
         if (!await v.storage.exists(enrichMentionsDir)) return {};
         final files = await v.storage.list(
@@ -571,9 +569,20 @@ extension _EnrichIncoming on _HomeScreenState {
       }
       if (refreshPath != null) page.add(refreshPath);
       more = cursor < paths!.length;
-      for (final path in page) {
+      final eligiblePage = page
+          .where((path) => currentIndex.notesByPath.containsKey(path))
+          .toList();
+      if (eligiblePage.isEmpty) {
+        return {
+          for (final path
+              in views.keys.toList()..sort((a, b) => b.compareTo(a)))
+            path: views[path]!,
+        };
+      }
+      final memory = await _enrichMemory(v, currentIndex);
+      if (workspace.indexRevision != indexRevision) return {};
+      for (final path in eligiblePage) {
         views.remove(path);
-        if (!currentIndex.notesByPath.containsKey(path)) continue;
         try {
           final view = await _applyEnrichment(
             path,
@@ -608,7 +617,10 @@ extension _EnrichIncoming on _HomeScreenState {
     loadQueue({bool next = false, String? refreshPath}) async {
       try {
         final mentions = await load(next: next, refreshPath: refreshPath);
-        final decisions = decisionSnapshot ??= await loadDecisions(v.storage);
+        final decisions = decisionSnapshot ??= await loadDecisions(
+          v.storage,
+          includeEnrichment: false,
+        );
         return (
           mentions,
           day == null

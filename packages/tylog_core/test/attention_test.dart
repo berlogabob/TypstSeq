@@ -6,6 +6,7 @@ import 'package:tylog_core/tylog_core.dart';
 
 class _MemoryStorage extends VaultStorage {
   final files = <String, Uint8List>{};
+  final listed = <String>[];
 
   @override
   Future<bool> exists(String path) async => files.containsKey(path);
@@ -20,12 +21,15 @@ class _MemoryStorage extends VaultStorage {
   Future<List<VaultStorageEntry>> list({
     String path = '',
     bool recursive = false,
-  }) async => [
-    for (final key in files.keys)
-      if (key.startsWith('$path/') &&
-          (recursive || !key.substring(path.length + 1).contains('/')))
-        VaultStorageEntry(path: key, isDirectory: false),
-  ];
+  }) async {
+    listed.add(path);
+    return [
+      for (final key in files.keys)
+        if (key.startsWith('$path/') &&
+            (recursive || !key.substring(path.length + 1).contains('/')))
+          VaultStorageEntry(path: key, isDirectory: false),
+    ];
+  }
 
   @override
   Future<void> createDirectory(String path) async {}
@@ -184,4 +188,35 @@ void main() {
     });
     expect(rows[2].action, 'seen');
   });
+
+  test(
+    'queue decisions can skip enrichment ledgers already used by mentions',
+    () async {
+      final storage = _MemoryStorage();
+      const audio = Decision(
+        at: 'now',
+        device: 'phone',
+        item: 'audio:1',
+        source: 'audio',
+        action: 'rejected',
+      );
+      await storage.writeText(
+        '$decisionsDir/device.jsonl',
+        encodeDecisions([audio]),
+      );
+      await storage.writeText(
+        '$enrichFeedbackDir/device.jsonl',
+        '{"at":"then","decision":"accept","surface":"Ana","entity":"ana","note":"daily/day.typ"}',
+      );
+      await storage.writeText(
+        '$enrichShownDir/device.jsonl',
+        '{"at":"before","decision":"shown","surface":"Bob","entity":"bob","note":"daily/day.typ"}',
+      );
+
+      final rows = await loadDecisions(storage, includeEnrichment: false);
+
+      expect(rows.map((row) => row.toJson()), [audio.toJson()]);
+      expect(storage.listed, [decisionsDir]);
+    },
+  );
 }
