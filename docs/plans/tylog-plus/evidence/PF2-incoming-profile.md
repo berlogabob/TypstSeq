@@ -92,3 +92,17 @@ neither contains the P2P6 copy. The production package still reports
 `svc power stayon` command was issued. The Mac screen was locked, so no GUI
 check was attempted. Restore the existing P2P6 copy into `.profiletest` storage
 before collecting the actual-sheet measurements.
+
+## PF2-rest-rest-rest-rest-rest-rest-rest-rest follow-up (2026-11-05)
+
+The requested rerun was checked on Huawei P30 (`XPH0219904001750`):
+`org.tylog.tylog.profiletest` was absent, while production still reported
+`firstInstallTime=2026-11-05 15:27:02`. The existing P2P6 vault copy must first
+be transferred again from the Mac. The Mac screen was locked, and the
+documented P2P sender flow requires launching its app UI to create the transfer
+ticket. Per the device instructions, no Mac GUI action, alternate transfer, or
+vault selection was attempted. The actual-sheet harness therefore did not run
+and no performance numbers are claimed. The focused tests
+`test/review_queue_test.dart` and `test/enrich_flow_test.dart` passed; the full
+`flutter test` suite passed with 2,080 tests and 10 skips. Continue under the
+new plan follow-up when the Mac sender UI is available.
