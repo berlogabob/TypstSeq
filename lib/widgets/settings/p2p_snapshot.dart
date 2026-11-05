@@ -61,11 +61,7 @@ Future<String> createRepresentativeScratchSnapshot(Directory root) async {
   }
 }
 
-/// Validate the entire untrusted manifest before creating a fresh destination.
-Future<Directory> restoreScratchSnapshot(
-  String snapshot,
-  Directory root,
-) async {
+Map<String, List<int>> _decodeScratchSnapshot(String snapshot) {
   final decoded = jsonDecode(snapshot);
   if (decoded is! Map || decoded['version'] != 1 || decoded['files'] is! List) {
     throw const FormatException('Invalid snapshot');
@@ -93,6 +89,29 @@ Future<Directory> restoreScratchSnapshot(
     }
     files[path] = bytes;
   }
+  return files;
+}
+
+/// Verify each restored file against the validated snapshot.
+Future<int> verifyScratchSnapshot(String snapshot, Directory directory) async {
+  final files = _decodeScratchSnapshot(snapshot);
+  for (final entry in files.entries) {
+    final file = File('${directory.path}/${entry.key}');
+    if (!await file.exists() ||
+        await sha256.bind(file.openRead()).first !=
+            sha256.convert(entry.value)) {
+      throw const FormatException('Restored file hash mismatch');
+    }
+  }
+  return files.length;
+}
+
+/// Validate the entire untrusted manifest before creating a fresh destination.
+Future<Directory> restoreScratchSnapshot(
+  String snapshot,
+  Directory root,
+) async {
+  final files = _decodeScratchSnapshot(snapshot);
   final destination = await root.createTemp('p2p-snapshot-');
   try {
     for (final entry in files.entries) {
@@ -100,6 +119,7 @@ Future<Directory> restoreScratchSnapshot(
       await file.parent.create(recursive: true);
       await file.writeAsBytes(entry.value);
     }
+    await verifyScratchSnapshot(snapshot, destination);
   } catch (_) {
     await destination.delete(recursive: true);
     rethrow;

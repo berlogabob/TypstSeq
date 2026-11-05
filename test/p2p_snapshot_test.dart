@@ -27,6 +27,28 @@ void main() {
     },
   );
 
+  test(
+    'verifies restored files and detects corruption or missing files',
+    () async {
+      final root = await Directory.systemTemp.createTemp('p2p-verify-');
+      addTearDown(() => deleteTempDir(root));
+      final snapshot = createScratchSnapshot();
+      final restored = await restoreScratchSnapshot(snapshot, root);
+      expect(await verifyScratchSnapshot(snapshot, restored), 3);
+      final asset = File('${restored.path}/assets/sample.bin');
+      await asset.writeAsBytes([42]);
+      expect(
+        () => verifyScratchSnapshot(snapshot, restored),
+        throwsFormatException,
+      );
+      await asset.delete();
+      expect(
+        () => verifyScratchSnapshot(snapshot, restored),
+        throwsFormatException,
+      );
+    },
+  );
+
   test('generated scratch folder contains 200 notes and assets', () async {
     final root = await Directory.systemTemp.createTemp('p2p-fixture-');
     addTearDown(() => deleteTempDir(root));

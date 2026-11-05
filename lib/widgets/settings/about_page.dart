@@ -62,10 +62,14 @@ class _AboutPageState extends State<AboutPage> {
             final transfer = await p2p.receiveP2pScratch(ticket);
             final root = await getApplicationSupportDirectory();
             final directory = await restoreScratchSnapshot(transfer.text, root);
+            final verified = await verifyScratchSnapshot(
+              transfer.text,
+              directory,
+            );
             final rate = transfer.elapsedMs == BigInt.zero
                 ? 'n/a'
                 : '${(transfer.bytes.toDouble() * 1000 / transfer.elapsedMs.toDouble() / 1024).toStringAsFixed(1)} KiB/s';
-            return 'Restored synthetic folder to ${directory.path}\n${transfer.bytes} bytes in ${transfer.elapsedMs} ms ($rate; includes connection setup)';
+            return 'Restored and verified $verified files to ${directory.path}\n${transfer.bytes} bytes in ${transfer.elapsedMs} ms ($rate; includes connection setup)';
           },
           receive: (ticket) async {
             final result = await p2p.receiveP2pScratch(ticket);
