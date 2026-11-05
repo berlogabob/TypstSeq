@@ -1,12 +1,14 @@
 ## Dev tooling
 
 ### On-device profiling (Android)
-With `android/key.properties` and the matching release keystore available, the `profile` build type is release-signed (`android/app/build.gradle.kts`), so a profile APK installs over the release app without wiping the vault:
+On the P30, use only the isolated `org.tylog.tylog.profiletest` package for device builds and measurements. Never install, uninstall, clear, or launch `org.tylog.tylog` during development; verify its recorded `firstInstallTime` remains unchanged before and after device work. The `.profiletest` app already has a real-vault copy for measurements.
+
+For integration tests, prefer `flutter test integration_test/<test_file>.dart -d <device-id> --no-uninstall`. If the test requires a separately installed APK, build with the `.profiletest` suffix and run it with `adb install -r` plus `adb shell am instrument`; do not use `flutter drive` on phones that have the real app, because it can uninstall the production package. Keep profile measurements release-signed when the matching key is available:
 ```bash
-flutter build apk --profile && \
-  ~/Library/Android/sdk/platform-tools/adb install -r build/app/outputs/flutter-apk/app-profile.apk
+cd android && ./gradlew :app:assembleProfile -PtylogProfileSuffix=.profiletest && \
+  ~/Library/Android/sdk/platform-tools/adb -s <device-id> install -r app/build/outputs/apk/profile/app-profile.apk
 ```
-Use this (not `--debug`, which has appId suffix `.debug`) with DevTools or `integration_test/support/editor_frame_metrics.dart` for Flutter frame timings. `dumpsys gfxinfo` measures platform decor and cannot establish Flutter jank. Integration drive must use the isolated optional `.profiletest` suffix, not the production package.
+Use this APK with DevTools or `integration_test/support/editor_frame_metrics.dart` for Flutter frame timings. `dumpsys gfxinfo` measures platform decor and cannot establish Flutter jank. Never use `svc power stayon` or `flutter drive` for device work.
 
 Cold-start measurements: after `adb install -r` Android relaunches an app that was in the foreground, so a following `am start` only reaches the running instance ("intent delivered to currently running top-most instance") and its `TYLOG_STARTUP` marks are not a cold start. Always `adb shell am force-stop org.tylog.tylog` and wait a few seconds before `am start`; enlarge the log buffer first on noisy phones (`adb logcat -G 16M`).
 
