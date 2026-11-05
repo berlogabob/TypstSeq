@@ -120,6 +120,20 @@ void main() {
       addTearDown(() => root.delete(recursive: true));
       final storage = _MeasuredStorage(root);
       await storage.createDirectory('_system/enrich/audio');
+      const ocrCount = 100;
+      for (var i = 0; i < ocrCount; i++) {
+        await storage.createDirectory('ext/fixture-$i');
+        await storage.writeText(
+          'ext/fixture-$i/rows.jsonl',
+          '${jsonEncode({
+            'review': true,
+            'source_photo_hash': 'photo-$i',
+            'fields': {
+              'title': {'value': 'OCR proposal $i'},
+            },
+          })}\n',
+        );
+      }
       for (var i = 0; i < count; i++) {
         await storage.writeText(
           '_system/enrich/audio/$i.json',
@@ -166,6 +180,14 @@ void main() {
         summary: summary,
       );
       firstWatch.stop();
+      final ocrWatch = Stopwatch()..start();
+      final ocrFirst = await loadOcrReviewRows(
+        storage,
+        [for (var i = 0; i < ocrCount; i++) 'fixture-$i'],
+        decisions,
+        summary: summary,
+      );
+      ocrWatch.stop();
       final firstOps = (
         lists: storage.lists,
         stats: storage.stats,
@@ -196,6 +218,13 @@ void main() {
               source: 'audio',
               action: 'accepted',
             );
+      final ocrDecision = Decision(
+        at: 'profile',
+        device: 'profiletest',
+        item: ocrFirst.first.id,
+        source: 'ocr',
+        action: 'accepted',
+      );
       if (newDecision != null) {
         await storage.createDirectory(decisionsDir);
         await storage.appendBytes(
@@ -203,6 +232,10 @@ void main() {
           utf8.encode(encodeDecisions([newDecision])),
         );
       }
+      await storage.appendBytes(
+        '$decisionsDir/profiletest.jsonl',
+        utf8.encode(encodeDecisions([ocrDecision])),
+      );
       final decisionAppendOps = (
         creates: storage.creates,
         appends: storage.appends,
@@ -218,17 +251,30 @@ void main() {
         summary: summary,
       );
       decisionWatch.stop();
+      final afterOcrDecision = await loadOcrReviewRows(
+        storage,
+        [for (var i = 0; i < ocrCount; i++) 'fixture-$i'],
+        [...decisions, ocrDecision],
+        summary: summary,
+      );
       expect(first, hasLength(density == 'sparse' ? 10 : 20));
       expect(older, hasLength(density == 'sparse' ? 0 : 20));
       expect(afterDecision, hasLength(density == 'sparse' ? 9 : 20));
+      expect(ocrFirst, hasLength(20));
+      expect(afterOcrDecision, hasLength(20));
 
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
             body: ListView.builder(
-              itemCount: first.length,
-              itemBuilder: (_, index) =>
-                  ListTile(title: Text(first[index].text)),
+              itemCount: first.length + ocrFirst.length,
+              itemBuilder: (_, index) => ListTile(
+                title: Text(
+                  index < first.length
+                      ? first[index].text
+                      : ocrFirst[index - first.length].fields,
+                ),
+              ),
             ),
           ),
         ),
@@ -238,7 +284,7 @@ void main() {
       expect(heap, isNotNull);
       // ignore: avoid_print
       print(
-        'PF2_INCOMING density=$density files=$count visible=${first.length} older=${older.length} afterDecision=${afterDecision.length} decisionLoadMs=${decisionLoadWatch.elapsedMilliseconds} decisionLoadOps=$decisionLoadOps firstMs=${firstWatch.elapsedMilliseconds} olderMs=${nextWatch.elapsedMilliseconds} decisionMs=${decisionWatch.elapsedMilliseconds} firstOps=$firstOps olderOps=$olderOps decisionAppendOps=$decisionAppendOps decisionRefreshOps=(lists:${storage.lists},reads:${storage.reads},bytes:${storage.bytesRead}) rssBytes=${ProcessInfo.currentRss} rssDelta=${ProcessInfo.currentRss - baselineRss} dartHeapBytes=$heap heapDelta=${heap == null || baselineHeap == null ? null : heap - baselineHeap}',
+        'PF2_INCOMING density=$density audioFiles=$count ocrMounts=$ocrCount visible=${first.length} ocrVisible=${ocrFirst.length} older=${older.length} afterDecision=${afterDecision.length} ocrAfterDecision=${afterOcrDecision.length} decisionLoadMs=${decisionLoadWatch.elapsedMilliseconds} decisionLoadOps=$decisionLoadOps audioFirstMs=${firstWatch.elapsedMilliseconds} ocrFirstMs=${ocrWatch.elapsedMilliseconds} olderMs=${nextWatch.elapsedMilliseconds} decisionMs=${decisionWatch.elapsedMilliseconds} firstOps=$firstOps olderOps=$olderOps decisionAppendOps=$decisionAppendOps decisionRefreshOps=(lists:${storage.lists},reads:${storage.reads},bytes:${storage.bytesRead}) rssBytes=${ProcessInfo.currentRss} rssDelta=${ProcessInfo.currentRss - baselineRss} dartHeapBytes=$heap heapDelta=${heap == null || baselineHeap == null ? null : heap - baselineHeap}',
       );
     }
 
