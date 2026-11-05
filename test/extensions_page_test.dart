@@ -512,6 +512,68 @@ void main() {
     });
   });
 
+  testWidgets('refreshes a compatible bot vault and rejects a newer schema', (
+    tester,
+  ) async {
+    late Directory root;
+    late Directory bot;
+    late WorkspaceController workspace;
+    await tester.runAsync(() async {
+      root = await Directory.systemTemp.createTemp('refresh-bot');
+      bot = await Directory('${root.path}/Bot').create();
+      await File('${bot.path}/bot-vault.json').writeAsString('{"schema":1}');
+      final vault = Directory('${root.path}/vault');
+      workspace = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        inspector: _Inspector(),
+        reconcileTasks: (_) async {},
+      );
+      await workspace.openVault(
+        VaultEntry(id: 'test', name: 'Test', path: vault.path),
+        storage: LocalVaultStorage(vault),
+      );
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ExtensionsPage(
+          workspace: workspace,
+          pickDirectory: () async => bot.path,
+        ),
+      ),
+    );
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Add bot vault'));
+      while (workspace.mounts.isEmpty) {
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await File('${bot.path}/new.typ').writeAsString('= New item');
+    });
+    await tester.pump();
+    await tester.runAsync(() async {
+      await tester.tap(find.byTooltip('Refresh Bot'));
+      final deadline = DateTime.now().add(const Duration(seconds: 10));
+      while (workspace.index?.notesByPath['ext/bot/new.typ'] == null) {
+        if (DateTime.now().isAfter(deadline))
+          throw TimeoutException('new bot item not indexed');
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      await File('${bot.path}/bot-vault.json').writeAsString('{"schema":2}');
+    });
+    await tester.pump();
+    await tester.runAsync(() async {
+      await tester.tap(find.byTooltip('Refresh Bot'));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    });
+    await tester.pump();
+    expect(find.textContaining('needs newer TyLog'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    await tester.runAsync(() async {
+      workspace.dispose();
+      await root.delete(recursive: true);
+    });
+  });
+
   testWidgets('rejects a bot vault requiring a newer TyLog', (tester) async {
     late Directory root;
     late WorkspaceController workspace;

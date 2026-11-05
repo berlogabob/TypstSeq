@@ -366,13 +366,21 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (mount.source.kind == 'github')
+                    if (mount.source.kind == 'github' ||
+                        mount.source.extra['botVault'] == true)
                       IconButton(
                         tooltip: 'Refresh ${mount.name}',
                         icon: const Icon(Icons.refresh),
                         onPressed: _busy
                             ? null
-                            : () => _run(() => workspace.refreshMount(mount)),
+                            : () => _run(() async {
+                                if (mount.source.extra['botVault'] == true) {
+                                  await _checkBotManifest(mount.source.path!);
+                                  await workspace.refreshIndex(always: true);
+                                } else {
+                                  await workspace.refreshMount(mount);
+                                }
+                              }),
                       ),
                     IconButton(
                       tooltip: 'Remove ${mount.name}',
