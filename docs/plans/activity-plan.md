@@ -435,7 +435,7 @@ Issues found:
 - [x] E1-rest-rest Detect unclosed table calls with accurate source lines and an Open Source action.
 - [x] E1-rest-rest-rest Detect unclosed strong/emph formatting calls, with accurate source lines and an Open Source action.
 - [x] E1-rest-rest-rest-rest Detect remaining malformed Typst that blocks rich edits, with accurate source lines and an Open Source action.
-- [ ] A24 "add vault" screen after freeze: unconfirmed cause, recheck on 5863f60
+- [x] (not reproduced on f59c26d cold start 2026-11-05 09:54) A24 "add vault" screen after freeze: unconfirmed cause, recheck on 5863f60
 - [x] T1 Share audio from WhatsApp/Telegram: "From" person picker (codex, spec 2026-11-04-wave21/t1)
 - [x] T2 Flaky tests: workspace_controller issues + whiteboard Tree (codex, t2)
 - [x] T3 P5 form-OCR module, new repo tylog-form-ocr, synthetic templates (codex, t3) — 9173948 in tylog-form-ocr; real templates + photos needed next
@@ -457,7 +457,7 @@ Issues found:
 - [x] S3b-rest-rest-rest-rest-rest-rest Merge cross-folder bodies containing headings and lists.
 - [x] S3b-rest-rest-rest-rest-rest-rest-rest Merge cross-folder plain-text bodies containing simple web URLs.
 - [x] S3b-rest-rest-rest-rest-rest-rest-rest-rest Merge canonical pages with distinct custom properties, preserving them and rejecting overlapping properties and different kinds.
-- [ ] S3b-rest-rest-rest-rest-rest-rest-rest-rest-rest Merge noncanonical pages and preserve remaining metadata (including conflicts and kinds); handle other cross-folder bodies, repoint other link forms and references outside indexed notes, handle ambiguous names, and recover safely from partial writes.
+- [ ] BACKLOG (low value, stop chaining) S3b-rest-rest-rest-rest-rest-rest-rest-rest-rest Merge noncanonical pages and preserve remaining metadata (including conflicts and kinds); handle other cross-folder bodies, repoint other link forms and references outside indexed notes, handle ambiguous names, and recover safely from partial writes.
 - [x] S4 Person timeline: dailies, audio, screenshots, tasks mentioning the person, by date
 - [x] S5 Audio -> task/agenda proposals in Incoming
 - [x] S5-rest Link accepted audio tasks to the From person when present.
@@ -470,7 +470,7 @@ Issues found:
 - [x] S6-rest-rest-rest-rest-rest-rest Avoid reopening a concurrently closed issue during moves between open columns; reload linked issues after the move and reconcile their status.
 - [x] S6-rest-rest-rest-rest-rest-rest-rest Reconcile repository cards after successful moves and preserve the refreshed card if the repository reload fails.
 - [x] S6-rest-rest-rest-rest-rest-rest-rest-rest Recover repository-only issue cards from the repository listing when their individual reload fails after a move.
-- [ ] S6-rest-rest-rest-rest-rest-rest-rest-rest-rest Protect other issue state and doing-label changes between preflight and update; recover moves interrupted before reconciliation, linked issue moves when individual reload fails, and repository-only moves when both reloads fail. GitHub issue updates are not conditional and status and labels use separate requests.
+- [ ] BACKLOG (low value, stop chaining) S6-rest-rest-rest-rest-rest-rest-rest-rest-rest Protect other issue state and doing-label changes between preflight and update; recover moves interrupted before reconciliation, linked issue moves when individual reload fails, and repository-only moves when both reloads fail. GitHub issue updates are not conditional and status and labels use separate requests.
 - [x] S7 OLT rooms tree + equipment stock levels on the whiteboard
 - [x] S8 Pack update check: weekly GitHub release check, "update available" in Extensions
 - [x] S9 Mention chooser: select a ranked candidate or search pages from Incoming and daily review.
@@ -493,7 +493,7 @@ Issues found:
 - [x] K1-rest (leads from Claude: lib/nextcloud_sync.dart revisionEnvelopeWinner/fastForwardWinner + conflict apply path — can a winner chosen for _system/revisions/note-*.json be written to the note path? lib/database/revision_publisher.dart write targets; lib/vault.dart:444 envelope handling. Both A24 and Mac app were running at 01:19.) Identify the original cross-path corruption using device/provider evidence; extend note-write validation beyond revision envelopes, including native import and append paths, without rejecting valid legacy Typst notes.
 - [x] K1-rest-rest Serialize concurrent SAF appends in one Dart isolate, including the provider read/write fallback, so concurrent appends to the same vault path do not lose data. The connected P30 log buffer no longer covers the 2026-11-04 incident; it cannot establish the original cause.
 - [x] K1-rest-rest-rest Prevent a timed-out SAF append from being retried while the provider operation may still complete; propagate the timeout to the caller.
-- [ ] K1-rest-rest-rest-rest Investigate the original cross-path corruption using surviving device/provider evidence; validate native import and audit remaining note-write paths. Distinguish JSON-shaped legacy Typst from JSON records without blocking valid notes; cover append concurrency across isolates and processes and resolve the uncertain outcome of timed-out provider operations.
+- [ ] BACKLOG (low value, stop chaining) K1-rest-rest-rest-rest Investigate the original cross-path corruption using surviving device/provider evidence; validate native import and audit remaining note-write paths. Distinguish JSON-shaped legacy Typst from JSON records without blocking valid notes; cover append concurrency across isolates and processes and resolve the uncertain outcome of timed-out provider operations.
 - [x] K2 Keyboard closes again (A24 a43d286): user text typed after an old `// tylog:auto-entities` marker counts as "our block" (enrichContentSha strips from the marker), so each save rewrites the block and reloads the editor. Markers removed from the vault by Claude. Code: the app must never write/rewrite an auto-entities block any more (M1), and enrichment must never mutate the note open in the editor while it is being edited.
 - [x] K2-rest Restore automatic confident inline links and header tags after leaving a daily note on desktop, guarded by the worker content hash, exact current source, and navigation key.
 - [x] K3 Timestamp button (clock+ icon) inserts the time but the editor does not scroll to the new line/caret; scroll it into view (keyboard open and closed). Preserve the caret when a headerless daily is repaired on save.
@@ -563,7 +563,7 @@ Issues found:
 ## Wave 25 (overnight 2026-11-04/05): P2P sync options (user OK)
 - [x] P2P1 Options report (docs/research-p2p-sync-options.md)
 - [x] P2P2 In-app iroh scratch-text harness (opt-in, .profiletest on Android): a ticket transfers one manually entered scratch note; no vault access.
-- [ ] P2P2-rest Extend the harness to folder snapshots with hashes and changed blobs; measure throughput and CPU on Mac + Android, including retry/resume and representative scratch-vault sizes, and reassess the go/no-go.
+- [x] (superseded by P2P5 e853728) P2P2-rest Extend the harness to folder snapshots with hashes and changed blobs; measure throughput and CPU on Mac + Android, including retry/resume and representative scratch-vault sizes, and reassess the go/no-go.
 - [x] P2P3 Go/no-go (2026-11-05): **No-go for product P2P or real-vault writes.** P2P1 recommends iroh for an isolated snapshot experiment. The P2P2 slice transferred 18 bytes in 413 ms on one Mac loopback run (connection included); Flutter-to-Rust loopback also passed on the Huawei P30 `.profiletest` package; neither result measures cross-device throughput. Folder snapshots, CPU, Mac-to-Android transfer, retry/resume, SAF, conflict/deletion, recovery, and lifecycle measurements remain open. Conditional go: complete P2P2-rest only against scratch vaults, then reassess against Nextcloud/WebDAV. Keep production P2P gated until storage/reconciliation and Android lifecycle checks pass (docs/research-p2p-sync-options.md; docs/plans/2026-11-05-p2p/README.md).
 - [x] P2P cleanup (Claude): codex built the shipped prebuilt arm64 lib with the p2p-harness feature (55 MB, iroh inside) and left libiroh*.so in .typst_flutter_prebuilt/android; rebuilt via tool/setup_typst_native.sh (49.6 MB) and removed the stray .so files.
 - [x] P2P4 Harness builds use isolated CARGO_TARGET_DIR/output paths; `tool/assert_source_built.sh` rejects the P2P feature marker in shipped libraries and unexpected Android `.so` files. Verified the marker in an isolated ARM64 harness build and rebuilt all four shipped Android ABIs without the feature.
@@ -578,5 +578,5 @@ Issues found:
 - [x] D3-rest MCP read-only vertical slice: backlinks and list_tasks, using the vault index; stdio tests and client documentation.
 - [x] D3-rest-rest MCP health_report returns the latest saved vault health report over stdio, without modifying the vault.
 - [x] D3-rest-rest-rest MCP fresh health report vertical slice: `health_report` accepts `refresh: true` and generates a report using the vault-health scanner.
-- [ ] D3-rest-rest-rest-rest Add MCP tools incoming_list, daily_append, add_task, and propose_mention (-> Incoming). All writes through existing surgical writers, output must compile, refuse non-note writes (K1 guard), one decision-ledger line per write. Tests per tool.
+- [x] (done: 4bb1f8c 8a3db2a 3b97efc 60dd670) D3-rest-rest-rest-rest Add MCP tools incoming_list, daily_append, add_task, and propose_mention (-> Incoming). All writes through existing surgical writers, output must compile, refuse non-note writes (K1 guard), one decision-ledger line per write. Tests per tool.
 - [x] D4 docs/mcp.md tool reference + how to register in Claude Code / Hermes; example config.
