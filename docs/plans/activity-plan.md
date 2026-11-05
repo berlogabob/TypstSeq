@@ -546,7 +546,7 @@ Issues found:
 - [x] PF5-rest Reuse the workspace resolver when opening entity timelines, and refresh entries if the resolver changes.
 - [x] PF5-rest-rest Index task references by entity; make merge preview verification scalable while preserving unsupported-reference and concurrent-change checks (audit #6, #8). Timeline task matching now uses a per-entity index.
 - [x] PF5-rest-rest-rest Batch merge preview note reads four at a time, bounding memory while using SAF read concurrency; unsupported-reference and concurrent-change checks remain covered (audit #6, #8).
-- [ ] PF5-rest-rest-rest-rest Measure timeline CPU and Flutter frames, and merge preview reads, bytes, time, CPU and heap on P30 app-local and SAF fixtures; record the fixture sizes and profiler limits (audit #6, #8).
+- [x] PF5-rest-rest-rest-rest Measure timeline CPU and Flutter frames, and merge preview reads, bytes, time, CPU and heap on P30 app-local and SAF fixtures; record the fixture sizes and profiler limits (audit #6, #8; [P30 profile](tylog-plus/evidence/PF5-timeline-merge-profile.md)).
 - [x] PF6 Route manual rebuild progress through the narrow notifier and throttle updates (audit #14).
 - [x] PF6-rest Load vendored packages after the editor is usable while preserving compile readiness and vault-switch cancellation (audit #11).
 - [x] PF6-rest-rest Capture a cold-start baseline on the attached Android device, including startup marks and process memory; record profiler limitations (audit #11, #14; docs/audits/2026-11-05-pf6-device.md).
