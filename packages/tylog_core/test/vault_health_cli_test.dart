@@ -28,7 +28,7 @@ void main() {
       '${vault.path}/_system/health',
     ).list().toList();
     final reports = files.where(
-      (file) => file.path.endsWith('2026-11-04.json'),
+      (file) => RegExp(r'\d{4}-\d{2}-\d{2}\.json$').hasMatch(file.path),
     );
     expect(reports, hasLength(1));
     final report =
