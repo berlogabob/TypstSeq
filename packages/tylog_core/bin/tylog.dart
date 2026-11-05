@@ -6,6 +6,7 @@ import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 
 import 'package:tylog_core/tylog_core.dart';
+import 'mcp.dart';
 
 Future<void> main(List<String> arguments) async {
   try {
@@ -38,8 +39,17 @@ Future<int> runTylog(List<String> arguments) async {
     'migrate-mentions' => _migrateMentions(args),
     'export' => _export(args),
     'pack-validate' => _packValidate(args),
+    'mcp' => _mcp(args),
     _ => throw _UsageException('Unknown command: $command'),
   };
+}
+
+Future<int> _mcp(List<String> args) async {
+  if (args.length != 1 || args.single.startsWith('--')) {
+    throw _UsageException('mcp requires <vault>');
+  }
+  await serveMcp(Directory(args.single).absolute, stdin, stdout);
+  return 0;
 }
 
 Future<int> _vaultHealth(List<String> args) async {
@@ -923,6 +933,7 @@ class _UsageException implements Exception {
 const _usage = '''TyLog repository CLI
 
 Usage:
+  tylog mcp <vault>
   tylog init [vault=.]
   tylog import-contacts --vault <dir> --file <contacts.vcf|contacts.csv> [--write]
   tylog index [vault=.] [--force]
