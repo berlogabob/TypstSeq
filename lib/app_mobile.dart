@@ -6378,8 +6378,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (day == isoDay(DateTime.now())) {
         external.addAll(githubConflictNotes(workspace.githubConflicts));
       }
-      final incomingCount =
-          incomingOnDay(index, day).length + external.length + suggestionCount;
+      final incomingCount = incomingOnDay(index, day).length + external.length;
       final referenceCount = dailyMore.isEmpty ? 0 : backlinks.length;
       dailyMore.insert(
         0,
@@ -6402,29 +6401,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           onDecide: (note, action) => unawaited(_decideIncoming(note, action)),
         ),
       );
-      if (suggestionCount > 0 && !keyboardUp) {
-        documentContent = Column(
-          children: [
-            Expanded(child: documentContent),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Padding(
-                padding: const EdgeInsets.only(
-                  right: kSpace12,
-                  bottom: kSpace8,
-                ),
-                child: ActionChip(
-                  key: const ValueKey('enrich-day-chip'),
-                  label: Text(
-                    '$suggestionCount suggestion${suggestionCount == 1 ? '' : 's'}',
-                  ),
-                  onPressed: () => _showEnrichIncoming(day: current),
-                ),
-              ),
-            ),
-          ],
-        );
-      }
       final dailyEditor = documentContent;
       documentContent = LayoutBuilder(
         builder: (context, constraints) => Column(
@@ -6445,6 +6421,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       [
                         'More',
                         if (incomingCount > 0) '$incomingCount incoming',
+                        if (suggestionCount > 0)
+                          '$suggestionCount suggestion${suggestionCount == 1 ? '' : 's'}',
                         if (referenceCount > 0)
                           '$referenceCount reference${referenceCount == 1 ? '' : 's'}',
                       ].join(' · '),

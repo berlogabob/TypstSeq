@@ -135,7 +135,8 @@ Future<(dynamic, _MemoryStorage)> _mount(
   home.workspace.notifyListeners();
   await _pump(tester);
   expect(find.byType(EnrichReview), findsNothing);
-  expect(find.byKey(const ValueKey('enrich-day-chip')), findsOneWidget);
+  expect(find.byKey(const ValueKey('enrich-day-chip')), findsNothing);
+  expect(find.text('More · 5 suggestions'), findsOneWidget);
   await _openIncoming(tester);
   return (home, storage);
 }
@@ -156,12 +157,16 @@ Future<void> _pump(WidgetTester tester) async {
 }
 
 Future<void> _openIncoming(WidgetTester tester) async {
-  await tester.tap(find.byKey(const ValueKey('enrich-day-chip')));
+  if (find.byKey(const ValueKey('incoming-open')).evaluate().isEmpty) {
+    await tester.tap(find.textContaining('More ·').first);
+    await tester.pumpAndSettle();
+  }
+  await tester.tap(find.byKey(const ValueKey('incoming-open')));
   await _pump(tester);
 }
 
 void main() {
-  testWidgets('daily suggestions stay outside the editor at 360 dp', (
+  testWidgets('daily suggestions live in More and hide while typing', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(360, 800);
@@ -172,8 +177,18 @@ void main() {
     Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
     await _pump(tester);
     final editor = tester.getRect(find.byKey(const Key('rich-journal-editor')));
-    final chip = tester.getRect(find.byKey(const ValueKey('enrich-day-chip')));
-    expect(chip.top, greaterThanOrEqualTo(editor.bottom));
+    expect(find.byKey(const ValueKey('enrich-day-chip')), findsNothing);
+    expect(find.text('More · 5 suggestions'), findsOneWidget);
+    tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+    await tester.pump();
+    expect(find.textContaining('More ·'), findsNothing);
+    expect(find.byKey(const ValueKey('enrich-day-chip')), findsNothing);
+    expect(
+      tester.getRect(find.byKey(const Key('rich-journal-editor'))).height,
+      greaterThan(0),
+    );
+    tester.view.resetViewInsets();
+    await tester.pumpAndSettle();
     await _openIncoming(tester);
     expect(find.byType(EnrichReview), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -216,10 +231,7 @@ void main() {
     );
     Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
     await _pump(tester);
-    await tester.tap(find.textContaining('More').first);
-    await _pump(tester);
-    await tester.tap(find.byKey(const ValueKey('incoming-open')));
-    await _pump(tester);
+    await _openIncoming(tester);
     final proposal = find.text('Send the meeting notes to the whole team');
     await tester.ensureVisible(proposal);
     expect(tester.getSize(proposal).width, greaterThanOrEqualTo(250));
@@ -266,10 +278,7 @@ void main() {
     );
     Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
     await _pump(tester);
-    await tester.tap(find.textContaining('More').first);
-    await _pump(tester);
-    await tester.tap(find.byKey(const ValueKey('incoming-open')));
-    await _pump(tester);
+    await _openIncoming(tester);
 
     for (final heading in ['OCR rows', 'Vault health']) {
       final finder = find.text(heading);
@@ -294,10 +303,7 @@ void main() {
     await storage.writeText('_system/health/2026-11-04.json', '{broken');
     Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
     await _pump(tester);
-    await tester.tap(find.textContaining('More').first);
-    await _pump(tester);
-    await tester.tap(find.byKey(const ValueKey('incoming-open')));
-    await _pump(tester);
+    await _openIncoming(tester);
     expect(find.text('Could not load suggestions'), findsOneWidget);
     expect(find.text('Try again'), findsOneWidget);
     await storage.writeText(
@@ -342,10 +348,7 @@ void main() {
     );
     Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
     await _pump(tester);
-    await tester.tap(find.textContaining('More').first);
-    await _pump(tester);
-    await tester.tap(find.byKey(const ValueKey('incoming-open')));
-    await _pump(tester);
+    await _openIncoming(tester);
     expect(find.text('No suggestions'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
@@ -366,10 +369,7 @@ void main() {
         );
         Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
         await _pump(tester);
-        await tester.tap(find.textContaining('More').first);
-        await _pump(tester);
-        await tester.tap(find.byKey(const ValueKey('incoming-open')));
-        await _pump(tester);
+        await _openIncoming(tester);
         await tester.ensureVisible(find.text('Vault health'));
         expect(find.text('missing-note-header'), findsOneWidget);
         final action = find.text(sourceMode ? 'Open Source' : 'Open');
@@ -715,10 +715,7 @@ void main() {
     );
     Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
     await _pump(tester);
-    await tester.tap(find.textContaining('More').first);
-    await _pump(tester);
-    await tester.tap(find.byKey(const ValueKey('incoming-open')));
-    await _pump(tester);
+    await _openIncoming(tester);
     expect(find.byType(EnrichReview), findsNothing);
     expect(find.text('Show older'), findsOneWidget);
     await tester.tap(find.text('Show older'));
@@ -750,17 +747,14 @@ void main() {
         backlinksByTarget: const {},
       );
       _waitForEnrichmentWorker = true;
-      // The chip's sheet stays filtered even if another day has suggestions.
+      // The Suggestions count opens the full Incoming review.
       Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
       await _pump(tester);
       await _openIncoming(tester);
-      expect(find.text('2026-10-21'), findsNothing);
+      expect(find.text('2026-10-21'), findsOneWidget);
       Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
       await _pump(tester);
-      await tester.tap(find.textContaining('More').first);
-      await _pump(tester);
-      await tester.tap(find.byKey(const ValueKey('incoming-open')));
-      await _pump(tester);
+      await _openIncoming(tester);
       final newest = tester.getTopLeft(find.text('2026-10-22').last).dy;
       final oldest = tester.getTopLeft(find.text('2026-10-21')).dy;
       expect(newest, lessThan(oldest));
@@ -819,10 +813,7 @@ void main() {
     _waitForEnrichmentWorker = true;
     Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
     await _pump(tester);
-    await tester.tap(find.textContaining('More').first);
-    await _pump(tester);
-    await tester.tap(find.byKey(const ValueKey('incoming-open')));
-    await _pump(tester);
+    await _openIncoming(tester);
     await tester.ensureVisible(find.text('Add to agenda'));
     await tester.tap(find.text('Add to agenda'));
     await _pump(tester);
