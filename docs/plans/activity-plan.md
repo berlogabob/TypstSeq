@@ -556,4 +556,4 @@ Issues found:
 ## Wave 25 (overnight 2026-11-04/05): P2P sync options (user OK)
 - [x] P2P1 Options report (docs/research-p2p-sync-options.md)
 - [ ] P2P2 In-app iroh harness (debug-only, scratch vault, .profiletest builds only)
-- [ ] P2P3 Go/no-go decision written into the plan
+- [x] P2P3 Go/no-go (2026-11-05): **No-go for product P2P or real-vault writes.** P2P1 recommends iroh for an isolated snapshot experiment, but P2P2 and its transfer, CPU, retry/resume, SAF, conflict/deletion, recovery, and lifecycle measurements are still open; the options report establishes none of these. Conditional go: complete P2P2 only against scratch vaults, then reassess against Nextcloud/WebDAV. Keep production P2P gated until storage/reconciliation and Android lifecycle checks pass (docs/research-p2p-sync-options.md; docs/plans/2026-11-05-p2p/README.md).
