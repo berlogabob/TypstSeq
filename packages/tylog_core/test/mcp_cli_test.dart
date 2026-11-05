@@ -1,9 +1,69 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:test/test.dart';
 
 void main() {
+  test(
+    'health_report returns the latest saved report without writing',
+    () async {
+      final vault = await Directory.systemTemp.createTemp('tylog_mcp_health_');
+      addTearDown(() => vault.delete(recursive: true));
+      final settings = File('${vault.path}/.tylog/settings.json');
+      await settings.parent.create(recursive: true);
+      await settings.writeAsString('{"version":5}');
+      final process = await Process.start(Platform.resolvedExecutable, [
+        'run',
+        'bin/tylog.dart',
+        'mcp',
+        vault.path,
+      ]);
+      final responses = StreamIterator(
+        process.stdout.transform(utf8.decoder).transform(const LineSplitter()),
+      );
+      addTearDown(() async {
+        await responses.cancel();
+      });
+      Future<Map> call(int id) async {
+        process.stdin.writeln(
+          jsonEncode({
+            'jsonrpc': '2.0',
+            'id': id,
+            'method': 'tools/call',
+            'params': {
+              'name': 'health_report',
+              'arguments': <String, Object>{},
+            },
+          }),
+        );
+        expect(await responses.moveNext(), true);
+        return jsonDecode(responses.current) as Map;
+      }
+
+      expect((await call(1))['result']['isError'], true);
+      final health = Directory('${vault.path}/_system/health');
+      await health.create(recursive: true);
+      await File(
+        '${health.path}/2026-11-01.json',
+      ).writeAsString('{"scanned":1}');
+      await File(
+        '${health.path}/2026-11-05.json',
+      ).writeAsString('{"scanned":2}');
+      await File('${health.path}/typst-cursor.json').writeAsString('{}');
+      final result = (await call(2))['result'];
+      expect(jsonDecode(result['content'][0]['text'] as String), {
+        'scanned': 2,
+      });
+      await process.stdin.close();
+      expect(await process.exitCode, 0);
+      expect(
+        await File('${health.path}/2026-11-05.json').readAsString(),
+        '{"scanned":2}',
+      );
+    },
+  );
+
   test('MCP clients discover, search, and retrieve notes over stdio', () async {
     final vault = await Directory.systemTemp.createTemp('tylog_mcp_');
     addTearDown(() => vault.delete(recursive: true));
@@ -97,7 +157,13 @@ void main() {
     expect(rows[0]['result']['protocolVersion'], '2024-11-05');
     expect(
       (rows[1]['result']['tools'] as List).map((t) => t['name']),
-      containsAll(['search', 'get_note', 'backlinks', 'list_tasks']),
+      containsAll([
+        'search',
+        'get_note',
+        'backlinks',
+        'list_tasks',
+        'health_report',
+      ]),
     );
     expect(rows[2]['result']['content'][0]['text'], contains('Apple'));
     expect(rows[3]['result']['content'][0]['text'], source);

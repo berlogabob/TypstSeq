@@ -5,6 +5,11 @@ import 'package:tylog_core/tylog_core.dart';
 
 const _tools = [
   {
+    'name': 'health_report',
+    'description': 'Read the latest saved vault health report.',
+    'inputSchema': {'type': 'object', 'properties': {}},
+  },
+  {
     'name': 'backlinks',
     'description': 'List notes linking to a uniquely identified note.',
     'inputSchema': {
@@ -124,6 +129,46 @@ Future<Object> _call(Directory root, Object? params) async {
   }
   final name = params['name'];
   final args = params['arguments'] as Map;
+  if (name == 'health_report') {
+    try {
+      final directory = Directory('${root.path}/_system/health');
+      if (await FileSystemEntity.type(
+                '${root.path}/_system',
+                followLinks: false,
+              ) !=
+              FileSystemEntityType.directory ||
+          await FileSystemEntity.type(directory.path, followLinks: false) !=
+              FileSystemEntityType.directory) {
+        return reply(
+          'No health report found; run tylog vault-health first',
+          error: true,
+        );
+      }
+      final reports = <File>[];
+      await for (final entry in directory.list(followLinks: false)) {
+        if (entry is File &&
+            RegExp(
+              r'^\d{4}-\d{2}-\d{2}\.json$',
+            ).hasMatch(entry.uri.pathSegments.last)) {
+          reports.add(entry);
+        }
+      }
+      if (reports.isEmpty) {
+        return reply(
+          'No health report found; run tylog vault-health first',
+          error: true,
+        );
+      }
+      reports.sort((a, b) => b.path.compareTo(a.path));
+      final source = await reports.first.readAsString();
+      if (jsonDecode(source) is! Map) {
+        throw const FormatException('Invalid report');
+      }
+      return reply(source);
+    } catch (error) {
+      return reply('Unable to read health report: $error', error: true);
+    }
+  }
   final value = args[name == 'search' ? 'query' : 'id'];
   if (name == 'list_tasks' || name == 'backlinks') {
     if (name == 'backlinks' && (value is! String || value.trim().isEmpty)) {
