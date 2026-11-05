@@ -283,10 +283,11 @@ class AndroidTreeVaultStorage extends VaultStorage {
       // Keep the queue occupied until the provider's outcome is known.
       try {
         await call;
+        return true;
       } catch (_) {
         // The caller already received the timeout; leave the marker dirty.
+        return false;
       }
-      return false;
     }
   }
 
