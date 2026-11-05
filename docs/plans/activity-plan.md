@@ -532,7 +532,7 @@ Issues found:
 - [x] PF3 Index normalized names and words once per enrichment memory, preserving matching precedence; skip marker lookup when there are no markers (audit #3).
 - [x] PF3-rest Move enrichment memory construction off the UI isolate, incrementally apply newly persisted feedback, and cache marker IDs by index revision (audit #3, #16).
 - [x] PF3-rest-rest Move per-day resolution, tag matching and link scans off the UI isolate; (audit #3, #16).
-- [ ] PF3-rest-rest-rest Measure root CPU, Flutter frames, heap and TYLOG_ENRICH at 1/20/100 mentions across 1k/10k pages on device (audit #3, #16).
+- [x] PF3-rest-rest-rest Measure root CPU, Flutter frames, heap and TYLOG_ENRICH at 1/20/100 mentions across 1k/10k pages on device (audit #3, #16; [P30 profile](tylog-plus/evidence/PF3-enrichment-profile.md)).
 - [x] PF4 Cache the sorted journal days per index to avoid sorting on every scroll and rebuild (audit #4).
 - [x] PF4-rest Index journal task rows by note and task ID (audit #5).
 - [x] PF4-rest-rest Bound and invalidate the journal source cache without losing visible edits (audit #12).
