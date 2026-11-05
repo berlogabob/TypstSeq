@@ -33,6 +33,7 @@ class AndroidTreeVaultStorage extends VaultStorage {
   AndroidTreeVaultStorage({required this.uri, required this.name});
 
   static const channel = MethodChannel('org.tylog.tylog/saf');
+  static final _appends = <(String, String), Future<void>>{};
 
   static Future<void> startSyncForeground({String? detail}) =>
       channel.invokeMethod<void>('startSyncForeground', {'detail': ?detail});
@@ -214,6 +215,20 @@ class AndroidTreeVaultStorage extends VaultStorage {
 
   @override
   Future<void> appendBytes(String path, List<int> bytes) async {
+    final key = (uri, path);
+    final previous = _appends[key];
+    final done = Completer<void>();
+    _appends[key] = done.future;
+    try {
+      if (previous != null) await previous;
+      await _appendBytes(path, bytes);
+    } finally {
+      done.complete();
+      if (identical(_appends[key], done.future)) _appends.remove(key);
+    }
+  }
+
+  Future<void> _appendBytes(String path, List<int> bytes) async {
     if (path.endsWith('.typ')) {
       final existing = await exists(path) ? await readBytes(path) : <int>[];
       guardNoteWrite(path, [...existing, ...bytes]);

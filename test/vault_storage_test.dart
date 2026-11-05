@@ -106,6 +106,54 @@ void main() {
     expect(calls, ['exists']);
   });
 
+  test(
+    'concurrent SAF appends survive a provider without append mode',
+    () async {
+      var content = 'start\n';
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(AndroidTreeVaultStorage.channel, (
+        call,
+      ) async {
+        switch (call.method) {
+          case 'append':
+            throw PlatformException(code: 'unsupported');
+          case 'exists':
+            return true;
+          case 'read':
+            final snapshot = content;
+            await Future<void>.delayed(const Duration(milliseconds: 20));
+            return Uint8List.fromList(utf8.encode(snapshot));
+          case 'write':
+            content = utf8.decode(
+              (call.arguments as Map)['bytes'] as Uint8List,
+            );
+            return null;
+        }
+        return null;
+      });
+      addTearDown(
+        () => messenger.setMockMethodCallHandler(
+          AndroidTreeVaultStorage.channel,
+          null,
+        ),
+      );
+      final first = AndroidTreeVaultStorage(
+        uri: 'content://test/tree',
+        name: 'Test',
+      );
+      final second = AndroidTreeVaultStorage(
+        uri: 'content://test/tree',
+        name: 'Test',
+      );
+      await Future.wait([
+        first.appendBytes('logs/events.jsonl', utf8.encode('one\n')),
+        second.appendBytes('logs/events.jsonl', utf8.encode('two\n')),
+      ]);
+      expect(content, 'start\none\ntwo\n');
+    },
+  );
+
   test('vault paths reject aliases and control characters', () {
     for (final path in ['assets/./a.bin', 'assets/../a.bin', 'assets/a\nbin']) {
       expect(() => validateVaultPath(path), throwsArgumentError);
