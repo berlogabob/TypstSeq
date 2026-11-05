@@ -5,13 +5,44 @@ their history is in the commit log and the GitHub release notes.
 
 ## Unreleased
 
+## 0.21.0+167
+
+### New
+
+- Entities: every page can be a person, place, project or custom kind with an
+  icon; "Part of" links (many parents, Logseq namespaces convert to them);
+  entity pages show Contains, a Timeline and one Board with Kanban,
+  Whiteboard and Tree views.
+- Boards: drag tasks between columns; free whiteboard with text, notes,
+  images, links and frames; GitHub repository issues on the Kanban (moving a
+  card updates the issue); OpenLabTwin rooms and stock on the whiteboard.
+- `@Project @fixit text` lines become issues on the project board.
+- Extensions: GitHub sign-in (device flow), read-only extension vaults from
+  GitHub or folders, weekly pack update check; OpenLabTwin under
+  Extensions > Sources.
+- Incoming is the one review place: mention suggestions with a "Who is …?"
+  chooser (candidates, search, new page, ignore), audio task and date
+  proposals, OCR rows, OpenLabTwin bookings, vault health findings.
+- Shared WhatsApp/Telegram audio asks "From whom?" and links the person.
+- Settings > Maintenance: duplicate finder and merge, namespace convert,
+  vault health report (also nightly on the Mac).
+- MCP server (`tylog mcp <vault>`): search, notes, backlinks, tasks,
+  Incoming, health, daily append, add task, propose mention.
+
 ### Fixed
 
-- Journal tasks: compact rows with plain checkbox icons (no colour emoji on
-  Android); field chips only when a field is set.
-- OpenLabTwin is listed in Settings (was reachable only through search).
-- Today's Incoming lists every pending booking request from today on and
-  every new idea, not only those dated today; a booking shows its date.
+- Typing on a day page no longer closes the keyboard (links inside task
+  text, old auto-mention blocks); a broken line now shows "Open Source".
+- Notes can no longer be overwritten with internal revision records.
+- Auto "Mentions" blocks are gone: links go on the name, tags to the header.
+- People already in the vault are recognised (case forms, Cyrillic/Latin,
+  surnames, plain note pages); audio language comes from the text.
+- Timestamp button scrolls to the new line; while typing only the text and
+  toolbar are shown.
+- Startup rescan on a 10k-note vault 46 s -> 15 s (P30); Incoming, Journal,
+  boards and mention matching no longer scale with the whole vault.
+- Journal tasks: compact rows with plain checkbox icons; OpenLabTwin listed
+  in Settings; Incoming lists all pending bookings and new ideas.
 
 ## 0.20.8+166
 
