@@ -1,12 +1,12 @@
 import 'dart:io';
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:tylog_core/tylog_core.dart'
     show Mount, MountSource, InstalledModule, listInstalledModules;
 
+import '../../bot_vault/decisions.dart';
 import '../../workspace_controller.dart';
 import '../ds/app_tile.dart';
 import 'settings_page.dart';
@@ -91,7 +91,7 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
     final path =
         await (widget.pickDirectory?.call() ?? FilePicker.getDirectoryPath());
     if (path == null) return;
-    if (bot) await _checkBotManifest(path);
+    if (bot) await checkBotManifest(path);
     final workspace = widget.workspace!;
     final segments = Directory(
       path,
@@ -122,24 +122,8 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
     );
   });
 
-  Future<void> _checkBotManifest(String path) async {
-    final file = File('$path/bot-vault.json');
-    if (!await file.exists()) {
-      throw const FormatException('Missing bot-vault.json');
-    }
-    final manifest = jsonDecode(await file.readAsString());
-    if (manifest is! Map ||
-        manifest['schema'] is! int ||
-        manifest['schema'] < 1) {
-      throw const FormatException('Invalid bot vault manifest');
-    }
-    if (manifest['schema'] > 1) {
-      throw const FormatException('Bot vault needs newer TyLog');
-    }
-  }
-
   Future<void> _showBotItems(Mount mount) => _run(() async {
-    await _checkBotManifest(mount.source.path!);
+    await checkBotManifest(mount.source.path!);
     if (!mounted) return;
     final workspace = widget.workspace!;
     final notes =
@@ -174,6 +158,46 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
                                   child: SelectableText(text),
                                 ),
                                 actions: [
+                                  if (RegExp(
+                                    r'^ext/[^/]+/items/item-[a-zA-Z0-9_-]+\.typ$',
+                                  ).hasMatch(note.path))
+                                    for (final decision in {
+                                      'Accept': 'accepted',
+                                      'Reject': 'rejected',
+                                      'Dismiss': 'dismissed',
+                                    }.entries)
+                                      TextButton(
+                                        onPressed: () async {
+                                          try {
+                                            final itemId = note.path
+                                                .split('/')
+                                                .last
+                                                .replaceFirst(
+                                                  RegExp(r'\.typ$'),
+                                                  '',
+                                                );
+                                            await BotVaultDecisions(
+                                              Directory(mount.source.path!),
+                                            ).record(itemId, decision.value);
+                                            if (context.mounted) {
+                                              Navigator.pop(context);
+                                            }
+                                          } catch (error) {
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    'Could not send decision: $error',
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                          }
+                                        },
+                                        child: Text(decision.key),
+                                      ),
                                   TextButton(
                                     onPressed: () => Navigator.pop(context),
                                     child: const Text('Close'),
@@ -375,7 +399,7 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
                             ? null
                             : () => _run(() async {
                                 if (mount.source.extra['botVault'] == true) {
-                                  await _checkBotManifest(mount.source.path!);
+                                  await checkBotManifest(mount.source.path!);
                                   await workspace.refreshIndex(always: true);
                                 } else {
                                   await workspace.refreshMount(mount);
