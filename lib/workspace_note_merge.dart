@@ -121,6 +121,10 @@ extension _DuplicateMerge on WorkspaceController {
             }
             for (final entry in custom.entries) {
               if (metadata.properties.containsKey(entry.key)) {
+                if (entry.value is String &&
+                    metadata.properties[entry.key] == entry.value) {
+                  continue;
+                }
                 throw StateError('Both pages have the property ${entry.key}.');
               }
               updated = replaceNoteProperty(updated, entry.key, entry.value);

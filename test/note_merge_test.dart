@@ -29,6 +29,75 @@ class _DelayedStorage extends LocalVaultStorage {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test(
+    'merges matching custom text properties and rejects disagreements',
+    () async {
+      final root = await Directory.systemTemp.createTemp(
+        'merge-matching-property-',
+      );
+      final storage = LocalVaultStorage(root);
+      final vault = Vault.withStorage(storage);
+      await vault.ensureCreated();
+      final workspace = WorkspaceController(
+        taskScheduler: TaskScheduler(),
+        reconcileTasks: (_) async {},
+      )..vault = vault;
+      addTearDown(() async {
+        workspace.dispose();
+        await root.delete(recursive: true);
+      });
+      for (final id in ['a', 'b']) {
+        await storage.writeText(
+          'notes/$id.typ',
+          replaceNoteHeader(
+            'Body $id.\n',
+            NoteMetadataDraft(
+              id: id,
+              title: id.toUpperCase(),
+              properties: const {'role': 'author'},
+            ),
+          ),
+        );
+      }
+      workspace.index = await scanVaultStorage(storage);
+      final preview = await workspace.previewDuplicateMerge(
+        'notes/a.typ',
+        'notes/b.typ',
+      );
+      await workspace.mergeDuplicate(preview);
+      final result = await storage.readText('notes/a.typ');
+      expect(scanNote('notes/a.typ', result).properties['role'], 'author');
+      expect(result, contains('Body b.'));
+      expect(await storage.exists('notes/b.typ'), isFalse);
+      expect(await loadDecisions(storage), hasLength(1));
+      final compile = Process.runSync('typst', [
+        'compile',
+        '--root',
+        root.path,
+        '${root.path}/notes/a.typ',
+        '${root.path}/out.pdf',
+      ]);
+      expect(compile.exitCode, 0, reason: '${compile.stderr}');
+      await storage.writeText(
+        'notes/c.typ',
+        replaceNoteHeader(
+          '',
+          const NoteMetadataDraft(
+            id: 'c',
+            title: 'C',
+            properties: {'role': 'editor'},
+          ),
+        ),
+      );
+      workspace.index = await scanVaultStorage(storage);
+      await expectLater(
+        workspace.previewDuplicateMerge('notes/a.typ', 'notes/c.typ'),
+        throwsStateError,
+      );
+      expect(await storage.readText('notes/a.typ'), result);
+      expect(await storage.exists('notes/c.typ'), isTrue);
+    },
+  );
   test('merges inline raw text from another folder', () async {
     final root = await Directory.systemTemp.createTemp('merge-raw-');
     final storage = LocalVaultStorage(root);
