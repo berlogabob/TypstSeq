@@ -536,7 +536,8 @@ Issues found:
 - [x] PF4 Cache the sorted journal days per index to avoid sorting on every scroll and rebuild (audit #4).
 - [x] PF4-rest Index journal task rows by note and task ID (audit #5).
 - [x] PF4-rest-rest Bound and invalidate the journal source cache without losing visible edits (audit #12).
-- [ ] PF4-rest-rest-rest Measure journal scrolling, task rendering, and retained memory on device at 50/500/5,000 days; the P30 smoke sample is not a controlled heap study (audit #4, #5, #12).
+- [x] PF4-rest-rest-rest Measure journal scrolling, task rendering, and retained memory on device at 50/500/5,000 days; the P30 profile is a synthetic smoke sample (audit #4, #5, #12; [P30 profile](tylog-plus/evidence/PF4-journal-profile.md)).
+- [ ] PF4-rest-rest-rest-rest Traverse the full journal history on P30 at 50/500/5,000 days, then repeat with disk or SAF-backed day content and controlled post-GC retained-heap snapshots (audit #4, #5, #12).
 - [x] PF5 Cache entity timeline entries per index and defer rebuilding them while collapsed (audit #6).
 - [x] PF5-rest Reuse the workspace resolver when opening entity timelines, and refresh entries if the resolver changes.
 - [x] PF5-rest-rest Index task references by entity; make merge preview verification scalable while preserving unsupported-reference and concurrent-change checks (audit #6, #8). Timeline task matching now uses a per-entity index.
