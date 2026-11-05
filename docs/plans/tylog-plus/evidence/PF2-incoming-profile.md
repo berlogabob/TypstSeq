@@ -57,3 +57,25 @@ Show older interaction. Those measurements remain in
 PF2-rest-rest-rest-rest-rest-rest. Device RSS and native SAF provider query
 counts were not measured; the storage operation counts are Dart calls into
 the SAF bridge.
+
+## Actual Incoming sheet harness (2026-11-05)
+
+Added `integration_test/pf2_incoming_sheet_profile_test.dart`. It mounts the
+production `TyLogApp` in the isolated profile package, requires its already
+registered Android-tree vault, opens the real Incoming sheet, and records
+readiness time, visible mention/audio/OCR rows, sheet frame timings, retained
+Dart heap and RSS. It also times Show older and an OCR accept when those
+controls are present. It does not synthesize sidecars or select a folder.
+
+The P30 run was attempted with
+`flutter drive --no-pub --no-dds --profile -PtylogProfileSuffix=.profiletest
+-d XPH0219904001750 --driver=test_driver/integration_test.dart
+--target=integration_test/pf2_incoming_sheet_profile_test.dart`. The APK built,
+but Android rejected its install because its signing certificate did not match
+the installed `.profiletest` package. Flutter's fallback removed that package;
+the saved app registration and SAF grant are now gone. The selected SAF tree
+was not modified, and the production package was not targeted. ADB confirmed
+the production package still has `firstInstallTime=2026-11-05 15:27:02`.
+No actual-sheet numbers were collected. Reinstalling and selecting the exact
+existing copy again must happen before this harness can run; do not select or
+modify a vault while the intended copy is uncertain.
