@@ -71,6 +71,41 @@ fn scan(root: &Path, dir: &Path, entries: &mut Vec<Entry>) -> Result<(), String>
     }
     Ok(())
 }
+fn path_label(ip: bool, relay: bool) -> &'static str {
+    if ip {
+        "direct-ip"
+    } else if relay {
+        "relay"
+    } else {
+        "other"
+    }
+}
+
+fn log_selected_path(conn: &iroh::endpoint::Connection) -> &'static str {
+    let paths = conn.paths();
+    paths
+        .iter()
+        .find(|path| path.is_selected())
+        .map(|path| path_label(path.is_ip(), path.is_relay()))
+        .unwrap_or("unknown")
+}
+
+fn observe_paths(conn: iroh::endpoint::Connection) {
+    tokio::spawn(async move {
+        let mut previous = "";
+        loop {
+            let selected = log_selected_path(&conn);
+            if selected != previous {
+                println!("P2P6_SELECTED_PATH {selected}");
+                previous = selected;
+            }
+            tokio::select! {
+                _ = conn.closed() => break,
+                _ = tokio::time::sleep(std::time::Duration::from_millis(500)) => {}
+            }
+        }
+    });
+}
 fn transport() -> iroh::endpoint::QuicTransportConfig {
     iroh::endpoint::QuicTransportConfig::builder()
         .stream_receive_window((8u32 * 1024 * 1024).into())
@@ -352,6 +387,7 @@ pub(super) fn receive(
                     .connect(addr.clone(), ALPN)
                     .await
                     .map_err(|e| e.to_string())?;
+                observe_paths(conn.clone());
                 let attempt: Result<_, String> = async {
                     let (mut send, mut recv) = conn.open_bi().await.map_err(|e| e.to_string())?;
                     send.write_all(&[1]).await.map_err(|e| e.to_string())?;
@@ -460,6 +496,16 @@ mod tests {
                 .await
                 .unwrap();
             let stale = endpoint.connect(addr, ALPN).await.unwrap();
+            tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                loop {
+                    if log_selected_path(&stale) == "direct-ip" {
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                }
+            })
+            .await
+            .expect("loopback did not select a direct IP path");
             let (mut send, mut recv) = stale.open_bi().await.unwrap();
             send.write_all(&[1]).await.unwrap();
             recv.read_to_end(LIMIT).await.unwrap();
@@ -477,6 +523,12 @@ mod tests {
             endpoint.close().await;
         });
         std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn selected_path_labels_are_unambiguous() {
+        assert_eq!(path_label(true, false), "direct-ip");
+        assert_eq!(path_label(false, true), "relay");
+        assert_eq!(path_label(false, false), "other");
     }
     #[test]
     fn rejects_unsafe_paths() {

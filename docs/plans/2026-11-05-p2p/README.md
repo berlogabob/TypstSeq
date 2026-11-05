@@ -237,3 +237,19 @@ measurement of the earlier phone failure. An actual process-kill retry, path
 instrumentation and unplugged battery measurement remain in the follow-up.
 The P30 reported AC power, so no battery consumption is claimed. The Mac GUI
 was locked and was not used. P2P3 remains no-go.
+
+## P2P6-rest-rest-rest-rest selected-path diagnostic (2026-11-05)
+The folder receiver samples iroh's selected application-data path every 500 ms
+and logs changes as `P2P6_SELECTED_PATH direct-ip`, `relay`, `other`, or
+`unknown`. It logs no addresses or tickets. Sampling can miss shorter path
+changes; a direct IP path is not by itself proof that the IP route was LAN.
+A local loopback regression selected direct IP and the existing same-ticket
+replacement test completed. This does not establish the earlier transfer's
+route or demonstrate a phone process restart.
+
+The P30 was reachable via adb, but its current package list did not contain
+`org.tylog.tylog`, and its required first-install timestamp could not be read.
+No install, launch, kill or transfer was attempted on the device during this
+slice. Battery Service reported AC powered and 80%; no unplugged consumption
+measurement was possible. Resolve the production package state before further
+device work. The Mac GUI was locked and not used. P2P3 remains no-go.
