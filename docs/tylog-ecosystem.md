@@ -28,8 +28,11 @@ Vault generation remains `5`. Existing notes retain this import:
 The six labels—`<tylog-note>`, `<tylog-link>`, `<tylog-tag>`,
 `<tylog-date>`, `<tylog-attachment>`, and `<tylog-task>`—also remain stable.
 Format v1 wraps each value with `schema: 1` and a matching `entity`. Readers
-accept both these envelopes and legacy generation-5 values. See
-[the complete format specification](../spec/tylog-format-v1.md).
+accept both these envelopes and legacy generation-5 values. The portable vault
+contract for external producers is [docs/vault-format.md](vault-format.md),
+contract v1; article pipelines and bots should pin to that contract. The
+metadata encoding details remain in
+[the Typst format specification](../spec/tylog-format-v1.md).
 
 A fresh vault receives the facade, theme, export helper, and vendored package
 from application assets. The facade pins
