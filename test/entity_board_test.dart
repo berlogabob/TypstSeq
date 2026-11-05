@@ -1000,6 +1000,84 @@ void main() {
     expect(source, contains('"tylog-issue-status": "doing"'));
   });
 
+  testWidgets(
+    'opening a board recovers a linked move from the repository listing',
+    (tester) async {
+      final dir = await tester.runAsync(
+        () => Directory.systemTemp.createTemp('github-interrupted-move'),
+      );
+      if (dir == null) throw StateError('No temp directory');
+      addTearDown(() => deleteTempDir(dir));
+      final vault = Vault(dir);
+      final client = _FakeGitHub()
+        ..state = 'closed'
+        ..issueUnavailable = true;
+      const project = NoteRef(
+        id: 'p',
+        path: 'p.typ',
+        title: 'P',
+        kind: 'project',
+        outgoingLinks: [],
+        properties: {'github': 'owner/repo'},
+      );
+      var source = '- #tylog.ref-note("p")[P] fixit broken';
+      VaultIndex makeIndex() => VaultIndex(
+        notesByPath: const {'p.typ': project},
+        backlinksByTarget: const {},
+        issues: [
+          IssueRef(
+            notePath: 'log.typ',
+            line: 1,
+            text: source,
+            projectId: 'p',
+            marker: 'fixit',
+            status: 'todo',
+            githubNumber: 123,
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EntityBoard(
+            entity: project,
+            vault: vault,
+            index: makeIndex(),
+            setStatus: (_, _) async {},
+            mutateNote: (_, edit) async {
+              source = edit(source);
+              return true;
+            },
+            refreshIndex: () async => makeIndex(),
+            githubClient: () async => client,
+          ),
+        ),
+      );
+      for (var i = 0; i < 30 && !source.contains('"done"'); i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 40)),
+        );
+        await tester.pump();
+      }
+      expect(source, contains('"tylog-issue-status": "done"'));
+      for (var i = 0; i < 30; i++) {
+        if (await tester.runAsync(
+              () => vault.storage.exists('_system/decisions/github.jsonl'),
+            ) ==
+            true) {
+          break;
+        }
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 40)),
+        );
+        await tester.pump();
+      }
+      final log = await tester.runAsync(
+        () => vault.storage.readText('_system/decisions/github.jsonl'),
+      );
+      expect(log, contains('owner/repo#123'));
+    },
+  );
+
   testWidgets('sends and syncs linked issues using a fake client', (
     tester,
   ) async {

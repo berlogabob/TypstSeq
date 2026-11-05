@@ -525,7 +525,15 @@ class _EntityBoardState extends State<EntityBoard> {
       }
       for (final issue in issues) {
         final repo = _repo(issue)!;
-        final remote = await client.issue(repo, issue.githubNumber!);
+        Map<String, dynamic> remote;
+        try {
+          remote = await client.issue(repo, issue.githubNumber!);
+        } catch (_) {
+          final rows = await client.repositoryIssues(repo);
+          remote = rows.firstWhere(
+            (row) => row['number'] == issue.githubNumber,
+          );
+        }
         final column = _remoteColumn(remote);
         if (column != issue.status) {
           if (!await widget.mutateNote(
