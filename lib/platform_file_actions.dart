@@ -12,7 +12,7 @@ Future<void> importPlatformFile(
   if (storage is CompositeVaultStorage && !path.startsWith('ext/')) {
     storage = storage.main;
   }
-  if (storage is AndroidTreeVaultStorage) {
+  if (storage is AndroidTreeVaultStorage && !path.endsWith('.typ')) {
     await AndroidTreeVaultStorage.invoke(
       AndroidTreeVaultStorage.channel.invokeMethod<void>(
         'import',

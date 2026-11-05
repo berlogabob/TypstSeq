@@ -7,10 +7,55 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_registry.dart';
 import 'package:tylog/vault_storage.dart';
+import 'package:tylog/platform_file_actions.dart';
 import 'support/temp_dir.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test('SAF note imports validate the exact bytes sent to storage', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_import_guard_');
+    addTearDown(() => deleteTempDir(dir));
+    final source = File('${dir.path}/source.typ');
+    final calls = <MethodCall>[];
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(AndroidTreeVaultStorage.channel, (
+      call,
+    ) async {
+      calls.add(call);
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(
+        AndroidTreeVaultStorage.channel,
+        null,
+      ),
+    );
+    final storage = AndroidTreeVaultStorage(
+      uri: 'content://test/tree',
+      name: 'Test',
+    );
+    await source.writeAsString('{"revision":{},"node":{}}');
+    await expectLater(
+      importPlatformFile(storage, 'notes/a.typ', source),
+      throwsFormatException,
+    );
+    expect(calls, isEmpty);
+    await source.writeAsString('Headerless legacy note');
+    await importPlatformFile(storage, 'notes/a.typ', source);
+    final write = calls.singleWhere(
+      (call) =>
+          call.method == 'write' && call.arguments['path'] == 'notes/a.typ',
+    );
+    expect(
+      utf8.decode(write.arguments['bytes'] as List<int>),
+      'Headerless legacy note',
+    );
+    calls.clear();
+    await importPlatformFile(storage, 'assets/a.bin', source);
+    expect(calls.single.method, 'import');
+  });
 
   test(
     'revision JSON cannot replace a daily note through local or SAF storage',
