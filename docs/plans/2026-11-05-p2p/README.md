@@ -198,3 +198,29 @@ Only use a source the user has explicitly authorized; do not grant the test
 app access to the original vault. Tickets must stay local and private. Harness
 libraries are isolated build outputs and must never be copied into
 `.typst_flutter_prebuilt`.
+
+## P2P6-rest-rest received-copy opening (2026-11-05)
+The already verified P30 app-private copy was registered as an app-local vault
+with no cloud configuration and opened in the `.profiletest` app. On a cold
+start, `TYLOG_STARTUP` recorded `open-start` at 365 ms, `today-readable` at
+583 ms, and `index-published` at 30,724 ms: 30.359 s from open to publication.
+The index event reported 10,085 notes, a 29.038 s indexing duration, source
+`scan`, and four parsed notes. This used the index already present in the
+snapshot; it is not a clean-index benchmark. The app was left in the foreground
+with this copy open for visual review.
+
+Before and after this opening, batterystats history's last charge entry was
+23 mAh and Battery Service reported 23,000 µAh, 80%, AC connected and status
+not charging. The zero observed delta is not an unplugged consumption measure.
+The production installation's first-install timestamp remained
+2026-11-05 15:27:02. The earlier transfer did not log iroh's selected path, so
+neither direct LAN nor relay is established for it. Its temporary source clone
+was removed after the transfer; no new copy of the original vault was made.
+Same-ticket restart, route evidence, unplugged battery consumption and the
+remaining product safety gates remain outstanding; the P2P3 no-go still holds.
+
+For this isolated opening, build `tool/p2p6/open_main.dart` as a release APK
+with `-PtylogProfileSuffix=.profiletest` and the Android harness library staged
+as above. The entry point checks the native `.profiletest` guard, requires the
+existing `p2p6-received` directory and selects it without removing other vault
+registrations. It must only be installed over the isolated test package.
