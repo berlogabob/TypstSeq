@@ -79,3 +79,16 @@ the production package still has `firstInstallTime=2026-11-05 15:27:02`.
 No actual-sheet numbers were collected. Reinstalling and selecting the exact
 existing copy again must happen before this harness can run; do not select or
 modify a vault while the intended copy is uncertain.
+
+## PF2-rest-rest-rest-rest-rest-rest-rest follow-up (2026-11-05)
+
+Rechecked the Huawei P30 (`XPH0219904001750`) before attempting another run.
+`org.tylog.tylog.profiletest` is absent from `pm list packages`, and Android
+reports no `/data/user/0/org.tylog.tylog.profiletest` or
+`/sdcard/Android/data/org.tylog.tylog.profiletest/files`. The installed
+`org.tylog.tylog.saftest` and `.debug` packages have separate app-private data;
+neither contains the P2P6 copy. The production package still reports
+`firstInstallTime=2026-11-05 15:27:02`. No install, picker, vault write, or
+`svc power stayon` command was issued. The Mac screen was locked, so no GUI
+check was attempted. Restore the existing P2P6 copy into `.profiletest` storage
+before collecting the actual-sheet measurements.
