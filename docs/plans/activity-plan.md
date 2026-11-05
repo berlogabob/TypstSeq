@@ -459,7 +459,8 @@ Issues found:
 - [x] S3b-rest-rest-rest-rest-rest-rest-rest-rest Merge canonical pages with distinct custom properties, preserving them and rejecting overlapping properties and different kinds.
 - [x] S3b-rest-rest-rest-rest-rest-rest-rest-rest-rest Merge cross-folder bodies containing simple inline raw text using the existing safe-character set.
 - [x] S3b-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Merge canonical pages with matching custom text properties, preserving the shared value and rejecting disagreements.
-- [ ] S3b-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Merge noncanonical pages and preserve remaining metadata (including other matching properties, conflicts and kinds); handle other cross-folder bodies, repoint other link forms and references outside indexed notes, handle ambiguous names, and recover safely from partial writes.
+- [x] S3b-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Merge canonical pages with matching scalar custom properties, preserving them and rejecting disagreements.
+- [ ] S3b-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Merge noncanonical pages and preserve remaining metadata (including other matching properties, conflicts and kinds); handle other cross-folder bodies, repoint other link forms and references outside indexed notes, handle ambiguous names, and recover safely from partial writes.
 - [x] S4 Person timeline: dailies, audio, screenshots, tasks mentioning the person, by date
 - [x] S5 Audio -> task/agenda proposals in Incoming
 - [x] S5-rest Link accepted audio tasks to the From person when present.

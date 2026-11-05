@@ -121,7 +121,12 @@ extension _DuplicateMerge on WorkspaceController {
             }
             for (final entry in custom.entries) {
               if (metadata.properties.containsKey(entry.key)) {
-                if (entry.value is String &&
+                if ((entry.value == null ||
+                        entry.value is String ||
+                        entry.value is num ||
+                        entry.value is bool) &&
+                    metadata.properties[entry.key].runtimeType ==
+                        entry.value.runtimeType &&
                     metadata.properties[entry.key] == entry.value) {
                   continue;
                 }
