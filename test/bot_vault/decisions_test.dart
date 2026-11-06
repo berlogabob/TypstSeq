@@ -60,6 +60,30 @@ void main() {
     await expectLater(decisions.decidedItems(), throwsFormatException);
   });
 
+  test(
+    'review and retries ignore duplicate event IDs and non-integer schemas',
+    () async {
+      final outbox = await Directory('${root.path}/outbox').create();
+      final file = File('${outbox.path}/decisions.jsonl');
+      await File('${root.path}/items/item-other.typ').writeAsString('draft');
+      final row = {
+        'schema': 1,
+        'id': 'same',
+        'at': 'now',
+        'item_id': 'item-other',
+        'action': 'accepted',
+      };
+      await file.writeAsString(
+        '${jsonEncode(row)}\n${jsonEncode({...row, 'item_id': item})}\n${jsonEncode({...row, 'schema': 1.0, 'id': 'float', 'item_id': item})}\n',
+      );
+      final decisions = BotVaultDecisions(root);
+      expect(await decisions.decidedItems(), {'item-other'});
+      await decisions.record(item, 'accepted');
+      expect(await file.readAsLines(), hasLength(4));
+      expect(await decisions.decidedItems(), {'item-other', item});
+    },
+  );
+
   test('concurrent decisions stay complete and retry-safe', () async {
     await Future.wait(
       List.generate(

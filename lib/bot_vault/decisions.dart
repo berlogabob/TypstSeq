@@ -87,13 +87,10 @@ class BotVaultDecisions {
   BotVaultDecisions(this.root);
   final Directory root;
 
-  Future<Set<String>> decidedItems() async {
-    await checkBotManifest(root.path);
-    final file = File('${root.path}/outbox/decisions.jsonl');
-    if (!await file.exists()) return {};
-    final content = await file.readAsString();
+  Future<List<Map>> _validRows(String content) async {
     final lines = content.split('\n')..removeLast();
-    final result = <String>{};
+    final ids = <String>{};
+    final rows = <Map>[];
     for (final line in lines) {
       try {
         final row = jsonDecode(line);
@@ -105,14 +102,28 @@ class BotVaultDecisions {
             row['at'] is String &&
             (row['at'] as String).isNotEmpty &&
             row['item_id'] is String &&
-            {'accepted', 'rejected', 'dismissed'}.contains(row['action'])) {
-          result.add(row['item_id'] as String);
+            RegExp(
+              r'^item-[a-zA-Z0-9_-]+$',
+            ).hasMatch(row['item_id'] as String) &&
+            {'accepted', 'rejected', 'dismissed'}.contains(row['action']) &&
+            !ids.contains(row['id']) &&
+            await File('${root.path}/items/${row['item_id']}.typ').exists()) {
+          ids.add(row['id'] as String);
+          rows.add(row);
         }
       } on FormatException {
         // Ignore rows the bot cannot consume.
       }
     }
-    return result;
+    return rows;
+  }
+
+  Future<Set<String>> decidedItems() async {
+    await checkBotManifest(root.path);
+    final file = File('${root.path}/outbox/decisions.jsonl');
+    if (!await file.exists()) return {};
+    final rows = await _validRows(await file.readAsString());
+    return rows.map((row) => row['item_id'] as String).toSet();
   }
 
   Future<void> record(String itemId, String action) async {
@@ -139,22 +150,11 @@ class BotVaultDecisions {
         if (content.isNotEmpty && !content.endsWith('\n')) {
           throw const FormatException('Incomplete bot outbox row');
         }
-        for (final line in const LineSplitter().convert(content)) {
-          try {
-            final row = jsonDecode(line);
-            if (row is Map &&
-                row['schema'] == 1 &&
-                row['item_id'] == itemId &&
-                row['action'] == action &&
-                row['id'] is String &&
-                (row['id'] as String).isNotEmpty &&
-                row['at'] is String &&
-                (row['at'] as String).isNotEmpty) {
-              return;
-            }
-          } on FormatException {
-            /* Preserve unrecognized rows. */
-          }
+        final rows = await _validRows(content);
+        if (rows.any(
+          (row) => row['item_id'] == itemId && row['action'] == action,
+        )) {
+          return;
         }
         final random = Random.secure();
         final id = List.generate(
