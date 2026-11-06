@@ -51,44 +51,39 @@ void main() {
     },
   );
 
-  test('moving an issue changes state and only the doing label', () async {
-    final labels = <String>{'bug', 'concurrent'};
+  test('issue moves never send unguarded writes', () async {
+    var requests = 0;
     server.listen((request) async {
-      final body = await utf8.decoder.bind(request).join();
-      if (request.method == 'PATCH') {
-        final data = jsonDecode(body) as Map<String, dynamic>;
-        if (data['labels'] is List) {
-          labels
-            ..clear()
-            ..addAll((data['labels'] as List).cast<String>());
-        }
-        request.response.write('{}');
-      } else if (request.method == 'POST') {
-        labels.addAll((jsonDecode(body)['labels'] as List).cast<String>());
-        request.response.write('[]');
-      } else {
-        expect(request.method, 'DELETE');
-        expect(request.uri.path, '/repos/a/b/issues/42/labels/doing');
-        labels.remove('doing');
-        request.response.write('[]');
-      }
+      requests++;
+      await request.drain<void>();
+      request.response.write('{}');
       await request.response.close();
     });
     final client = GitHubClient(null, http, base);
-    await client.updateIssueColumn('a/b', 42, 'doing', [
-      'bug',
-    ], currentColumn: 'todo');
-    expect(labels, {'bug', 'concurrent', 'doing'});
-    await client.updateIssueColumn('a/b', 42, 'done', [
-      'bug',
-      'doing',
-    ], currentColumn: 'doing');
-    expect(labels, {'bug', 'concurrent', 'doing'});
-    await client.updateIssueColumn('a/b', 42, 'todo', [
-      'bug',
-      'doing',
-    ], currentColumn: 'doing');
-    expect(labels, {'bug', 'concurrent'});
+    for (final move in [
+      (from: 'todo', to: 'doing', labels: <String>[]),
+      (from: 'doing', to: 'todo', labels: <String>['doing']),
+      (from: 'todo', to: 'done', labels: <String>[]),
+      (from: 'doing', to: 'done', labels: <String>['doing']),
+    ]) {
+      await expectLater(
+        client.updateIssueColumn(
+          'a/b',
+          42,
+          move.to,
+          move.labels,
+          currentColumn: move.from,
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            contains('GitHub'),
+          ),
+        ),
+      );
+    }
+    expect(requests, 0);
   });
 
   test('reopening never submits separate state and label changes', () async {
@@ -156,56 +151,6 @@ void main() {
         );
       }
       expect(requests, 0);
-    },
-  );
-
-  test(
-    'closing an issue preserves a concurrently changed doing label',
-    () async {
-      final labels = <String>{'doing'};
-      server.listen((request) async {
-        await request.drain<void>();
-        if (request.method == 'PATCH') {
-          request.response.write('{}');
-        } else if (request.method == 'DELETE') {
-          labels.remove('doing');
-          request.response.write('[]');
-        }
-        await request.response.close();
-      });
-      await GitHubClient(
-        null,
-        http,
-        base,
-      ).updateIssueColumn('a/b', 42, 'done', ['doing'], currentColumn: 'doing');
-      expect(labels, {'doing'});
-    },
-  );
-
-  test(
-    'moving between open columns does not reopen a concurrently closed issue',
-    () async {
-      var state =
-          'closed'; // GitHub changed after the board read an open issue.
-      final labels = <String>{};
-      server.listen((request) async {
-        final body = await utf8.decoder.bind(request).join();
-        if (request.method == 'PATCH') {
-          state = jsonDecode(body)['state'] as String;
-          request.response.write('{}');
-        } else if (request.method == 'POST') {
-          labels.addAll((jsonDecode(body)['labels'] as List).cast<String>());
-          request.response.write('[]');
-        }
-        await request.response.close();
-      });
-      await GitHubClient(
-        null,
-        http,
-        base,
-      ).updateIssueColumn('a/b', 42, 'doing', [], currentColumn: 'todo');
-      expect(state, 'closed');
-      expect(labels, contains('doing'));
     },
   );
 

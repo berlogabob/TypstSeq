@@ -285,35 +285,7 @@ class GitHubClient {
     List<String> labels, {
     required String currentColumn,
   }) async {
-    if (currentColumn == 'done' && column != 'done') {
-      throw StateError(
-        'Reopen this issue on GitHub, set its doing label if needed, then refresh the board',
-      );
-    }
-    final path = '/repos/${_repo(repo)}/issues/$number';
-    final result = (currentColumn == 'done') == (column == 'done')
-        ? <String, dynamic>{}
-        : await _json(
-            'PATCH',
-            _uri(path),
-            body: {'state': column == 'done' ? 'closed' : 'open'},
-          );
-    if (column == 'doing' && !labels.contains('doing')) {
-      await _request(
-        'POST',
-        _uri('$path/labels'),
-        body: {
-          'labels': ['doing'],
-        },
-      );
-    } else if (column == 'todo' && labels.contains('doing')) {
-      try {
-        await _request('DELETE', _uri('$path/labels/doing'));
-      } on GitHubHttpError catch (error) {
-        if (error.statusCode != 404) rethrow;
-      }
-    }
-    return result;
+    throw StateError('Move this issue on GitHub, then refresh the board');
   }
 
   Future<Map<String, dynamic>> closeIssue(String repo, int number) => _json(
