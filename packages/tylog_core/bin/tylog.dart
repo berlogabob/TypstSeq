@@ -32,6 +32,7 @@ Future<int> runTylog(List<String> arguments) async {
     'init' => _init(args),
     'import-contacts' => _importContacts(args),
     'index' => _index(args),
+    'cluster' => _cluster(args),
     'eval-links' => _evalLinks(args),
     'doctor' => _doctor(args),
     'vault-health' => _vaultHealth(args),
@@ -506,6 +507,160 @@ Future<int> _index(List<String> args) async {
 /// A stable id for this machine's donor, kept in `.tylog/` (device-local, and
 /// outside the sync allowlist) so repeated runs republish one file instead of
 /// littering `_system/index/` with a new donor per invocation.
+Future<int> _cluster(List<String> args) async {
+  if (args.length != 1 || args.single.startsWith('--')) {
+    throw _UsageException('cluster requires <vault>');
+  }
+  final root = Directory(args.single).absolute;
+  final storage = LocalVaultStorage(root);
+  await _openVault(storage);
+  final stateFile = File(
+    '${Platform.environment['HOME'] ?? Directory.current.path}/.tylog-cluster-state.json',
+  );
+  Map state = {};
+  try {
+    state = jsonDecode(await stateFile.readAsString()) as Map;
+  } on Object {
+    // No run history yet.
+  }
+  final requestFile = File('${root.path}/_system/clusters/run-request.json');
+  Object? requested;
+  if (await requestFile.exists()) {
+    try {
+      final request = jsonDecode(await requestFile.readAsString());
+      if (request is Map) requested = request['requested_at'];
+    } on FormatException {
+      // Ignore malformed optional request; the nightly run still proceeds.
+    }
+  }
+  final nowLocal = DateTime.now();
+  final date =
+      '${nowLocal.year.toString().padLeft(4, '0')}-${nowLocal.month.toString().padLeft(2, '0')}-${nowLocal.day.toString().padLeft(2, '0')}';
+  final scheduledRun =
+      // Once per day after 03:00: the agent wakes every 10 minutes, so an
+      // exact-minute check would almost never fire.
+      nowLocal.hour >= 3 && state['last_scheduled_date'] != date;
+  final requestedRun =
+      requested != null && requested != state['last_run_request'];
+  if (!scheduledRun && !requestedRun) return 0;
+  final maintenance = VaultMaintenance(storage, publishDonor: true);
+  final deviceId = await _cliDeviceId(storage);
+  late final VaultIndex index;
+  await for (final event in maintenance.run(
+    inspector: CliTypstInspector(root),
+    deviceId: deviceId,
+    validate: false,
+    flushSearchOnFinish: true,
+  )) {
+    if (event case MaintenanceIndexed(index: final built)) index = built;
+  }
+  final next = <String, Set<String>>{};
+  for (final entry in computeCommunities(index).tagToCluster.entries) {
+    next.putIfAbsent(entry.value, () => <String>{}).add(entry.key);
+  }
+  final snapshotFile = File('${root.path}/_system/clusters/snapshot.json');
+  Map<String, Set<String>> previous = {};
+  try {
+    final decoded = ClusterSnapshot.fromJson(
+      jsonDecode(await snapshotFile.readAsString()) as Map,
+    );
+    previous = decoded.clusters;
+  } on FileSystemException {
+    /* First run. */
+  } on FormatException {
+    /* Rebuild malformed snapshots. */
+  }
+  final match = matchClusters(previous, next);
+  final rejected = await _rejectedClusterChanges(root);
+  final blocked = match.changes
+      .where(
+        (change) =>
+            (change.kind == 'merge' || change.kind == 'split') &&
+            rejected.contains(_clusterChangeId(change)),
+      )
+      .toList();
+  final clusters = <String, Set<String>>{
+    for (final entry in next.entries)
+      match.stableLabel[entry.key] ?? entry.key: entry.value,
+  };
+  // A rejected merge/split keeps its previous clusters until the decision changes.
+  for (final change in blocked) {
+    for (final label in change.from) {
+      if (previous.containsKey(label)) clusters[label] = previous[label]!;
+    }
+    final discard = change.kind == 'merge' ? change.to : change.to.skip(1);
+    for (final label in discard) {
+      clusters.remove(match.stableLabel[label] ?? label);
+    }
+  }
+  final now = DateTime.now().toUtc().toIso8601String();
+  await _atomicJson(
+    snapshotFile,
+    ClusterSnapshot(generatedAt: now, clusters: clusters).toJson(),
+  );
+  final proposals = [
+    for (final change in match.changes)
+      if (!rejected.contains(_clusterChangeId(change)))
+        {
+          'id': _clusterChangeId(change),
+          'kind': change.kind,
+          'from': change.from,
+          'to': change.to,
+        },
+  ];
+  if (requestedRun) state['last_run_request'] = requested;
+  if (scheduledRun) state['last_scheduled_date'] = date;
+  await stateFile.parent.create(recursive: true);
+  final stateTmp = File('${stateFile.path}.tmp');
+  await stateTmp.writeAsString(jsonEncode(state), flush: true);
+  await stateTmp.rename(stateFile.path);
+  await _atomicJson(File('${root.path}/_system/clusters/proposals.json'), {
+    'schema': 1,
+    'generated_at': now,
+    'changes': proposals,
+  });
+  stdout.writeln(
+    'Wrote ${clusters.length} clusters and ${proposals.length} proposal(s)',
+  );
+  return 0;
+}
+
+String _clusterChangeId(ClusterChange change) =>
+    '${change.kind}:${change.from.join('+')}->${change.to.join('+')}';
+
+Future<Set<String>> _rejectedClusterChanges(Directory root) async {
+  final rejected = <String>{};
+  final directory = Directory('${root.path}/_system/decisions');
+  if (!await directory.exists()) return rejected;
+  await for (final entry in directory.list()) {
+    if (entry is! File || !entry.path.endsWith('.jsonl')) continue;
+    for (final line in await entry.readAsLines()) {
+      try {
+        final row = jsonDecode(line);
+        if (row is Map &&
+            row['source'] == 'clusters' &&
+            row['action'] == 'rejected' &&
+            row['target'] is String) {
+          rejected.add(row['target'] as String);
+        }
+      } on FormatException {
+        /* Ignore a partial ledger line. */
+      }
+    }
+  }
+  return rejected;
+}
+
+Future<void> _atomicJson(File file, Object value) async {
+  await file.parent.create(recursive: true);
+  final temporary = File('${file.path}.tmp');
+  await temporary.writeAsString(
+    '${const JsonEncoder.withIndent('  ').convert(value)}\n',
+    flush: true,
+  );
+  await temporary.rename(file.path);
+}
+
 Future<String> _cliDeviceId(VaultStorage storage) async {
   const path = '.tylog/cli-device-id';
   try {
@@ -953,6 +1108,7 @@ Usage:
   tylog init [vault=.]
   tylog import-contacts --vault <dir> --file <contacts.vcf|contacts.csv> [--write]
   tylog index [vault=.] [--force]
+  tylog cluster <vault>
   tylog doctor [vault=.]
   tylog vault-health <vault>
   tylog dedupe <vault> [--apply]
