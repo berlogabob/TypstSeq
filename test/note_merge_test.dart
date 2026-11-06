@@ -29,6 +29,48 @@ class _DelayedStorage extends LocalVaultStorage {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('merges cross-folder prose with typographic punctuation', () async {
+    final root = await Directory.systemTemp.createTemp('merge-typography-');
+    final storage = LocalVaultStorage(root);
+    final vault = Vault.withStorage(storage);
+    await vault.ensureCreated();
+    final workspace = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      reconcileTasks: (_) async {},
+    )..vault = vault;
+    addTearDown(() async {
+      workspace.dispose();
+      await root.delete(recursive: true);
+    });
+    await storage.createDirectory('notes/other');
+    await storage.writeText(
+      'notes/a.typ',
+      replaceNoteHeader('Keep.', const NoteMetadataDraft(id: 'a', title: 'A')),
+    );
+    await storage.writeText(
+      'notes/other/b.typ',
+      replaceNoteHeader(
+        '“Quoted” — pages 1–3…',
+        const NoteMetadataDraft(id: 'b', title: 'B'),
+      ),
+    );
+    workspace.index = await scanVaultStorage(storage);
+    await workspace.mergeDuplicate(
+      await workspace.previewDuplicateMerge('notes/a.typ', 'notes/other/b.typ'),
+    );
+    final result = await storage.readText('notes/a.typ');
+    expect(result, contains('“Quoted” — pages 1–3…'));
+    expect(await storage.exists('notes/other/b.typ'), isFalse);
+    expect(await loadDecisions(storage), hasLength(1));
+    final compile = Process.runSync('typst', [
+      'compile',
+      '--root',
+      root.path,
+      '${root.path}/notes/a.typ',
+      '${root.path}/out.pdf',
+    ]);
+    expect(compile.exitCode, 0, reason: '${compile.stderr}');
+  });
   test(
     'merges cross-folder prose with percent signs and vertical bars',
     () async {
