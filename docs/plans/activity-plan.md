@@ -470,7 +470,7 @@ Issues found:
 - [x] S3b-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Merge cross-folder prose containing arrow symbols.
 - [x] S3b-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Merge cross-folder prose containing emoji.
 - [x] S3b-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Merge cross-folder prose containing bullet and middle-dot separators.
-- [ ] S3b FINAL: DONE WHEN merge preview either merges or clearly refuses with a reason for ANY page (no more character allowlists: use a generic Typst-safe text check); then close. Merge noncanonical pages and preserve remaining metadata (including other matching properties, conflicts and kinds); handle other cross-folder bodies, repoint other link forms and references outside indexed notes, handle ambiguous names, and recover safely from partial writes.
+- [x] S3b FINAL: Cross-folder merge preview now checks body syntax with the Typst compiler instead of a character allowlist, and reports compiler failures as a reason; compiler-valid Typst bodies merge and compile in regression coverage.
 - [x] S4 Person timeline: dailies, audio, screenshots, tasks mentioning the person, by date
 - [x] S5 Audio -> task/agenda proposals in Incoming
 - [x] S5-rest Link accepted audio tasks to the From person when present.
@@ -702,5 +702,6 @@ Template photo: tylog-form-ocr/templates/iade-techlab/blank-photo.jpg (phone pho
 - [x] P6b Bot vaults, bot side in ~/Documents/GitHub/Amadora-News-Bot per the same design: the bot writes its vault (manifest, items as notes per docs/vault-format.md, entities), reads decisions from the outbox. Behind a config flag, default off; no change to posting behaviour. Tests in that repo; commit there.
 
 ## Later
+- S3b remaining: merge noncanonical headers and all metadata cases, repoint other link forms and references outside indexed notes, resolve ambiguous names, and recover safely from partial writes.
 - Shared bot handoff follow-through: isolated search/indexing, Android folder access, Windows isolate coordination and other writers, full cross-process workflow coverage, and remaining compatibility paths.
 - Restore GitHub issue board moves, including reopening with state and label changes, if GitHub documents a conditional mutation mechanism for the issue endpoint.

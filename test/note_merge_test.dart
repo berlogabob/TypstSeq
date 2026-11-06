@@ -1261,4 +1261,48 @@ void main() {
       expect(compile.exitCode, 0, reason: '${compile.stderr}');
     },
   );
+  test('cross-folder merge accepts compiler-valid Typst syntax', () async {
+    final root = await Directory.systemTemp.createTemp('merge-typst-valid-');
+    final storage = LocalVaultStorage(root);
+    final vault = Vault.withStorage(storage);
+    await vault.ensureCreated();
+    final workspace = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      reconcileTasks: (_) async {},
+    )..vault = vault;
+    addTearDown(() async {
+      workspace.dispose();
+      await root.delete(recursive: true);
+    });
+    await storage.createDirectory('notes/other');
+    await storage.writeText(
+      'notes/a.typ',
+      replaceNoteHeader('Keep.', const NoteMetadataDraft(id: 'a', title: 'A')),
+    );
+    await storage.writeText(
+      'notes/other/b.typ',
+      replaceNoteHeader(
+        '#let ratio = 1 / 3\nComputed: #ratio, \$x^2\$.',
+        const NoteMetadataDraft(id: 'b', title: 'B'),
+      ),
+    );
+    workspace.index = await scanVaultStorage(storage);
+
+    final preview = await workspace.previewDuplicateMerge(
+      'notes/a.typ',
+      'notes/other/b.typ',
+    );
+    expect(preview.after['notes/a.typ'], contains('#let ratio = 1 / 3'));
+    await workspace.mergeDuplicate(preview);
+    final merged = await storage.readText('notes/a.typ');
+    expect(merged, contains('Computed: #ratio'));
+    final compile = await Process.run('typst', [
+      'compile',
+      '--root',
+      root.path,
+      '${root.path}/notes/a.typ',
+      '${root.path}/out.pdf',
+    ]);
+    expect(compile.exitCode, 0, reason: '${compile.stderr}');
+  });
 }

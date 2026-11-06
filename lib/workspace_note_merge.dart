@@ -39,18 +39,42 @@ extension _DuplicateMerge on WorkspaceController {
     final body = loserText.startsWith(canonical)
         ? loserText.substring(canonical.length)
         : null;
-    if ((body == null && loserText.trim() != canonical.trim()) ||
-        (body != null &&
-            body.trim().isNotEmpty &&
-            survivor.substring(0, survivor.lastIndexOf('/')) !=
-                loser.substring(0, loser.lastIndexOf('/')) &&
-            !RegExp(
-              r"^[\p{L}\p{M}\p{N}\p{So}\u200d\u{1f3fb}-\u{1f3ff}\s.,!?;:'’“”–—…•·€£¥©®°±×÷≠≤≥∞→←↔()*/_=`&+%|\-]*$",
-              unicode: true,
-            ).hasMatch(body))) {
+    final crossFolder =
+        survivor.substring(0, survivor.lastIndexOf('/')) !=
+        loser.substring(0, loser.lastIndexOf('/'));
+    if (body == null && loserText.trim() != canonical.trim()) {
       throw StateError(
-        'Only canonical pages can be merged; bodies moved between folders must contain only text, web URLs, emphasis, inline raw text, headings and lists.',
+        'The page header could not be separated safely from its body.',
       );
+    }
+    if (crossFolder && body != null && body.trim().isNotEmpty) {
+      TypstCompiler? compiler;
+      try {
+        compiler = await TypstCompiler.create();
+      } catch (error) {
+        // Native compilation is absent in the Flutter unit-test host.
+        if (!error.toString().contains('Failed to load dynamic library')) {
+          rethrow;
+        }
+        await _validateTypstBodyWithCli(body);
+      }
+      if (compiler != null) {
+        try {
+          final document = await compiler.compile(
+            source: '#import "/_system/tylog.typ" as tylog\n$body',
+            files: {
+              '/_system/tylog.typ': Uint8List.fromList(
+                utf8.encode('#let ref-note(id) = [Reference]\n'),
+              ),
+            },
+          );
+          document.dispose();
+        } catch (error) {
+          throw StateError('The body is not valid standalone Typst: $error');
+        } finally {
+          compiler.dispose();
+        }
+      }
     }
     final resolver = LinkResolver(currentIndex.notes);
     final targets = <String>{};
@@ -248,5 +272,32 @@ extension _DuplicateMerge on WorkspaceController {
     });
     if (!deleted) throw StateError('Could not delete ${preview.loser}.');
     await refreshIndex(always: true);
+  }
+}
+
+Future<void> _validateTypstBodyWithCli(String body) async {
+  final root = await Directory.systemTemp.createTemp('tylog-merge-check-');
+  try {
+    final helper = Directory('${root.path}/_system');
+    await helper.create(recursive: true);
+    await File(
+      '${helper.path}/tylog.typ',
+    ).writeAsString('#let ref-note(id) = [Reference]\n');
+    final source = File('${root.path}/body.typ');
+    await source.writeAsString('#import "/_system/tylog.typ" as tylog\n$body');
+    final result = await Process.run('typst', [
+      'compile',
+      '--root',
+      root.path,
+      source.path,
+      '${root.path}/body.pdf',
+    ]);
+    if (result.exitCode != 0) {
+      throw StateError(
+        'The body is not valid standalone Typst: ${result.stderr}',
+      );
+    }
+  } finally {
+    await root.delete(recursive: true);
   }
 }
