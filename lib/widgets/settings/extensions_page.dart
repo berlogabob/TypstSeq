@@ -126,94 +126,96 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
     await checkBotManifest(mount.source.path!);
     if (!mounted) return;
     final workspace = widget.workspace!;
+    final decisions = BotVaultDecisions(Directory(mount.source.path!));
+    final decided = await decisions.decidedItems();
+    if (!mounted) return;
     final notes =
         workspace.index?.notes
-            .where((note) => note.path.startsWith('ext/${mount.id}/'))
+            .where(
+              (note) =>
+                  note.path.startsWith('ext/${mount.id}/') &&
+                  (!note.path.startsWith('ext/${mount.id}/items/') ||
+                      !decided.contains(
+                        note.path
+                            .split('/')
+                            .last
+                            .replaceFirst(RegExp(r'\.typ$'), ''),
+                      )),
+            )
             .toList() ??
         [];
     await showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(mount.name),
-        content: SizedBox(
-          width: 500,
-          child: notes.isEmpty
-              ? const Text('No items found')
-              : ListView(
-                  shrinkWrap: true,
-                  children: [
-                    for (final note in notes)
-                      ListTile(
-                        title: Text(note.title),
-                        onTap: () async {
-                          try {
-                            await checkBotManifest(mount.source.path!);
-                            final text = await workspace.vault!.storage
-                                .readText(note.path);
-                            if (!context.mounted) return;
-                            await showDialog<void>(
-                              context: context,
-                              builder: (context) => AlertDialog(
-                                title: Text(note.title),
-                                content: SingleChildScrollView(
-                                  child: SelectableText(text),
-                                ),
-                                actions: [
-                                  if (RegExp(
-                                    r'^ext/[^/]+/items/item-[a-zA-Z0-9_-]+\.typ$',
-                                  ).hasMatch(note.path))
-                                    for (final decision in {
-                                      'Accept': 'accepted',
-                                      'Reject': 'rejected',
-                                      'Dismiss': 'dismissed',
-                                    }.entries)
-                                      TextButton(
-                                        onPressed: () async {
-                                          try {
-                                            final itemId = note.path
-                                                .split('/')
-                                                .last
-                                                .replaceFirst(
-                                                  RegExp(r'\.typ$'),
-                                                  '',
-                                                );
-                                            await BotVaultDecisions(
-                                              Directory(mount.source.path!),
-                                            ).record(itemId, decision.value);
-                                            if (context.mounted) {
-                                              Navigator.pop(context);
-                                            }
-                                          } catch (error) {
-                                            if (context.mounted) {
-                                              ScaffoldMessenger.of(
-                                                context,
-                                              ).showSnackBar(
-                                                SnackBar(
-                                                  content: Text(
-                                                    'Could not send decision: $error',
-                                                  ),
-                                                ),
-                                              );
-                                            }
-                                          }
-                                        },
-                                        child: Text(decision.key),
-                                      ),
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context),
-                                    child: const Text('Close'),
-                                  ),
-                                ],
-                              ),
-                            );
-                          } catch (error) {
-                            if (context.mounted) {
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(mount.name),
+          content: SizedBox(
+            width: 500,
+            child: notes.isEmpty
+                ? const Text('No items found')
+                : ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final note in notes)
+                        ListTile(
+                          title: Text(note.title),
+                          onTap: () async {
+                            try {
+                              await checkBotManifest(mount.source.path!);
+                              final text = await workspace.vault!.storage
+                                  .readText(note.path);
+                              if (!context.mounted) return;
                               await showDialog<void>(
                                 context: context,
                                 builder: (context) => AlertDialog(
-                                  title: const Text('Could not read item'),
-                                  content: Text('$error'),
+                                  title: Text(note.title),
+                                  content: SingleChildScrollView(
+                                    child: SelectableText(text),
+                                  ),
                                   actions: [
+                                    if (RegExp(
+                                      r'^ext/[^/]+/items/item-[a-zA-Z0-9_-]+\.typ$',
+                                    ).hasMatch(note.path))
+                                      for (final decision in {
+                                        'Accept': 'accepted',
+                                        'Reject': 'rejected',
+                                        'Dismiss': 'dismissed',
+                                      }.entries)
+                                        TextButton(
+                                          onPressed: () async {
+                                            try {
+                                              final itemId = note.path
+                                                  .split('/')
+                                                  .last
+                                                  .replaceFirst(
+                                                    RegExp(r'\.typ$'),
+                                                    '',
+                                                  );
+                                              await BotVaultDecisions(
+                                                Directory(mount.source.path!),
+                                              ).record(itemId, decision.value);
+                                              if (context.mounted) {
+                                                setDialogState(
+                                                  () => notes.remove(note),
+                                                );
+                                                Navigator.pop(context);
+                                              }
+                                            } catch (error) {
+                                              if (context.mounted) {
+                                                ScaffoldMessenger.of(
+                                                  context,
+                                                ).showSnackBar(
+                                                  SnackBar(
+                                                    content: Text(
+                                                      'Could not send decision: $error',
+                                                    ),
+                                                  ),
+                                                );
+                                              }
+                                            }
+                                          },
+                                          child: Text(decision.key),
+                                        ),
                                     TextButton(
                                       onPressed: () => Navigator.pop(context),
                                       child: const Text('Close'),
@@ -221,19 +223,35 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
                                   ],
                                 ),
                               );
+                            } catch (error) {
+                              if (context.mounted) {
+                                await showDialog<void>(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    title: const Text('Could not read item'),
+                                    content: Text('$error'),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: const Text('Close'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }
                             }
-                          }
-                        },
-                      ),
-                  ],
-                ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+                          },
+                        ),
+                    ],
+                  ),
           ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
       ),
     );
   });

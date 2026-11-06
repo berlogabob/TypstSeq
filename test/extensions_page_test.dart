@@ -585,6 +585,19 @@ void main() {
       () => File('${bot.path}/outbox/decisions.jsonl').readAsLines(),
     );
     expect((jsonDecode(lines!.single) as Map)['action'], 'accepted');
+    expect(find.text('item-123'), findsNothing);
+    expect(find.text('No items found'), findsOneWidget);
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Close').last);
+      await tester.pumpAndSettle();
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      await tester.pump();
+      await tester.tap(find.text('Bot'));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    });
+    await tester.pumpAndSettle();
+    expect(find.text('item-123'), findsNothing);
+    expect(find.text('No items found'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
     await tester.runAsync(() async {
       workspace.dispose();

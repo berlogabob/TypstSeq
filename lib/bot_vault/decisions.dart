@@ -87,6 +87,34 @@ class BotVaultDecisions {
   BotVaultDecisions(this.root);
   final Directory root;
 
+  Future<Set<String>> decidedItems() async {
+    await checkBotManifest(root.path);
+    final file = File('${root.path}/outbox/decisions.jsonl');
+    if (!await file.exists()) return {};
+    final content = await file.readAsString();
+    final lines = content.split('\n')..removeLast();
+    final result = <String>{};
+    for (final line in lines) {
+      try {
+        final row = jsonDecode(line);
+        if (row is Map &&
+            row['schema'] is int &&
+            row['schema'] == 1 &&
+            row['id'] is String &&
+            (row['id'] as String).isNotEmpty &&
+            row['at'] is String &&
+            (row['at'] as String).isNotEmpty &&
+            row['item_id'] is String &&
+            {'accepted', 'rejected', 'dismissed'}.contains(row['action'])) {
+          result.add(row['item_id'] as String);
+        }
+      } on FormatException {
+        // Ignore rows the bot cannot consume.
+      }
+    }
+    return result;
+  }
+
   Future<void> record(String itemId, String action) async {
     if (!RegExp(r'^item-[a-zA-Z0-9_-]+$').hasMatch(itemId) ||
         !{'accepted', 'rejected', 'dismissed'}.contains(action)) {

@@ -36,6 +36,30 @@ void main() {
     },
   );
 
+  test('review hides only complete, valid decision rows', () async {
+    final outbox = await Directory('${root.path}/outbox').create();
+    final file = File('${outbox.path}/decisions.jsonl');
+    final valid = {
+      'schema': 1,
+      'id': 'id',
+      'at': 'now',
+      'item_id': item,
+      'action': 'accepted',
+    };
+    await file.writeAsString(
+      '${jsonEncode({...valid, 'item_id': 'item-partial'})}',
+    );
+    final decisions = BotVaultDecisions(root);
+    expect(await decisions.decidedItems(), isEmpty);
+    await file.writeAsString(
+      'bad\n${jsonEncode({...valid, 'action': 'unknown'})}\n${jsonEncode({...valid, 'schema': 1.0, 'item_id': 'item-float'})}\n${jsonEncode(valid)}\n',
+      mode: FileMode.write,
+    );
+    expect(await decisions.decidedItems(), {item});
+    await File('${root.path}/bot-vault.json').writeAsString('{"schema":2}');
+    await expectLater(decisions.decidedItems(), throwsFormatException);
+  });
+
   test('concurrent decisions stay complete and retry-safe', () async {
     await Future.wait(
       List.generate(
