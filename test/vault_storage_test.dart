@@ -98,6 +98,27 @@ void main() {
     },
   );
 
+  test('incomplete revision records cannot replace notes', () async {
+    final dir = await Directory.systemTemp.createTemp(
+      'tylog_partial_revision_',
+    );
+    addTearDown(() => deleteTempDir(dir));
+    final storage = LocalVaultStorage(dir);
+    const path = 'notes/a.typ';
+    const original = 'Existing note';
+    await storage.writeText(path, original);
+    for (final record in [
+      '{"revision":{"id":"note-1"},"history":[],"node":{}}',
+      '{"revision":{"id":"note-1"},"history":[]}',
+    ]) {
+      await expectLater(storage.writeText(path, record), throwsFormatException);
+      expect(await storage.readText(path), original);
+    }
+    const legacy = '{"revision":{"id":"draft"},"history":[],"node":{}}';
+    await storage.writeText(path, legacy);
+    expect(await storage.readText(path), legacy);
+  });
+
   test(
     'note writes and appends reject invalid UTF-8 and preserve legacy text',
     () async {

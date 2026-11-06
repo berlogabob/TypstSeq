@@ -46,8 +46,9 @@ void guardNoteWrite(String path, List<int> bytes) {
   if (value is Map &&
       value['revision'] is Map &&
       value['revision']['id'] is String &&
-      value['node'] is Map &&
-      value['node']['content'] is String) {
+      ((value['node'] is Map && value['node']['content'] is String) ||
+          ((value['revision']['id'] as String).startsWith('note-') &&
+              value['history'] is List))) {
     stderr.writeln('Refusing revision envelope at note path: $path');
     throw FormatException('Refusing revision envelope at note path: $path');
   }
