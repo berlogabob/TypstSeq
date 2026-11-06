@@ -268,3 +268,29 @@ command was run. The Mac screen was locked, so the only authorized way to
 receive a P2P6 copy with eligible rows was unavailable. No vault was selected
 or modified. Real decision and Show older measurements remain tracked in the
 next PF2 item.
+
+## PF2-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest (2026-11-06)
+
+Re-ran the actual sheet harness with the isolated debug-signed `.profiletest`
+package via `ORG_GRADLE_PROJECT_tylogDebugSuffix=.profiletest flutter test
+integration_test/pf2_incoming_sheet_profile_test.dart -d XPH0219904001750
+--no-uninstall`. It passed against the registered app-local P2P6 copy:
+Incoming readiness was 4,845 ms, with 20 frame samples and a maximum frame
+`totalSpan` of 1,147,732 µs. VM heap sampling was unavailable. The copy still
+has zero mention, audio, and OCR rows, so a real decision append and Show older
+pages were unavailable. The Mac screen was locked, so no sender transfer or
+alternate vault was used.
+
+The package inventory after the run showed `.profiletest` installed with
+`firstInstallTime=2026-11-05 21:05:34`; production `org.tylog.tylog` was absent,
+so its recorded `firstInstallTime=2026-11-05 15:27:02` could not be re-read.
+No command targeted the production package. A first, unqualified local
+integration invocation was interrupted at the install step; it was not run to
+completion, and the package inventory still showed production absent and
+`.profiletest` installed afterward.
+
+The full `flutter test` run had one failure in
+`entity_board_test.dart` (`repository setting persists and displays refreshed
+GitHub issues`). Running `flutter test test/entity_board_test.dart` alone
+passed all 15 tests. The UI-dependent real decision and paging measurements
+remain in the next plan item.
