@@ -725,6 +725,70 @@ void main() {
     semantics.dispose();
   });
 
+  testWidgets('graph suggestion actions only show for proposed links', (
+    tester,
+  ) async {
+    Future<(String, String)?> run(KnowledgeStatus status) async {
+      (String, String)? accepted;
+      (String, String)? rejected;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GraphView(
+              graph: NoteGraph(
+                nodes: const [
+                  GraphNode(path: 'a.typ', title: 'Alpha'),
+                  GraphNode(path: 'b.typ', title: 'Beta'),
+                ],
+                edges: [GraphEdge(from: 'a.typ', to: 'b.typ', status: status)],
+              ),
+              currentPath: 'a.typ',
+              onOpenPath: (_) {},
+              onAcceptSuggestion: (from, to) async => accepted = (from, to),
+              onRejectSuggestion: (from, to) async => rejected = (from, to),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      final painter =
+          tester
+                  .widget<CustomPaint>(
+                    find.byWidgetPredicate(
+                      (widget) =>
+                          widget is CustomPaint &&
+                          widget.painter is GraphPainter,
+                    ),
+                  )
+                  .painter!
+              as GraphPainter;
+      final box = tester.renderObject<RenderBox>(
+        find.byWidgetPredicate(
+          (widget) => widget is CustomPaint && widget.painter is GraphPainter,
+        ),
+      );
+      await tester.tapAt(box.localToGlobal(painter.positions['b.typ']!));
+      await tester.pump();
+      if (status == KnowledgeStatus.proposed) {
+        expect(find.byTooltip('Accept suggested link'), findsOneWidget);
+        expect(find.byTooltip('Reject suggested link'), findsOneWidget);
+        await tester.tap(find.byTooltip('Accept suggested link'));
+        await tester.pump();
+        expect(accepted, ('a.typ', 'b.typ'));
+        await tester.tap(find.byTooltip('Reject suggested link'));
+        await tester.pump();
+        expect(rejected, ('a.typ', 'b.typ'));
+      } else {
+        expect(find.byTooltip('Accept suggested link'), findsNothing);
+        expect(find.byTooltip('Reject suggested link'), findsNothing);
+      }
+      return accepted;
+    }
+
+    await run(KnowledgeStatus.proposed);
+    await run(KnowledgeStatus.accepted);
+  });
+
   testWidgets('graph export action hands bounded graph to share seam', (
     tester,
   ) async {

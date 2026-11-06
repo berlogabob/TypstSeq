@@ -1,7 +1,7 @@
 # Graph Report - TypstSeq  (2026-11-06)
 
 ## Corpus Check
-- 994 files · ~908,240 words
+- 994 files · ~908,644 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 156 file(s) not represented in the graph (top: (none) 45, .typ 20, .xml 15)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `c579f960`
+- Built from commit: `ade7b59e`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -2787,12 +2787,12 @@ _Questions this graph is uniquely positioned to answer:_
   _8787 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `src/scanner.dart` be split into smaller, more focused modules?**
   _Cohesion score 0.010309278350515464 - nodes in this community are weakly interconnected._
-- **Why does `MainActivity` connect `MainActivity` to `activity-plan.md`, `SafBridge`, `Result`?**
-  _High betweenness centrality (0.022) - this node is a cross-community bridge._
+- **Why does `SafBridge` connect `SafBridge` to `2026-11-04 note write corruption`, `MainActivity`, `T00 device crash diagnosis`, `SafBridge.kt`, `Result`, `SafBridgeWriteTest`?**
+  _High betweenness centrality (0.025) - this node is a cross-community bridge._
 - **Should `app_mobile.dart` be split into smaller, more focused modules?**
   _Cohesion score 0.005813953488372093 - nodes in this community are weakly interconnected._
-- **Why does `SafBridge` connect `SafBridge` to `2026-11-04 note write corruption`, `MainActivity`, `T00 device crash diagnosis`, `SafBridge.kt`, `Result`, `SafBridgeWriteTest`?**
-  _High betweenness centrality (0.021) - this node is a cross-community bridge._
+- **Why does `MainActivity` connect `MainActivity` to `activity-plan.md`, `SafBridge`, `Result`?**
+  _High betweenness centrality (0.022) - this node is a cross-community bridge._
 
 ### Low-confidence Hints
 _AMBIGUOUS edges — the extractor was unsure. Verify before acting on these._

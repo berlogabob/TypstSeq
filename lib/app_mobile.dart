@@ -346,6 +346,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// Keyed on [WorkspaceController.indexRevision] rather than the index object:
   /// the controller retains the index in place, so its identity never changes
   /// and an `identical` check would cache the first graph forever.
+  /// The cached review-status enrich decision behind a proposed graph edge.
+  EnrichDecision? _pendingEnrichDecision(String from, String to) {
+    final view = _enrichDecisions;
+    if (view == null || view.$1 != from) return null;
+    for (final decision in view.$2.decisions) {
+      if (decision.status == EnrichStatus.review &&
+          decision.target?.path == to) {
+        return decision;
+      }
+    }
+    return null;
+  }
+
   NoteGraph _memoizedGraph(String? current) {
     final graphFocus = _graphFocusPath ?? current;
     final enrichView = _enrichDecisions;
@@ -5891,6 +5904,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         graph: graph ?? const NoteGraph(nodes: [], edges: []),
         onExportSvg: _shareGraphSvg,
         currentPath: _graphFocusPath ?? current,
+        onAcceptSuggestion: (from, to) async {
+          if (_pendingEnrichDecision(from, to) case final decision?) {
+            await _enrichOnce(
+              () => _acceptEnrich(from, decision.mention, decision.target!),
+            );
+          }
+        },
+        onRejectSuggestion: (from, to) async {
+          if (_pendingEnrichDecision(from, to) case final decision?) {
+            await _enrichOnce(
+              () => _rejectEnrich(from, decision.mention, decision.target!),
+            );
+          }
+        },
         // Opening a concept/work hub expands it into a rooted local view rather
         // than opening a file; opening a note opens the file as usual.
         onOpenPath: (path) {

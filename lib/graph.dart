@@ -111,6 +111,8 @@ class GraphView extends StatefulWidget {
     this.onSwitchToFocused,
     this.communities,
     this.onExportSvg,
+    this.onAcceptSuggestion,
+    this.onRejectSuggestion,
   });
 
   final NoteGraph graph;
@@ -119,6 +121,8 @@ class GraphView extends StatefulWidget {
   final bool isWholeVault;
   final VoidCallback? onSwitchToFocused;
   final Future<void> Function(NoteGraph graph)? onExportSvg;
+  final Future<void> Function(String from, String to)? onAcceptSuggestion;
+  final Future<void> Function(String from, String to)? onRejectSuggestion;
 
   /// Community assignment (from [computeCommunities]) used to seed/pull nodes
   /// into per-cluster agglomerations and color them. Null ⇒ plain force layout.
@@ -473,39 +477,87 @@ class _GraphViewState extends State<GraphView>
                     ],
                   ),
                 ),
-              if (selected != null)
+              if (selected != null) ...[
                 Positioned(
                   bottom: 0,
                   left: 0,
                   right: 0,
-                  child: Material(
-                    color: scheme.surfaceContainerLow,
-                    elevation: 2,
-                    child: ListTile(
-                      dense: true,
-                      leading: const Icon(Icons.description_outlined),
-                      title: Text(selected.title, maxLines: 1),
-                      subtitle: switch (connectionReason(
-                        displayGraph,
-                        widget.currentPath,
-                        selected.path,
-                      )) {
-                        final r? => Text(
-                          r,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+                  child: Builder(
+                    builder: (context) {
+                      final root = widget.currentPath;
+                      final proposed =
+                          root != null &&
+                          displayGraph.edges.any(
+                            (edge) =>
+                                edge.status == KnowledgeStatus.proposed &&
+                                ((edge.from == root &&
+                                        edge.to == selected.path) ||
+                                    (edge.to == root &&
+                                        edge.from == selected.path)),
+                          );
+                      final from = root;
+                      final to = selected.path;
+                      return Material(
+                        color: scheme.surfaceContainerLow,
+                        elevation: 2,
+                        child: ListTile(
+                          dense: true,
+                          leading: const Icon(Icons.description_outlined),
+                          title: Text(selected.title, maxLines: 1),
+                          subtitle: switch (connectionReason(
+                            displayGraph,
+                            widget.currentPath,
+                            selected.path,
+                          )) {
+                            final r? => Text(
+                              r,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            _ => null,
+                          },
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (proposed &&
+                                  from != null &&
+                                  widget.onAcceptSuggestion != null)
+                                Tooltip(
+                                  message: 'Accept suggested link',
+                                  child: TextButton.icon(
+                                    onPressed: () =>
+                                        widget.onAcceptSuggestion!(from, to),
+                                    icon: const Icon(Icons.check),
+                                    label: const Text('Accept'),
+                                  ),
+                                ),
+                              if (proposed &&
+                                  from != null &&
+                                  widget.onRejectSuggestion != null)
+                                Tooltip(
+                                  message: 'Reject suggested link',
+                                  child: TextButton.icon(
+                                    onPressed: () =>
+                                        widget.onRejectSuggestion!(from, to),
+                                    icon: const Icon(Icons.close),
+                                    label: const Text('Reject'),
+                                  ),
+                                ),
+                              FilledButton.tonalIcon(
+                                key: const Key('graph-open'),
+                                onPressed: () =>
+                                    widget.onOpenPath(selected.path),
+                                icon: const Icon(Icons.open_in_new),
+                                label: const Text('Open'),
+                              ),
+                            ],
+                          ),
                         ),
-                        _ => null,
-                      },
-                      trailing: FilledButton.tonalIcon(
-                        key: const Key('graph-open'),
-                        onPressed: () => widget.onOpenPath(selected.path),
-                        icon: const Icon(Icons.open_in_new),
-                        label: const Text('Open'),
-                      ),
-                    ),
+                      );
+                    },
                   ),
                 ),
+              ],
             ],
           ),
         ),
@@ -1463,7 +1515,10 @@ class GraphPainter extends CustomPainter {
       final connected = edge.from == selectedPath || edge.to == selectedPath;
       final paint = Paint()
         ..color = edge.status == KnowledgeStatus.proposed
-            ? edgeColor(edge.kind, colorScheme.brightness).withValues(alpha: 0.5)
+            ? edgeColor(
+                edge.kind,
+                colorScheme.brightness,
+              ).withValues(alpha: 0.5)
             : connected
             ? colorScheme.primary
             : edgeColor(
