@@ -5886,7 +5886,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _graphMode = 'local';
           _graphFocusPath = null;
         }),
-        communities: communities,
+        // Zoom-out zones only for big views; a focused graph stays nodes.
+        communities: _graphMode == 'local' ? null : communities,
       ),
       'preview' when !workspace.typstPackagesReady => const Center(
         child: LoadingIndicator(),
