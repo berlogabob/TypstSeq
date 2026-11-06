@@ -124,22 +124,41 @@ fn path_label(ip: bool, relay: bool) -> &'static str {
     }
 }
 
-fn log_selected_path(conn: &iroh::endpoint::Connection) -> &'static str {
+fn peer_ip_label(addr: &iroh::TransportAddr, expected: Option<&str>) -> &'static str {
+    let Some(expected) = expected else {
+        return "unchecked";
+    };
+    let Ok(expected) = expected.parse::<std::net::IpAddr>() else {
+        return "invalid-expected-ip";
+    };
+    match addr {
+        iroh::TransportAddr::Ip(addr) if addr.ip() == expected => "expected-peer",
+        iroh::TransportAddr::Ip(_) => "other-peer",
+        _ => "not-ip",
+    }
+}
+
+fn log_selected_path(conn: &iroh::endpoint::Connection) -> (&'static str, &'static str) {
     let paths = conn.paths();
     paths
         .iter()
         .find(|path| path.is_selected())
-        .map(|path| path_label(path.is_ip(), path.is_relay()))
-        .unwrap_or("unknown")
+        .map(|path| {
+            (
+                path_label(path.is_ip(), path.is_relay()),
+                peer_ip_label(path.remote_addr(), option_env!("P2P_EXPECTED_PEER_IP")),
+            )
+        })
+        .unwrap_or(("unknown", "unchecked"))
 }
 
 fn observe_paths(conn: iroh::endpoint::Connection) {
     tokio::spawn(async move {
-        let mut previous = "";
+        let mut previous = ("", "");
         loop {
             let selected = log_selected_path(&conn);
             if selected != previous {
-                println!("P2P6_SELECTED_PATH {selected}");
+                println!("P2P6_SELECTED_PATH {} peer={}", selected.0, selected.1);
                 previous = selected;
             }
             tokio::select! {
@@ -572,7 +591,7 @@ mod tests {
             let stale = endpoint.connect(addr, ALPN).await.unwrap();
             tokio::time::timeout(std::time::Duration::from_secs(5), async {
                 loop {
-                    if log_selected_path(&stale) == "direct-ip" {
+                    if log_selected_path(&stale).0 == "direct-ip" {
                         break;
                     }
                     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -603,6 +622,15 @@ mod tests {
         assert_eq!(path_label(true, false), "direct-ip");
         assert_eq!(path_label(false, true), "relay");
         assert_eq!(path_label(false, false), "other");
+    }
+    #[test]
+    fn selected_peer_ip_is_compared_without_logging_it() {
+        use iroh::TransportAddr;
+        let peer = TransportAddr::Ip("192.168.1.7:1234".parse().unwrap());
+        assert_eq!(peer_ip_label(&peer, Some("192.168.1.7")), "expected-peer");
+        assert_eq!(peer_ip_label(&peer, Some("192.168.1.8")), "other-peer");
+        assert_eq!(peer_ip_label(&peer, None), "unchecked");
+        assert_eq!(peer_ip_label(&peer, Some("invalid")), "invalid-expected-ip");
     }
     #[test]
     fn rejects_unsafe_paths() {

@@ -421,3 +421,24 @@ so no device app was installed or launched and no transfer, CPU or battery
 delta was measured. The locked Mac GUI was skipped. Direct LAN evidence,
 bidirectional runs, retries/resume and the safety gates remain in the next
 plan item. P2P3 remains no-go.
+
+## P2P5-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest peer-route diagnostic (2026-11-06)
+For a scratch receiver's isolated native harness build, set the environment
+variable `P2P_EXPECTED_PEER_IP` to the sender's independently verified LAN IP
+(without port) on the `cargo` command shown above. Rebuild the receiver's
+native library when the peer or address changes; the address is embedded in
+that local build. Without this variable the diagnostic reports `unchecked`.
+`P2P6_SELECTED_PATH` also reports `peer=expected-peer`, `other-peer`,
+`invalid-expected-ip`, `not-ip`, or `unchecked`, without printing the address.
+An observed `direct-ip peer=expected-peer`, together with independent evidence
+that the address belongs to the other peer on the LAN, supports a direct LAN
+route for that sampled instant. The 500 ms sampling can miss transitions and
+does not prove the entire transfer took that route. Keep the local binary and
+logs private and use isolated harness builds only.
+
+P30 read-only preflight still found the production package missing and its
+first-install timestamp unavailable; `.profiletest` was installed. Battery
+reported 20,000 µAh, AC connected and status 4 (not charging). No app was
+installed or launched and no device measurement was attempted. The locked Mac
+GUI was skipped. Route proof, bidirectional measurements and the other product
+gates remain open; P2P3 remains no-go.
