@@ -54,4 +54,15 @@ void main() {
     expect(a.tagToCluster, b.tagToCluster);
     expect(a.clusterOrder, b.clusterOrder);
   });
+
+  test('snapshot communities reuse dominant-tag assignment and size order', () {
+    final snapshot = communitiesFromSnapshot(index, {
+      'small': ['b1', 'b2'],
+      'large': ['a1', 'a2'],
+    });
+    expect(snapshot.tagToCluster['a2'], 'large');
+    expect(snapshot.noteToCluster['n1'], 'large');
+    expect(snapshot.noteToCluster.containsKey('n7'), isFalse);
+    expect(snapshot.clusterOrder, ['large', 'small']);
+  });
 }

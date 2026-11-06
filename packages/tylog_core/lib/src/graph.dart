@@ -325,6 +325,33 @@ CommunityMap computeCommunities(
     }
   }
 
+  return _communitiesForTagMap(index, tagToCluster, promoted);
+}
+
+/// Builds a community map from a persisted tag-to-cluster snapshot.
+CommunityMap communitiesFromSnapshot(
+  VaultIndex index,
+  Map<String, List<String>> clusters,
+) {
+  final tagToCluster = <String, String>{};
+  for (final entry in clusters.entries) {
+    for (final tag in entry.value) {
+      tagToCluster[tag] = entry.key;
+    }
+  }
+  final byTag = tagToNotes(index);
+  final promoted = {
+    for (final tag in tagToCluster.keys)
+      if (byTag.containsKey(tag)) tag: byTag[tag]!,
+  };
+  return _communitiesForTagMap(index, tagToCluster, promoted);
+}
+
+CommunityMap _communitiesForTagMap(
+  VaultIndex index,
+  Map<String, String> tagToCluster,
+  Map<String, Set<String>> promoted,
+) {
   // Each note -> community of its dominant promoted tag (most notes; tie ->
   // smallest tag). Notes with no promoted tag stay unassigned.
   final noteToCluster = <String, String>{};

@@ -494,13 +494,47 @@ class WorkspaceController extends ChangeNotifier {
     _derivingRevision = revision;
     final CommunityMap next;
     try {
-      final worker = _worker;
-      if (worker == null) {
-        next = await compute(computeCommunitiesIsolate, current);
+      Map<String, List<String>>? snapshot;
+      final opened = vault;
+      if (opened != null &&
+          await opened.storage.exists('_system/clusters/snapshot.json')) {
+        try {
+          final json =
+              jsonDecode(
+                    await opened.storage.readText(
+                      '_system/clusters/snapshot.json',
+                    ),
+                  )
+                  as Map;
+          if (json['schema'] == 1 && json['clusters'] is Map) {
+            final rawClusters = json['clusters'] as Map;
+            if (rawClusters.entries.every(
+              (entry) =>
+                  entry.key is String &&
+                  entry.value is List &&
+                  (entry.value as List).every((tag) => tag is String),
+            )) {
+              snapshot = {
+                for (final entry in rawClusters.entries)
+                  entry.key as String: (entry.value as List).cast<String>(),
+              };
+            }
+          }
+        } catch (_) {
+          snapshot = null;
+        }
+      }
+      if (snapshot != null) {
+        next = await compute(communitiesFromSnapshotIsolate, (
+          current,
+          snapshot,
+        ));
       } else {
-        next =
-            (await worker.communities()) ??
-            await compute(computeCommunitiesIsolate, current);
+        final worker = _worker;
+        next = worker == null
+            ? await compute(computeCommunitiesIsolate, current)
+            : (await worker.communities()) ??
+                  await compute(computeCommunitiesIsolate, current);
       }
     } catch (_) {
       return; // Derived state is an optimization; the UI degrades to null.
@@ -3674,6 +3708,10 @@ String friendlySyncError(Object error) {
 /// deterministic and touches nothing but its argument, so it is isolate-safe.
 CommunityMap computeCommunitiesIsolate(VaultIndex index) =>
     computeCommunities(index);
+
+CommunityMap communitiesFromSnapshotIsolate(
+  (VaultIndex, Map<String, List<String>>) input,
+) => communitiesFromSnapshot(input.$1, input.$2);
 
 /// Readable text for a sync engine stage id (`push-local`,
 /// `sync-file 3/9 · notes/a.typ`); unknown ids pass through.

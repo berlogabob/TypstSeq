@@ -430,15 +430,55 @@ void main() {
     await tester.ensureVisible(action);
     await tester.tap(action);
     await tester.pump();
-    final request = jsonDecode(
-      await storage.readText('_system/enrich/run-request.json'),
-    ) as Map;
+    final request =
+        jsonDecode(await storage.readText('_system/enrich/run-request.json'))
+            as Map;
     expect(DateTime.tryParse(request['requested_at'] as String), isNotNull);
     expect(request['requested_at'], endsWith('Z'));
     expect(
       find.text('Suggestions will update in a few minutes'),
       findsOneWidget,
     );
+    await tester.pumpWidget(const SizedBox());
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+  testWidgets('cluster proposals can be accepted and reclustering requested', (
+    tester,
+  ) async {
+    final (_, storage) = await _mount(tester);
+    await storage.writeText(
+      '_system/clusters/proposals.json',
+      jsonEncode({
+        'schema': 1,
+        'changes': [
+          {
+            'id': 'rename:ai->agents',
+            'kind': 'rename',
+            'from': ['ai'],
+            'to': ['agents'],
+          },
+        ],
+      }),
+    );
+    Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
+    await _pump(tester);
+    await _openIncoming(tester);
+    expect(find.text('Rename cluster ai → agents'), findsOneWidget);
+    await tester.tap(find.byTooltip('Recluster now'));
+    await tester.pump();
+    final request =
+        jsonDecode(await storage.readText('_system/clusters/run-request.json'))
+            as Map;
+    expect(DateTime.tryParse(request['requested_at'] as String), isNotNull);
+    await tester.tap(find.text('Accept'));
+    await _pump(tester);
+    final decision = Decision.parseLog(
+      await storage.readText('_system/decisions/dev1.jsonl'),
+    ).single;
+    expect(decision.source, 'clusters');
+    expect(decision.action, 'accepted');
+    expect(decision.target, 'rename:ai->agents');
+    expect(find.text('Rename cluster ai → agents'), findsNothing);
     await tester.pumpWidget(const SizedBox());
   }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
 

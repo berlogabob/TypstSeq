@@ -663,6 +663,7 @@ extension _EnrichIncoming on _HomeScreenState {
     List<Decision>? decisionSnapshot;
     Object? loadError;
     final views = <String, _EnrichView>{};
+    final decidedClusters = <String>{};
     Future<Map<String, _EnrichView>> load({
       bool next = false,
       String? refreshPath,
@@ -724,6 +725,7 @@ extension _EnrichIncoming on _HomeScreenState {
         List<OcrReviewRow>,
         List<AudioProposal>,
         List<HealthFinding>,
+        List<Map<String, dynamic>>,
       )
     >
     loadQueue({bool next = false, String? refreshPath}) async {
@@ -735,12 +737,29 @@ extension _EnrichIncoming on _HomeScreenState {
         final mentions = await mentionsFuture;
         final decisions = await decisionsFuture;
         decisionSnapshot ??= decisions;
+        final proposalRows = <Map<String, dynamic>>[];
+        try {
+          final proposalJson =
+              jsonDecode(
+                    await v.storage.readText('_system/clusters/proposals.json'),
+                  )
+                  as Map;
+          for (final row in (proposalJson['changes'] as List? ?? const [])) {
+            if (row is Map &&
+                const {'rename', 'merge', 'split'}.contains(row['kind']) &&
+                row['id'] is String &&
+                !decidedClusters.contains(row['id'])) {
+              proposalRows.add(Map<String, dynamic>.from(row));
+            }
+          }
+        } catch (_) {}
         if (day != null) {
           return (
             mentions,
             <OcrReviewRow>[],
             <AudioProposal>[],
             <HealthFinding>[],
+            proposalRows,
           );
         }
         final queue = await Future.wait<Object>([
@@ -764,6 +783,7 @@ extension _EnrichIncoming on _HomeScreenState {
           queue[0] as List<OcrReviewRow>,
           queue[1] as List<AudioProposal>,
           queue[2] as List<HealthFinding>,
+          proposalRows,
         );
       } catch (error) {
         loadError = error;
@@ -772,6 +792,7 @@ extension _EnrichIncoming on _HomeScreenState {
           <OcrReviewRow>[],
           <AudioProposal>[],
           <HealthFinding>[],
+          <Map<String, dynamic>>[],
         );
       }
     }
@@ -813,6 +834,7 @@ extension _EnrichIncoming on _HomeScreenState {
                       List<OcrReviewRow>,
                       List<AudioProposal>,
                       List<HealthFinding>,
+                      List<Map<String, dynamic>>,
                     )
                   >(
                     future: future,
@@ -821,6 +843,8 @@ extension _EnrichIncoming on _HomeScreenState {
                       final rows = snapshot.data?.$2 ?? <OcrReviewRow>[];
                       final audio = snapshot.data?.$3 ?? <AudioProposal>[];
                       final health = snapshot.data?.$4 ?? <HealthFinding>[];
+                      final clusters =
+                          snapshot.data?.$5 ?? <Map<String, dynamic>>[];
                       final bookings = day == null
                           ? oltIncomingOnDay(
                               _oltCache,
@@ -833,26 +857,99 @@ extension _EnrichIncoming on _HomeScreenState {
                         children: [
                           ListTile(
                             title: const Text('Incoming'),
-                            trailing: IconButton(
-                              tooltip: 'Run suggestions now',
-                              icon: const Icon(Icons.refresh),
-                              onPressed: () async {
-                                await v.storage.writeText(
-                                  '_system/enrich/run-request.json',
-                                  '${jsonEncode({'requested_at': DateTime.now().toUtc().toIso8601String()})}\n',
-                                );
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Suggestions will update in a few minutes',
-                                      ),
-                                    ),
-                                  );
-                                }
-                              },
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  tooltip: 'Recluster now',
+                                  icon: const Icon(Icons.hub),
+                                  onPressed: () => v.storage.writeText(
+                                    '_system/clusters/run-request.json',
+                                    '${jsonEncode({'requested_at': DateTime.now().toUtc().toIso8601String()})}\n',
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: 'Run suggestions now',
+                                  icon: const Icon(Icons.refresh),
+                                  onPressed: () async {
+                                    await v.storage.writeText(
+                                      '_system/enrich/run-request.json',
+                                      '${jsonEncode({'requested_at': DateTime.now().toUtc().toIso8601String()})}\n',
+                                    );
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            'Suggestions will update in a few minutes',
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                ),
+                              ],
                             ),
                           ),
+                          for (final change in clusters)
+                            ListTile(
+                              title: Text(
+                                '${switch (change['kind']) {
+                                  'rename' => 'Rename cluster',
+                                  'merge' => 'Merge',
+                                  _ => 'Split',
+                                }} ${((change['from'] as List?) ?? const []).join(' + ')} → ${((change['to'] as List?) ?? const []).join(', ')}',
+                              ),
+                              trailing: Wrap(
+                                children: [
+                                  TextButton(
+                                    onPressed: () => decide(() async {
+                                      final device = vaultRegistry?.deviceId;
+                                      if (device == null) return;
+                                      await _appendIncomingDecision(
+                                        v,
+                                        device,
+                                        Decision(
+                                          at: DateTime.now().toIso8601String(),
+                                          device: device,
+                                          item: change['id'] as String,
+                                          source: 'clusters',
+                                          action: 'accepted',
+                                          target: change['id'] as String,
+                                        ),
+                                      );
+                                      decidedClusters.add(
+                                        change['id'] as String,
+                                      );
+                                    }),
+                                    child: const Text('Accept'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => decide(() async {
+                                      final device = vaultRegistry?.deviceId;
+                                      if (device == null) return;
+                                      await _appendIncomingDecision(
+                                        v,
+                                        device,
+                                        Decision(
+                                          at: DateTime.now().toIso8601String(),
+                                          device: device,
+                                          item: change['id'] as String,
+                                          source: 'clusters',
+                                          action: 'rejected',
+                                          target: change['id'] as String,
+                                        ),
+                                      );
+                                      decidedClusters.add(
+                                        change['id'] as String,
+                                      );
+                                    }),
+                                    child: const Text('Reject'),
+                                  ),
+                                ],
+                              ),
+                            ),
                           if (loadError != null || snapshot.hasError)
                             ListTile(
                               title: const Text('Could not load suggestions'),

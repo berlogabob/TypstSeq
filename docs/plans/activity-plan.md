@@ -714,7 +714,8 @@ Model: facts = links/mentions/tags on a note; vocabulary = tags, entity kinds, c
 - [x] KG8 (luna) Voronoi = same view contract: tap selects a cell and shows the shared bar (title, reason, Open); selection and scope survive switching Focused/Overview/Voronoi. Widget test
 - [x] KG9 (Ornith) core `matchClusters(old, new)`: stable cluster ids by largest overlap (Jaccard), new ids only for unmatched; returns merges/splits/renames as `ClusterChange` list. Unit tests
 - [x] KG10 (luna) `tylog cluster <vault>` CLI: computeCommunities -> matchClusters vs previous `_system/clusters/snapshot.json` -> writes new snapshot + `_system/clusters/proposals.json`; respects rejected cluster changes from the decision log. LaunchAgent org.tylog.cluster 03:15 + `_system/clusters/run-request.json` (Graph "Recluster now"). Tests: CLI on fixture vault
-- [ ] KG11 (luna) App reads the snapshot instead of recomputing communities on every edit (fallback: compute once if no snapshot); cluster proposals listed in Incoming with Accept/Reject -> `_system/decisions`. Widget test
+- [x] KG11a (luna) `tylog cluster`: rename/merge/split are applied only after an accepted decision (source clusters, action accepted, target change id); until then the snapshot keeps the previous clusters for those labels; new/gone apply directly
+- [x] KG11b (luna) App reads the snapshot instead of recomputing communities on every edit (fallback: compute once if no snapshot); cluster proposals listed in Incoming with Accept/Reject -> `_system/decisions`. Widget test
 - [ ] KG12 Claude: full suite, Mac check of Focused/Overview/Voronoi with suggestions, graphify update, update research note in TyLog-Graph-Research, user GUI check before merge
 Skipped: OWL/SHACL, graph DB, slash-command registry, pattern -> new entity-kind proposals (after KG12 if accept data shows repeats).
 
