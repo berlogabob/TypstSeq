@@ -357,7 +357,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (_graphCache.length >= 8) _graphCache.clear();
     final idx = index!;
     final built = switch (_graphMode) {
-      'conceptMap' => buildConceptMap(idx),
+      // Overview = the 40 busiest topics; ~200 labelled hubs was unreadable.
+      'conceptMap' => boundGraphForLayout(
+        buildConceptMap(idx),
+        maxNodes: 40,
+        maxEdges: 120,
+      ),
       // The treemap renders straight from the index; no note graph needed.
       'voronoi' => const NoteGraph(nodes: [], edges: []),
       'allFiles' => buildNoteGraph(idx),
@@ -5886,8 +5891,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           _graphMode = 'local';
           _graphFocusPath = null;
         }),
-        // Zoom-out zones only for big views; a focused graph stays nodes.
-        communities: _graphMode == 'local' ? null : communities,
+        // Zoom-out zones only for the whole-vault hairball; elsewhere the
+        // nodes-to-zones flip on pinch read as "strange zooming" in tests.
+        communities: _graphMode == 'allFiles' ? communities : null,
       ),
       'preview' when !workspace.typstPackagesReady => const Center(
         child: LoadingIndicator(),

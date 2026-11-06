@@ -460,14 +460,28 @@ NoteGraph buildLocalNoteGraph(
   String? currentPath, {
   int hops = 2,
   int limit = 100,
+  int hubFanout = 12,
 }) {
   if (currentPath == null) {
     return const NoteGraph(nodes: [], edges: []);
   }
   final full = buildNoteGraph(index);
+  // A busy hub (#journal on every daily) reached past the root is shown but
+  // not expanded, otherwise one shared tag pulls the whole vault in.
+  final degree = <String, int>{};
+  for (final edge in full.edges) {
+    degree[edge.from] = (degree[edge.from] ?? 0) + 1;
+    degree[edge.to] = (degree[edge.to] ?? 0) + 1;
+  }
   final selected = <String>{currentPath};
   var frontier = <String>{currentPath};
   for (var hop = 0; hop < hops && selected.length < limit; hop++) {
+    if (hop > 0) {
+      frontier = {
+        for (final path in frontier)
+          if ((degree[path] ?? 0) <= hubFanout) path,
+      };
+    }
     final next = <String>{};
     for (final edge in full.edges) {
       if (frontier.contains(edge.from)) next.add(edge.to);

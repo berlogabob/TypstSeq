@@ -394,7 +394,7 @@ class _GraphViewState extends State<GraphView>
             ],
           ),
         ),
-        if (sources.isNotEmpty)
+        if (sources.length > 1)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: kSpace12),
             child: Wrap(
@@ -578,15 +578,30 @@ class _GraphViewState extends State<GraphView>
       );
       return;
     }
+    // Frame the nodes, not the whole canvas: a 3-node focused graph would
+    // otherwise sit as specks across an empty screen.
+    final points = _positions?.values;
+    final box = points == null || points.isEmpty
+        ? Offset.zero & canvas
+        : Rect.fromPoints(
+            Offset(
+              points.map((p) => p.dx).reduce(math.min),
+              points.map((p) => p.dy).reduce(math.min),
+            ),
+            Offset(
+              points.map((p) => p.dx).reduce(math.max),
+              points.map((p) => p.dy).reduce(math.max),
+            ),
+          ).inflate(80);
     final scale = math.min(
-      1.0,
-      math.min(viewport.width / canvas.width, viewport.height / canvas.height),
+      2.0,
+      math.min(viewport.width / box.width, viewport.height / box.height),
     );
     apply(
       Matrix4.identity()
         ..translateByDouble(
-          (viewport.width - canvas.width * scale) / 2,
-          (viewport.height - canvas.height * scale) / 2,
+          viewport.width / 2 - box.center.dx * scale,
+          viewport.height / 2 - box.center.dy * scale,
           0,
           1,
         )
@@ -1030,7 +1045,8 @@ Float64List forceDirectedFlat(
     return out;
   }
   final rng = math.Random(42);
-  final k = math.sqrt(width * height / n); // ideal node spacing
+  // Ideal spacing; capped so a 3-node graph does not span the whole canvas.
+  final k = math.min(140.0, math.sqrt(width * height / n));
   final cx = width / 2;
   final cy = height / 2;
   final px = Float64List(n);

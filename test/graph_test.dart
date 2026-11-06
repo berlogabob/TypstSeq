@@ -774,4 +774,28 @@ void main() {
     expect(connectionReason(graph, 'a', 'a'), isNull);
     expect(connectionReason(graph, null, 'b'), isNull);
   });
+
+  test('buildLocalNoteGraph does not expand busy hubs past the root', () {
+    final notes = {
+      for (var i = 0; i < 20; i++)
+        'd$i.typ': NoteRef(
+          id: 'd$i',
+          path: 'd$i.typ',
+          title: 'D$i',
+          outgoingLinks: const [],
+          tags: const ['journal'],
+        ),
+    };
+    final index = VaultIndex(notesByPath: notes, backlinksByTarget: const {});
+    final local = buildLocalNoteGraph(index, 'd0.typ');
+    expect(local.nodes.map((n) => n.path).toSet(), {
+      'd0.typ',
+      'concept:journal',
+    });
+    // Opening the hub itself still lists its notes.
+    expect(
+      buildLocalNoteGraph(index, 'concept:journal').nodes.length,
+      greaterThan(20),
+    );
+  });
 }
