@@ -36,7 +36,9 @@ void main() {
       uri: 'content://test/tree',
       name: 'Test',
     );
-    await source.writeAsString('{"revision":{},"node":{}}');
+    await source.writeAsString(
+      '{"revision":{"id":"note-1"},"node":{"content":"note"}}',
+    );
     await expectLater(
       importPlatformFile(storage, 'notes/a.typ', source),
       throwsFormatException,
@@ -120,6 +122,47 @@ void main() {
         await storage.readText(path),
         '$legacy'
         'More text.\n',
+      );
+    },
+  );
+
+  test(
+    'JSON-shaped legacy notes are writable through local and SAF storage',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('tylog_legacy_json_');
+      addTearDown(() => deleteTempDir(dir));
+      const text = '{"revision":{},"node":{}}';
+      final local = LocalVaultStorage(dir);
+      await local.writeText('notes/legacy.typ', text);
+      expect(await local.readText('notes/legacy.typ'), text);
+
+      final calls = <MethodCall>[];
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(AndroidTreeVaultStorage.channel, (
+        call,
+      ) async {
+        calls.add(call);
+        return null;
+      });
+      addTearDown(
+        () => messenger.setMockMethodCallHandler(
+          AndroidTreeVaultStorage.channel,
+          null,
+        ),
+      );
+      final saf = AndroidTreeVaultStorage(
+        uri: 'content://test/tree',
+        name: 'Test',
+      );
+      await saf.writeText('notes/legacy.typ', text);
+      expect(
+        calls.any(
+          (call) =>
+              call.method == 'write' &&
+              call.arguments['path'] == 'notes/legacy.typ',
+        ),
+        isTrue,
       );
     },
   );

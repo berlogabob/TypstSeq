@@ -43,7 +43,11 @@ void guardNoteWrite(String path, List<int> bytes) {
   } on FormatException {
     return;
   }
-  if (value is Map && value['revision'] is Map && value['node'] is Map) {
+  if (value is Map &&
+      value['revision'] is Map &&
+      value['revision']['id'] is String &&
+      value['node'] is Map &&
+      value['node']['content'] is String) {
     stderr.writeln('Refusing revision envelope at note path: $path');
     throw FormatException('Refusing revision envelope at note path: $path');
   }
