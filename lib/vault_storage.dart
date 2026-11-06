@@ -203,13 +203,25 @@ class AndroidTreeVaultStorage extends VaultStorage {
   Future<void> writeBytes(String path, List<int> bytes) async {
     guardNoteWrite(path, bytes);
     final marker = await markIndexDirty(path);
-    await invoke(
-      channel.invokeMethod<void>(
-        'write',
-        args({'path': path, 'bytes': Uint8List.fromList(bytes)}),
-      ),
+    final call = channel.invokeMethod<void>(
       'write',
+      args({'path': path, 'bytes': Uint8List.fromList(bytes)}),
     );
+    try {
+      await invoke(call, 'write');
+    } on PlatformException catch (error) {
+      if (error.code == 'saf_timeout' && marker != null) {
+        unawaited(() async {
+          try {
+            await call;
+            await commitIndexWrite(marker, path);
+          } catch (_) {
+            // Leave the marker dirty if the provider or marker write fails.
+          }
+        }());
+      }
+      rethrow;
+    }
     await commitIndexWrite(marker, path);
   }
 

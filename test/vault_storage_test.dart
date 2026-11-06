@@ -238,6 +238,89 @@ void main() {
     expect(calls, 2);
   });
 
+  test('late successful note write commits its index marker', () async {
+    final originalTimeout = AndroidTreeVaultStorage.safCallTimeout;
+    AndroidTreeVaultStorage.safCallTimeout = const Duration(milliseconds: 50);
+    addTearDown(() => AndroidTreeVaultStorage.safCallTimeout = originalTimeout);
+    final pending = Completer<Object?>();
+    final committed = Completer<void>();
+    final markers = <Map<String, dynamic>>[];
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(AndroidTreeVaultStorage.channel, (
+      call,
+    ) async {
+      if (call.method == 'write') {
+        if (call.arguments['path'] == 'notes/a.typ') return pending.future;
+        final value =
+            jsonDecode(utf8.decode(call.arguments['bytes'] as Uint8List))
+                as Map<String, dynamic>;
+        markers.add(value);
+        if (value.containsKey('committedAt')) committed.complete();
+      }
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(
+        AndroidTreeVaultStorage.channel,
+        null,
+      ),
+    );
+    final storage = AndroidTreeVaultStorage(
+      uri: 'content://test/write-late',
+      name: 'Test',
+    );
+    await expectLater(
+      storage.writeText('notes/a.typ', 'hello'),
+      throwsA(isA<PlatformException>()),
+    );
+    expect(markers.single, {'path': 'notes/a.typ'});
+    pending.complete();
+    await committed.future.timeout(const Duration(seconds: 1));
+    expect(markers.last['path'], 'notes/a.typ');
+  });
+
+  test('late failed note write leaves its index marker dirty', () async {
+    final originalTimeout = AndroidTreeVaultStorage.safCallTimeout;
+    AndroidTreeVaultStorage.safCallTimeout = const Duration(milliseconds: 50);
+    addTearDown(() => AndroidTreeVaultStorage.safCallTimeout = originalTimeout);
+    final pending = Completer<Object?>();
+    final markers = <Map<String, dynamic>>[];
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(AndroidTreeVaultStorage.channel, (
+      call,
+    ) async {
+      if (call.method == 'write') {
+        if (call.arguments['path'] == 'notes/a.typ') return pending.future;
+        markers.add(
+          jsonDecode(utf8.decode(call.arguments['bytes'] as Uint8List))
+              as Map<String, dynamic>,
+        );
+      }
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(
+        AndroidTreeVaultStorage.channel,
+        null,
+      ),
+    );
+    final storage = AndroidTreeVaultStorage(
+      uri: 'content://test/write-failure',
+      name: 'Test',
+    );
+    await expectLater(
+      storage.writeText('notes/a.typ', 'hello'),
+      throwsA(isA<PlatformException>()),
+    );
+    pending.completeError(PlatformException(code: 'write_failed'));
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(markers, [
+      {'path': 'notes/a.typ'},
+    ]);
+  });
+
   test('late successful note append commits its index marker', () async {
     final originalTimeout = AndroidTreeVaultStorage.safCallTimeout;
     AndroidTreeVaultStorage.safCallTimeout = const Duration(milliseconds: 50);
