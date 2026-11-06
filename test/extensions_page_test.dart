@@ -491,7 +491,7 @@ void main() {
       await tester.tap(find.text('Bot'));
       await Future<void>.delayed(const Duration(milliseconds: 100));
     });
-    await tester.pumpAndSettle();
+    await _pumpUntilText(tester, 'item');
     expect(find.text('item'), findsOneWidget);
     await tester.runAsync(() async {
       await tester.tap(find.text('item'));
@@ -556,7 +556,7 @@ void main() {
       await tester.tap(find.text('Bot'));
       await Future<void>.delayed(const Duration(milliseconds: 100));
     });
-    await tester.pumpAndSettle();
+    await _pumpUntilText(tester, 'item-123');
     await tester.runAsync(
       () => File('${bot.path}/bot-vault.json').writeAsString('{"schema":2}'),
     );
@@ -857,4 +857,15 @@ void main() {
       await deleteTempDir(root);
     });
   }, timeout: const Timeout(Duration(seconds: 30)));
+}
+
+/// Bot vault items load asynchronously; slower CI runners need more than one
+/// settle before the list shows them.
+Future<void> _pumpUntilText(WidgetTester tester, String text) async {
+  for (var i = 0; i < 200 && find.text(text).evaluate().isEmpty; i++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pump();
+  }
 }
