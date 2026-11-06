@@ -183,6 +183,15 @@ void main() {
     expect(log, contains('interrupted move'));
     expect(log, contains('move-1'));
     expect(
+      Decision.parseLog(log).any(
+        (decision) =>
+            decision.action == 'seen' &&
+            decision.target == 'todo' &&
+            decision.context?.contains('reconciled on board refresh') == true,
+      ),
+      isTrue,
+    );
+    expect(
       find.descendant(
         of: find.byKey(const ValueKey('board-column-todo')),
         matching: find.text('Remote issue'),

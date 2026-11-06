@@ -493,7 +493,7 @@ Issues found:
 - [x] S6-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Prevent reopening requests from overwriting a concurrent GitHub change; direct the user to reopen on GitHub and refresh the board.
 - [x] S6-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Protect closing and doing-label requests against concurrent changes after preflight by directing moves to GitHub and refreshing the board.
 - [x] S6-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Guide blocked board issue moves with GitHub state and label instructions and a direct issue link.
-- [ ] S6 FINAL: DONE WHEN a GitHub card move is idempotent (re-applying is harmless) and any mismatch after the move is reconciled from the repo listing on next refresh; then close. Restore board issue moves, including reopening with state and label changes, when GitHub provides a documented conditional mutation mechanism.
+- [x] S6 FINAL: GitHub issue moves are idempotent, interrupted or mismatched moves reconcile from the repository listing on refresh, and repeat refresh does not duplicate the reconciliation. Conditional issue mutations are not documented by GitHub, so unsafe board moves remain blocked.
 - [x] S7 OLT rooms tree + equipment stock levels on the whiteboard
 - [x] S8 Pack update check: weekly GitHub release check, "update available" in Extensions
 - [x] S9 Mention chooser: select a ranked candidate or search pages from Incoming and daily review.
@@ -703,3 +703,4 @@ Template photo: tylog-form-ocr/templates/iade-techlab/blank-photo.jpg (phone pho
 
 ## Later
 - Shared bot handoff follow-through: isolated search/indexing, Android folder access, Windows isolate coordination and other writers, full cross-process workflow coverage, and remaining compatibility paths.
+- Restore GitHub issue board moves, including reopening with state and label changes, if GitHub documents a conditional mutation mechanism for the issue endpoint.
