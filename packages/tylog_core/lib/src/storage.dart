@@ -43,18 +43,24 @@ void guardNoteWrite(String path, List<int> bytes) {
   } on FormatException {
     return;
   }
-  if (value is Map &&
-      value['revision'] is Map &&
-      value['revision']['id'] is String &&
-      ((value['node'] is Map && value['node']['content'] is String) ||
-          ((value['revision']['id'] as String).startsWith('note-') &&
-              (value['history'] is List ||
-                  (value['revision']['entityKind'] == 'node' &&
-                      value['revision']['entityId'] is String &&
-                      value['revision']['payloadJson'] is String &&
-                      value['revision']['createdAtMs'] is int))))) {
-    stderr.writeln('Refusing revision envelope at note path: $path');
-    throw FormatException('Refusing revision envelope at note path: $path');
+  if (value is Map && value['revision'] is Map) {
+    final revision = value['revision'] as Map;
+    final hasMetadata =
+        revision['entityKind'] == 'node' &&
+        revision['entityId'] is String &&
+        revision['payloadJson'] is String &&
+        revision['createdAtMs'] is int;
+    final hasContent =
+        value['node'] is Map && value['node']['content'] is String;
+    final id = revision['id'];
+    if ((id is String &&
+            (hasContent ||
+                (id.startsWith('note-') &&
+                    (value['history'] is List || hasMetadata)))) ||
+        (hasMetadata && hasContent && value['history'] is List)) {
+      stderr.writeln('Refusing revision envelope at note path: $path');
+      throw FormatException('Refusing revision envelope at note path: $path');
+    }
   }
 }
 

@@ -119,6 +119,45 @@ void main() {
     expect(await storage.readText(path), legacy);
   });
 
+  test('revision records missing an id cannot replace notes', () async {
+    final dir = await Directory.systemTemp.createTemp('tylog_revision_no_id_');
+    addTearDown(() => deleteTempDir(dir));
+    final local = LocalVaultStorage(dir);
+    const path = 'notes/a.typ';
+    const original = 'Existing note';
+    const record =
+        '{"revision":{"entityKind":"node","entityId":"n1",'
+        '"payloadJson":"{}","createdAtMs":1},"history":[],'
+        '"node":{"content":"Existing note"}}';
+    await local.writeText(path, original);
+    await expectLater(local.writeText(path, record), throwsFormatException);
+    expect(await local.readText(path), original);
+    final calls = <MethodCall>[];
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(AndroidTreeVaultStorage.channel, (
+      call,
+    ) async {
+      calls.add(call);
+      return null;
+    });
+    addTearDown(
+      () => messenger.setMockMethodCallHandler(
+        AndroidTreeVaultStorage.channel,
+        null,
+      ),
+    );
+    final saf = AndroidTreeVaultStorage(
+      uri: 'content://test/tree',
+      name: 'Test',
+    );
+    await expectLater(saf.writeText(path, record), throwsFormatException);
+    expect(calls, isEmpty);
+    const legacy = '{"revision":{},"history":[],"node":{"content":"draft"}}';
+    await local.writeText(path, legacy);
+    expect(await local.readText(path), legacy);
+  });
+
   test('note revision metadata without node cannot replace notes', () async {
     final dir = await Directory.systemTemp.createTemp(
       'tylog_revision_metadata_',
