@@ -409,7 +409,36 @@ void main() {
     final saved = await storage.readText(_dayPath);
     expect(saved, contains('#tylog.ref-note("iade")[IADE]'));
     expect(saved, contains('tags: ("design",)'));
+    final ledger = await storage.readText('$enrichFeedbackDir/dev1.jsonl');
+    final events = EnrichFeedback.parseLedger(ledger);
+    final autoEvents = events.where((event) => event.proposedBy == 'auto');
+    expect(autoEvents, hasLength(2));
+    expect(
+      autoEvents.map((event) => (event.surface, event.entity, event.accepted)),
+      containsAll([
+        ('IADE', 'iade', true),
+        ('design', enrichTagEntity('design'), true),
+      ]),
+    );
     expect(day, _day);
+    await tester.pumpWidget(const SizedBox());
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+  testWidgets('Incoming can request suggestions immediately', (tester) async {
+    final (_, storage) = await _mount(tester);
+    final action = find.byTooltip('Run suggestions now');
+    await tester.ensureVisible(action);
+    await tester.tap(action);
+    await tester.pump();
+    final request = jsonDecode(
+      await storage.readText('_system/enrich/run-request.json'),
+    ) as Map;
+    expect(DateTime.tryParse(request['requested_at'] as String), isNotNull);
+    expect(request['requested_at'], endsWith('Z'));
+    expect(
+      find.text('Suggestions will update in a few minutes'),
+      findsOneWidget,
+    );
     await tester.pumpWidget(const SizedBox());
   }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
 

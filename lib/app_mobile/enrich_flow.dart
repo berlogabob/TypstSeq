@@ -131,6 +131,30 @@ extension _EnrichFlow on _HomeScreenState {
       return updated;
     });
     if (!saved || !applied) return;
+    final device = vaultRegistry?.deviceId;
+    if (device != null) {
+      final at = DateTime.now().toUtc().toIso8601String();
+      await _appendEnrichLedger(v, enrichFeedbackDir, device, [
+        for (final decision in links)
+          EnrichFeedback(
+            surface: decision.mention.surface,
+            entity: decision.target!.id,
+            accepted: true,
+            note: path,
+            at: at,
+            proposedBy: 'auto',
+          ),
+        for (final tag in tags)
+          EnrichFeedback(
+            surface: tag,
+            entity: enrichTagEntity(tag),
+            accepted: true,
+            note: path,
+            at: at,
+            proposedBy: 'auto',
+          ),
+      ]);
+    }
     final file = enrichMentionsPath(path);
     final latest = await _readMentions(v, path);
     if (latest == null || latest.contentSha != mentions.contentSha) return;
@@ -644,13 +668,14 @@ extension _EnrichIncoming on _HomeScreenState {
       String? refreshPath,
     }) async {
       final indexRevision = workspace.indexRevision;
-      paths ??= currentIndex.notesByPath.keys
-                .where(
-                  (path) =>
-                      path.startsWith('daily/') && (day == null || day == path),
-                )
-                .toList()
-              ..sort((a, b) => b.compareTo(a));
+      paths ??=
+          currentIndex.notesByPath.keys
+              .where(
+                (path) =>
+                    path.startsWith('daily/') && (day == null || day == path),
+              )
+              .toList()
+            ..sort((a, b) => b.compareTo(a));
       final page = <String>[];
       if (next) {
         final end = (cursor + 7).clamp(0, paths!.length);
@@ -806,7 +831,28 @@ extension _EnrichIncoming on _HomeScreenState {
                           : <NoteRef>[];
                       return ListView(
                         children: [
-                          const ListTile(title: Text('Incoming')),
+                          ListTile(
+                            title: const Text('Incoming'),
+                            trailing: IconButton(
+                              tooltip: 'Run suggestions now',
+                              icon: const Icon(Icons.refresh),
+                              onPressed: () async {
+                                await v.storage.writeText(
+                                  '_system/enrich/run-request.json',
+                                  '${jsonEncode({'requested_at': DateTime.now().toUtc().toIso8601String()})}\n',
+                                );
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Suggestions will update in a few minutes',
+                                      ),
+                                    ),
+                                  );
+                                }
+                              },
+                            ),
+                          ),
                           if (loadError != null || snapshot.hasError)
                             ListTile(
                               title: const Text('Could not load suggestions'),
