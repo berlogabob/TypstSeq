@@ -151,7 +151,6 @@ class _GraphViewState extends State<GraphView>
   bool _bannerDismissed = false;
   final Set<String> _hiddenSources = {};
   Set<String>? _focusFilter;
-  int _hubCycleIndex = 0;
 
   // Cached force-directed layout — recomputed only when the node set changes,
   // so a tap/chip toggle never re-simulates (and never jitters).
@@ -367,22 +366,13 @@ class _GraphViewState extends State<GraphView>
                   // "topics" when the graph is concepts (Concept map), else notes.
                   label: Text(
                     '${stats.orphanPaths.length} '
-                    '${_isConceptGraph ? 'isolated topics' : 'orphan notes'}',
+                    '${_isConceptGraph ? 'isolated topics' : 'unlinked notes'}',
                   ),
                   onSelected: (_) => setState(() {
                     _focusFilter = _focusFilter == null
                         ? stats.orphanPaths.toSet()
                         : null;
                     _relayoutKeepingView();
-                  }),
-                ),
-              if (stats.hubPaths.isNotEmpty)
-                FilterChip(
-                  label: const Text('Hubs'),
-                  onSelected: (_) => setState(() {
-                    _selectedPath =
-                        stats.hubPaths[_hubCycleIndex % stats.hubPaths.length];
-                    _hubCycleIndex++;
                   }),
                 ),
               if (_focusFilter != null)

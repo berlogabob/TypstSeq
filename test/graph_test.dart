@@ -57,7 +57,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(painter().graph.nodes, hasLength(3));
     expect(painter().graph.edges, hasLength(1));
-    await tester.tap(find.text('1 orphan notes'));
+    await tester.tap(find.text('1 unlinked notes'));
     await tester.pumpAndSettle();
     expect(painter().graph.nodes.map((node) => node.path), ['c']);
     await tester.tap(find.text('Article (2)'));
