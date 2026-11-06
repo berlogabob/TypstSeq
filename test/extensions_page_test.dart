@@ -633,13 +633,18 @@ void main() {
     });
     await tester.pump();
     expect(find.textContaining('needs newer TyLog'), findsOneWidget);
+    expect(workspace.status, contains('needs newer TyLog'));
+    expect(workspace.index?.notesByPath['ext/bot/new.typ'], isNull);
     await tester.runAsync(() async {
-      await workspace.reloadMounts();
-      expect(workspace.status, contains('needs newer TyLog'));
-      expect(workspace.index?.notesByPath['ext/bot/new.typ'], isNull);
       await File('${bot.path}/bot-vault.json').writeAsString('{"schema":1}');
-      await workspace.reloadMounts();
-      expect(workspace.index?.notesByPath['ext/bot/new.typ'], isNotNull);
+      await tester.tap(find.byTooltip('Refresh Bot'));
+      final deadline = DateTime.now().add(const Duration(seconds: 10));
+      while (workspace.index?.notesByPath['ext/bot/new.typ'] == null) {
+        if (DateTime.now().isAfter(deadline)) {
+          throw TimeoutException('bot item not restored');
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
     });
     await tester.pumpWidget(const SizedBox());
     await tester.runAsync(() async {

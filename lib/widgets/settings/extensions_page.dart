@@ -399,8 +399,8 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
                             ? null
                             : () => _run(() async {
                                 if (mount.source.extra['botVault'] == true) {
+                                  await workspace.reloadMounts();
                                   await checkBotManifest(mount.source.path!);
-                                  await workspace.refreshIndex(always: true);
                                 } else {
                                   await workspace.refreshMount(mount);
                                 }
