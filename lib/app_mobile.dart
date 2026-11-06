@@ -330,7 +330,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   final _graphCache =
       <
-        ({int revision, String mode, String? focus, String? current}),
+        ({
+          int revision,
+          int pendingRevision,
+          String mode,
+          String? focus,
+          String? current,
+        }),
         NoteGraph
       >{};
   int _graphCacheRevision = -1;
@@ -341,8 +347,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// the controller retains the index in place, so its identity never changes
   /// and an `identical` check would cache the first graph forever.
   NoteGraph _memoizedGraph(String? current) {
+    final graphFocus = _graphFocusPath ?? current;
+    final enrichView = _enrichDecisions;
+    final pending = enrichView != null && enrichView.$1 == graphFocus
+        ? [
+            for (final decision in enrichView.$2.decisions)
+              if (decision.status == EnrichStatus.review &&
+                  decision.target != null)
+                (enrichView.$1, decision.target!.path),
+          ]
+        : const <(String, String)>[];
     final key = (
       revision: workspace.indexRevision,
+      pendingRevision: Object.hashAll(pending),
       mode: _graphMode,
       focus: _graphFocusPath,
       current: current,
@@ -371,7 +388,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }),
       // No note open yet: focused view would be empty, show the overview.
       _ when (_graphFocusPath ?? current) == null => buildConceptMap(idx),
-      _ => buildLocalNoteGraph(idx, _graphFocusPath ?? current),
+      _ => buildLocalNoteGraph(idx, graphFocus, pending: pending),
     };
     final bounded = boundGraphForLayout(built, currentPath: current);
     _graphCache[key] = bounded;

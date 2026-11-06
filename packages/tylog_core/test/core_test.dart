@@ -603,6 +603,44 @@ void main() {
     expect(suggestLinkTargets(note, index), isEmpty);
   });
 
+  test(
+    'local graph includes pending links without duplicating accepted links',
+    () {
+      final index = VaultIndex(
+        notesByPath: {
+          for (final path in ['a.typ', 'b.typ', 'c.typ'])
+            path: NoteRef(
+              id: path,
+              path: path,
+              title: path,
+              outgoingLinks: path == 'a.typ' ? ['b.typ'] : const [],
+            ),
+        },
+        backlinksByTarget: const {
+          'b.typ': ['a.typ'],
+        },
+      );
+      final graph = buildLocalNoteGraph(
+        index,
+        'a.typ',
+        pending: const [('a.typ', 'c.typ')],
+      );
+      expect(
+        graph.edges.singleWhere((edge) => edge.to == 'c.typ').status,
+        KnowledgeStatus.proposed,
+      );
+      final withAccepted = buildLocalNoteGraph(
+        index,
+        'a.typ',
+        pending: const [('a.typ', 'b.typ')],
+      );
+      expect(
+        withAccepted.edges.where((edge) => edge.to == 'b.typ'),
+        hasLength(1),
+      );
+    },
+  );
+
   test('batch suggestions match the per-note results', () {
     // Correctness half: sharing a resolver must not change what is suggested.
     const count = 50;

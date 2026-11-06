@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'widgets/constants.dart';
 import 'package:flutter/semantics.dart';
 import 'package:tylog_core/graph.dart';
+import 'package:tylog_core/tylog_core.dart' show KnowledgeStatus;
 
 import 'widgets/graph_label.dart';
 import 'widgets/banner.dart';
@@ -27,6 +28,8 @@ export 'package:tylog_core/graph.dart'
         restrictNoteGraph,
         kConceptMapMinNotes,
         kConceptMinNotes;
+
+export 'package:tylog_core/tylog_core.dart' show KnowledgeStatus;
 
 /// Above this many nodes, a whole-vault graph reliably turns into an
 /// unreadable "hairball" (community consensus from PKM tools like Obsidian).
@@ -149,6 +152,7 @@ class _GraphViewState extends State<GraphView>
     GraphEdgeKind.finished,
   };
   bool _bannerDismissed = false;
+  bool _showSuggestions = true;
   final Set<String> _hiddenSources = {};
   Set<String>? _focusFilter;
 
@@ -324,7 +328,7 @@ class _GraphViewState extends State<GraphView>
       sourceCounts.update(node.source, (count) => count + 1, ifAbsent: () => 1);
     }
     final sources = sourceCounts.keys.toList()..sort();
-    final displayGraph = _focusFilter == null && _hiddenSources.isEmpty
+    final filteredGraph = _focusFilter == null && _hiddenSources.isEmpty
         ? widget.graph
         : restrictNoteGraph(widget.graph, {
             for (final node in widget.graph.nodes)
@@ -333,6 +337,17 @@ class _GraphViewState extends State<GraphView>
                       !_hiddenSources.contains(node.source)))
                 node.path,
           });
+    final hasSuggestions = filteredGraph.edges.any(
+      (edge) => edge.status == KnowledgeStatus.proposed,
+    );
+    final displayGraph = !_showSuggestions && hasSuggestions
+        ? NoteGraph(
+            nodes: filteredGraph.nodes,
+            edges: filteredGraph.edges
+                .where((edge) => edge.status != KnowledgeStatus.proposed)
+                .toList(),
+          )
+        : filteredGraph;
     final selected = displayGraph.nodes
         .where((node) => node.path == _selectedPath)
         .firstOrNull;
@@ -360,6 +375,14 @@ class _GraphViewState extends State<GraphView>
                   if (!_visibleKinds.remove(kind)) _visibleKinds.add(kind);
                 }),
               ),
+              if (hasSuggestions)
+                FilterChip(
+                  label: const Text('Suggestions'),
+                  selected: _showSuggestions,
+                  onSelected: (selected) => setState(() {
+                    _showSuggestions = selected;
+                  }),
+                ),
               if (stats.orphanPaths.isNotEmpty)
                 FilterChip(
                   selected: _focusFilter != null,
@@ -1439,14 +1462,17 @@ class GraphPainter extends CustomPainter {
       if (!cull.contains(from) && !cull.contains(to)) continue;
       final connected = edge.from == selectedPath || edge.to == selectedPath;
       final paint = Paint()
-        ..color = connected
+        ..color = edge.status == KnowledgeStatus.proposed
+            ? edgeColor(edge.kind, colorScheme.brightness).withValues(alpha: 0.5)
+            : connected
             ? colorScheme.primary
             : edgeColor(
                 edge.kind,
                 colorScheme.brightness,
-              ).withValues(alpha: connected ? 1 : 0.45)
+              ).withValues(alpha: 0.45)
         ..strokeWidth = connected ? 2.5 : 1;
-      if (edge.kind == GraphEdgeKind.citation) {
+      if (edge.kind == GraphEdgeKind.citation ||
+          edge.status == KnowledgeStatus.proposed) {
         _drawDashedLine(canvas, from, to, paint);
       } else {
         canvas.drawLine(from, to, paint);
@@ -1814,8 +1840,13 @@ String? connectionReason(
     final isLinked = edge.from == rootPath && edge.to == selectedPath;
     final isLinkedBack = edge.from == selectedPath && edge.to == rootPath;
     if (edge.kind == GraphEdgeKind.link) {
-      if (isLinked) reasons.add('This note links to it');
-      if (isLinkedBack) reasons.add('It links to this note');
+      if (edge.status == KnowledgeStatus.proposed &&
+          (isLinked || isLinkedBack)) {
+        reasons.add('Suggested link (not yet accepted)');
+      } else {
+        if (isLinked) reasons.add('This note links to it');
+        if (isLinkedBack) reasons.add('It links to this note');
+      }
     } else if (edge.kind == GraphEdgeKind.citation) {
       if (isLinked) reasons.add('Cited by this note');
       if (isLinkedBack) reasons.add('It cites this note');

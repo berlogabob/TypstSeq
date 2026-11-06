@@ -1,5 +1,6 @@
 import 'models.dart';
 import 'scanner.dart' show normalizeTag;
+import 'knowledge.dart';
 
 enum GraphEdgeKind { link, citation, tag, read, finished }
 
@@ -46,12 +47,14 @@ class GraphEdge {
     required this.to,
     this.kind = GraphEdgeKind.link,
     this.weight = 1,
+    this.status = KnowledgeStatus.accepted,
   });
 
   final String from;
   final String to;
   final GraphEdgeKind kind;
   final int weight;
+  final KnowledgeStatus status;
 }
 
 class NoteGraph {
@@ -461,6 +464,7 @@ NoteGraph buildLocalNoteGraph(
   int hops = 2,
   int limit = 100,
   int hubFanout = 12,
+  List<(String from, String to)> pending = const [],
 }) {
   if (currentPath == null) {
     return const NoteGraph(nodes: [], edges: []);
@@ -494,7 +498,29 @@ NoteGraph buildLocalNoteGraph(
     }
     frontier = next;
   }
-  return restrictNoteGraph(full, selected);
+  for (final (from, to) in pending) {
+    if (!selected.contains(from) ||
+        !full.nodes.any((node) => node.path == to)) {
+      continue;
+    }
+    if (!selected.contains(to) && selected.length < limit) selected.add(to);
+  }
+  final local = restrictNoteGraph(full, selected);
+  final edges = [...local.edges];
+  for (final (from, to) in pending) {
+    if (!selected.contains(from) ||
+        !selected.contains(to) ||
+        local.edges.any(
+          (edge) =>
+              edge.from == from &&
+              edge.to == to &&
+              edge.status == KnowledgeStatus.accepted,
+        )) {
+      continue;
+    }
+    edges.add(GraphEdge(from: from, to: to, status: KnowledgeStatus.proposed));
+  }
+  return NoteGraph(nodes: local.nodes, edges: edges);
 }
 
 /// Restricts [graph] to just the nodes in [paths] (and edges between them).

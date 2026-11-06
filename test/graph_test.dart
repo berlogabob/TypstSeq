@@ -775,6 +775,20 @@ void main() {
     expect(connectionReason(graph, null, 'b'), isNull);
   });
 
+  test('connectionReason explains proposed links as suggestions', () {
+    const graph = NoteGraph(
+      nodes: [
+        GraphNode(path: 'a', title: 'A'),
+        GraphNode(path: 'b', title: 'B'),
+      ],
+      edges: [GraphEdge(from: 'a', to: 'b', status: KnowledgeStatus.proposed)],
+    );
+    expect(
+      connectionReason(graph, 'a', 'b'),
+      'Suggested link (not yet accepted)',
+    );
+  });
+
   test('buildLocalNoteGraph does not expand busy hubs past the root', () {
     final notes = {
       for (var i = 0; i < 20; i++)
