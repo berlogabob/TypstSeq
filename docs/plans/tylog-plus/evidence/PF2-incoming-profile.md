@@ -294,3 +294,25 @@ The full `flutter test` run had one failure in
 GitHub issues`). Running `flutter test test/entity_board_test.dart` alone
 passed all 15 tests. The UI-dependent real decision and paging measurements
 remain in the next plan item.
+
+## PF2-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest follow-up (2026-11-06)
+
+The P30 inventory (`XPH0219904001750`) showed only
+`org.tylog.tylog.profiletest` (first installed `2026-11-05 21:05:34`); the
+production package was absent. A `flutter test
+integration_test/pf2_incoming_sheet_profile_test.dart -d XPH0219904001750
+--no-uninstall` invocation was interrupted during its default debug APK build,
+before installation or test execution. No package or app data was changed.
+Because that path builds the default debug package, no repeat was made; the
+existing profile evidence remains the latest completed actual-sheet run.
+
+The focused Incoming tests passed: `flutter test test/review_queue_test.dart
+test/enrich_flow_test.dart` (34 tests). The full `flutter test` suite passed
+with 2,122 tests and 10 skips. Final package inventory still showed
+`.profiletest` first installed at `2026-11-05 21:05:34`; production remained
+absent, so its historical `firstInstallTime=2026-11-05 15:27:02` could not be
+re-read. The registered P2P6 copy's previous actual-sheet runs found no
+eligible rows. The Mac GUI was locked, so no sender action, transfer, alternate
+vault selection, package install, or decision write was attempted. Receiving a
+copy with an eligible row and measuring its real decision append and Show
+older pages remains the next PF2 item.
