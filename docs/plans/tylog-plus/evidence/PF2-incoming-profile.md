@@ -237,3 +237,15 @@ Before and after the device run, read-only `adb` package queries showed
 its historical `firstInstallTime=2026-11-05 15:27:02` could not be queried.
 No command targeted the production package. The Mac screen remained locked;
 the new-copy/actionable-row run is tracked as a separate plan item.
+
+## PF2-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest check (2026-11-06)
+
+The P30 package inventory still showed `org.tylog.tylog.profiletest`, while
+the production package was absent, so its historical
+`firstInstallTime=2026-11-05 15:27:02` could not be rechecked. No device test
+or package-changing command was run. The existing `.profiletest` copy is the
+previously measured P2P6 copy, whose Incoming queues had zero mention, audio,
+or OCR rows. The locked Mac GUI prevents the sender flow needed to receive a
+copy with eligible rows. No substitute transfer or vault selection was
+attempted. Decision append and Show older measurements remain tracked in the
+next plan item.
