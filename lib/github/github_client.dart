@@ -6,6 +6,11 @@ class GitHubAuthError implements Exception {}
 
 class GitHubConflict implements Exception {}
 
+class GitHubManualMoveRequired extends StateError {
+  GitHubManualMoveRequired()
+    : super('Move this issue on GitHub, then refresh the board');
+}
+
 class GitHubRateLimit implements Exception {
   GitHubRateLimit(this.resetTime);
   final DateTime? resetTime;
@@ -285,7 +290,7 @@ class GitHubClient {
     List<String> labels, {
     required String currentColumn,
   }) async {
-    throw StateError('Move this issue on GitHub, then refresh the board');
+    throw GitHubManualMoveRequired();
   }
 
   Future<Map<String, dynamic>> closeIssue(String repo, int number) => _json(

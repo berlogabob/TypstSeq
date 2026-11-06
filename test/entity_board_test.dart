@@ -12,6 +12,91 @@ import 'package:tylog/widgets/unified_board.dart';
 import 'support/temp_dir.dart';
 
 void main() {
+  testWidgets('blocked issue move opens GitHub with instructions', (
+    tester,
+  ) async {
+    final dir = await tester.runAsync(
+      () => Directory.systemTemp.createTemp('manual-move'),
+    );
+    if (dir == null) throw StateError('No temp directory');
+    addTearDown(() => deleteTempDir(dir));
+    final vault = Vault(dir);
+    await tester.runAsync(
+      () => writeBoard(
+        vault.storage,
+        Board.fromJson({
+          'id': 'board',
+          'title': 'P',
+          'scopeEntity': 'p',
+          'github_repo': 'owner/repo',
+        }),
+      ),
+    );
+    const entity = NoteRef(
+      id: 'p',
+      path: 'p.typ',
+      title: 'P',
+      outgoingLinks: [],
+    );
+    const index = VaultIndex(
+      notesByPath: {'p.typ': entity},
+      backlinksByTarget: {},
+    );
+    final client = _FakeGitHub()..blockMove = true;
+    String? opened;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EntityBoard(
+          boardId: 'board',
+          entity: entity,
+          vault: vault,
+          index: index,
+          setStatus: (_, _) async {},
+          mutateNote: (_, _) async => false,
+          refreshIndex: () async => index,
+          githubClient: () async => client,
+          onOpenUrl: (url) => opened = url,
+        ),
+      ),
+    );
+    Future<void> io() async {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 80)),
+      );
+      await tester.pump();
+    }
+
+    for (
+      var i = 0;
+      i < 40 && find.text('Remote issue').evaluate().isEmpty;
+      i++
+    ) {
+      await io();
+    }
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('Remote issue')),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.moveTo(
+      tester.getBottomLeft(find.byKey(const ValueKey('board-column-doing'))) +
+          const Offset(100, -30),
+    );
+    await tester.pump();
+    await gesture.up();
+    for (
+      var i = 0;
+      i < 40 && find.text('Open GitHub').evaluate().isEmpty;
+      i++
+    ) {
+      await io();
+    }
+    expect(find.textContaining('add the doing label'), findsOneWidget);
+    expect(client.remoteStatus, 'todo');
+    await tester.pump(const Duration(seconds: 1));
+    await tester.tap(find.text('Open GitHub'));
+    expect(opened, 'https://github.com/owner/repo/issues/42');
+  });
+
   testWidgets('board reconciles an interrupted repository issue move', (
     tester,
   ) async {
@@ -1405,6 +1490,7 @@ void main() {
 
 class _FakeGitHub extends GitHubClient {
   String? repo;
+  bool blockMove = false;
   String remoteTitle = 'Remote issue';
   String remoteStatus = 'todo';
   String? moveResult;
@@ -1453,6 +1539,7 @@ class _FakeGitHub extends GitHubClient {
     List<String> labels, {
     String? currentColumn,
   }) async {
+    if (blockMove) throw GitHubManualMoveRequired();
     if (failAfterReopen) {
       failAfterReopen = false;
       if (number == 42) {

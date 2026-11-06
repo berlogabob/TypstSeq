@@ -247,9 +247,7 @@ class _EntityBoardState extends State<EntityBoard> {
                   : 'move to $column failed: $error',
             );
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('GitHub move refreshed: $error')),
-              );
+              _showMoveResult(error, repository, issue.githubNumber!, column);
             }
           }
         }
@@ -479,9 +477,7 @@ class _EntityBoardState extends State<EntityBoard> {
             _remoteColumn(actual),
           );
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('GitHub move refreshed: $error')),
-            );
+            _showMoveResult(error, repository, number, column);
           }
         }
       }
@@ -496,6 +492,39 @@ class _EntityBoardState extends State<EntityBoard> {
     } finally {
       if (mounted) setState(() => busy = false);
     }
+  }
+
+  void _showMoveResult(
+    Object error,
+    String repository,
+    int number,
+    String column,
+  ) {
+    if (error is! GitHubManualMoveRequired) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('GitHub move refreshed: $error')));
+      return;
+    }
+    final instruction = switch (column) {
+      'done' => 'Close the issue',
+      'doing' => 'Reopen the issue if closed and add the doing label',
+      _ => 'Reopen the issue if closed and remove the doing label',
+    };
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$instruction on GitHub, then refresh the board.'),
+        duration: const Duration(seconds: 10),
+        action: widget.onOpenUrl == null
+            ? null
+            : SnackBarAction(
+                label: 'Open GitHub',
+                onPressed: () => widget.onOpenUrl!(
+                  'https://github.com/$repository/issues/$number',
+                ),
+              ),
+      ),
+    );
   }
 
   Future<void> _recordUnknownMove(

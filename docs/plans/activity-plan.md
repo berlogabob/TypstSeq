@@ -490,7 +490,8 @@ Issues found:
 - [x] S6-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Block reopening moves that require separate state and doing-label requests; direct the user to GitHub and refresh the board.
 - [x] S6-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Prevent reopening requests from overwriting a concurrent GitHub change; direct the user to reopen on GitHub and refresh the board.
 - [x] S6-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Protect closing and doing-label requests against concurrent changes after preflight by directing moves to GitHub and refreshing the board.
-- [ ] S6-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Restore board issue moves, including reopening with state and label changes, when GitHub provides a documented conditional mutation mechanism.
+- [x] S6-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Guide blocked board issue moves with GitHub state and label instructions and a direct issue link.
+- [ ] S6-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Restore board issue moves, including reopening with state and label changes, when GitHub provides a documented conditional mutation mechanism.
 - [x] S7 OLT rooms tree + equipment stock levels on the whiteboard
 - [x] S8 Pack update check: weekly GitHub release check, "update available" in Extensions
 - [x] S9 Mention chooser: select a ranked candidate or search pages from Incoming and daily review.
