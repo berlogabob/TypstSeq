@@ -718,6 +718,7 @@ Model: facts = links/mentions/tags on a note; vocabulary = tags, entity kinds, c
 - [x] KG11b (luna) App reads the snapshot instead of recomputing communities on every edit (fallback: compute once if no snapshot); cluster proposals listed in Incoming with Accept/Reject -> `_system/decisions`. Widget test
 - [x] KG12 Claude: full suite, Mac check of Focused/Overview/Voronoi with suggestions, graphify update, update research note in TyLog-Graph-Research, user GUI check before merge
 - [x] KG13 (luna) Clustering runs inside the app on every platform (core feature, nothing to install): core `runClusterStep` shared by app and CLI; app runs it once a day (desktop) and on "Recluster now" (any device); CLI + org.tylog.cluster stay optional for headless/server vaults
+- [ ] CI1 Linux-only flaky tests skipped in test/extensions_page_test.dart (GitHub Push now hangs; bot-vault newer-schema status overwritten by a late re-index). Find the stuck wait / status race, re-enable both
 Skipped: OWL/SHACL, graph DB, slash-command registry, pattern -> new entity-kind proposals (after KG12 if accept data shows repeats).
 
 ## Session handoff (2026-11-06)
