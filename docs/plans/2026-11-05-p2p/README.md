@@ -340,3 +340,26 @@ was skipped. The production installation cannot be restored or its original
 timestamp verified by this diagnostic; device transfers and the remaining
 route, retry, resume, CPU and battery measurements are deferred to
 P2P5-rest-rest-rest-rest-rest-rest-rest. P2P3 remains no-go.
+
+## P2P5-rest-rest-rest-rest-rest-rest-rest reverse-direction runner (2026-11-06)
+The existing isolated folder runner now supports either peer as sender. For
+Android → Mac, start `python3 tool/p2p6/coordinator.py --sender android`,
+build both runner entry points with `--dart-define=P2P_SENDER=android`, and
+give the Android build `--dart-define=P2P_SOURCE=<absolute-scratch-folder>`.
+The source must be a disposable folder accessible to the isolated app, not a
+real vault. Forward port 47993 using `adb reverse`, launch the sender first,
+wait for `ticket ready`, then launch the receiver. The receiver writes to
+`p2p6-received` in its app support directory and reuses matching files; it
+does not delete extra files. Use an empty destination for a clean measurement.
+The default remains Mac → Android; both peers and the coordinator must agree
+on the sender. A disconnected receiver can reconnect to the same ticket.
+This is a development runner configured at build time, not a folder picker or
+production sync. The coordinator test exercises both ticket forwarding and a
+receiver disconnect, not the actual iroh transport.
+
+The P30 preflight again reports the production package missing and no
+first-install timestamp, so no app was installed or launched and no device
+transfer was attempted. Battery reported 20,000 µAh, AC connected and status 4
+(not charging). The locked Mac GUI was skipped. Route proof, representative
+bidirectional measurements, retry/resume measurements and safety gates remain
+in P2P5-rest-rest-rest-rest-rest-rest-rest-rest; P2P3 remains no-go.

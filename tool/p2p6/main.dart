@@ -33,8 +33,13 @@ Future<void> main() async {
           .transform(utf8.decoder)
           .transform(const LineSplitter()),
     );
-    socket.writeln(Platform.isAndroid ? 'android' : 'mac');
-    if (Platform.isAndroid) {
+    const sender = String.fromEnvironment('P2P_SENDER', defaultValue: 'mac');
+    if (sender != 'mac' && sender != 'android') {
+      throw StateError('P2P_SENDER must be mac or android');
+    }
+    final role = Platform.isAndroid ? 'android' : 'mac';
+    socket.writeln(role);
+    if (role != sender) {
       if (!await lines.moveNext()) throw StateError('Missing ticket');
       final dir = Directory(
         '${(await getApplicationSupportDirectory()).path}/p2p6-received',
