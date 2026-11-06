@@ -113,6 +113,8 @@ class GraphView extends StatefulWidget {
     this.onExportSvg,
     this.onAcceptSuggestion,
     this.onRejectSuggestion,
+    this.initialSelectedPath,
+    this.onSelectionChanged,
   });
 
   final NoteGraph graph;
@@ -123,6 +125,8 @@ class GraphView extends StatefulWidget {
   final Future<void> Function(NoteGraph graph)? onExportSvg;
   final Future<void> Function(String from, String to)? onAcceptSuggestion;
   final Future<void> Function(String from, String to)? onRejectSuggestion;
+  final String? initialSelectedPath;
+  final ValueChanged<String?>? onSelectionChanged;
 
   /// Community assignment (from [computeCommunities]) used to seed/pull nodes
   /// into per-cluster agglomerations and color them. Null ⇒ plain force layout.
@@ -276,7 +280,7 @@ class _GraphViewState extends State<GraphView>
   @override
   void initState() {
     super.initState();
-    _selectedPath = widget.currentPath;
+    _selectedPath = widget.initialSelectedPath ?? widget.currentPath;
     _transform.addListener(_onTransform);
     _zoomCtl = AnimationController(vsync: this, duration: kMotionGraphZoom)
       ..addListener(() {
@@ -299,7 +303,11 @@ class _GraphViewState extends State<GraphView>
   @override
   void didUpdateWidget(covariant GraphView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.currentPath != widget.currentPath) {
+    if (oldWidget.initialSelectedPath != widget.initialSelectedPath &&
+        widget.initialSelectedPath != null) {
+      _selectedPath = widget.initialSelectedPath;
+    } else if (oldWidget.currentPath != widget.currentPath &&
+        widget.initialSelectedPath == null) {
       _selectedPath = widget.currentPath;
       _invalidateLayout();
     } else if (!_sameNodes(oldWidget.graph.nodes, widget.graph.nodes)) {
@@ -597,7 +605,7 @@ class _GraphViewState extends State<GraphView>
                     colorScheme: scheme,
                     labelStyle: Theme.of(context).textTheme.labelSmall!,
                     visibleEdgeKinds: _visibleKinds,
-                    onSelect: (path) => setState(() => _selectedPath = path),
+                    onSelect: _setSelectedPath,
                     communities: widget.communities,
                     clusters: _clusters,
                     viewport: viewport,
@@ -620,6 +628,12 @@ class _GraphViewState extends State<GraphView>
         );
       },
     );
+  }
+
+  void _setSelectedPath(String? path) {
+    if (_selectedPath == path) return;
+    setState(() => _selectedPath = path);
+    widget.onSelectionChanged?.call(path);
   }
 
   void _fitWhenLayoutChanges(Size viewport, Size canvas) {
@@ -710,7 +724,7 @@ class _GraphViewState extends State<GraphView>
       }
     }
     final node = _hitNode(positions, point);
-    if (node != null) setState(() => _selectedPath = node);
+    if (node != null) _setSelectedPath(node);
   }
 
   /// Animates the view to frame [target] (canvas coords), zooming in past

@@ -24,6 +24,8 @@ class VoronoiView extends StatefulWidget {
     required this.onOpenPath,
     required this.indexRevision,
     this.onOpenNotes,
+    this.initialSelectedPath,
+    this.onSelectionChanged,
   });
 
   final VaultIndex index;
@@ -32,6 +34,8 @@ class VoronoiView extends StatefulWidget {
   final CommunityMap? communities;
   final ValueChanged<String> onOpenPath;
   final ValueChanged<List<String>>? onOpenNotes;
+  final String? initialSelectedPath;
+  final ValueChanged<String?>? onSelectionChanged;
 
   /// Cache key: cells are retessellated only when this changes (or the
   /// viewport size does).
@@ -118,10 +122,12 @@ class _VoronoiViewState extends State<VoronoiView>
   VoronoiRequest? _request;
   final Set<int> _pending = {};
   bool _revealScheduled = false;
+  String? _selectedPath;
 
   @override
   void initState() {
     super.initState();
+    _selectedPath = widget.initialSelectedPath;
     _transform.addListener(_scheduleReveal);
     _zoomCtl = AnimationController(vsync: this, duration: kMotionGraphZoom)
       ..addListener(() {
@@ -140,6 +146,9 @@ class _VoronoiViewState extends State<VoronoiView>
   @override
   void didUpdateWidget(covariant VoronoiView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialSelectedPath != widget.initialSelectedPath) {
+      _selectedPath = widget.initialSelectedPath;
+    }
     if (widget.indexRevision != oldWidget.indexRevision ||
         !identical(widget.communities, oldWidget.communities)) {
       _token++;
@@ -325,22 +334,31 @@ class _VoronoiViewState extends State<VoronoiView>
       if (!_isOpen(found, scale)) break;
       level = found.children;
     }
-    if (hit == null) return;
-    _activate(hit, viewport);
+    if (hit == null) {
+      _select(null);
+    } else {
+      _selectCell(hit, viewport);
+    }
   }
 
-  /// What a tap on [cell] does — shared by the [GestureDetector] hit test
-  /// above and the semantics `onTap` wired into the painter below, so a
-  /// screen reader activates exactly what a sighted tap would.
-  void _activate(_Cell cell, Size viewport) {
+  /// What a tap (or screen-reader activation) on [cell] does: overflow
+  /// cells open their notes, cluster cells zoom in to reveal their notes,
+  /// note cells are selected and show the shared bar.
+  void _selectCell(_Cell cell, Size viewport) {
     final more = _request?.morePaths[_cells!.indexOf(cell)];
     if (more != null) {
       widget.onOpenNotes?.call(more);
-    } else if (cell.children.isEmpty) {
-      widget.onOpenPath(cell.id);
-    } else {
+    } else if (cell.children.isNotEmpty) {
       _animateTo(viewport, cell.bbox);
+    } else {
+      _select(cell.id);
     }
+  }
+
+  void _select(String? path) {
+    if (_selectedPath == path) return;
+    setState(() => _selectedPath = path);
+    widget.onSelectionChanged?.call(path);
   }
 
   /// Animates the view to frame [target] (canvas coords), zooming far enough
@@ -403,7 +421,8 @@ class _VoronoiViewState extends State<VoronoiView>
                     colorScheme: scheme,
                     viewport: viewport,
                     transform: _transform,
-                    onActivate: (cell) => _activate(cell, viewport),
+                    selectedPath: _selectedPath,
+                    onActivate: (cell) => _selectCell(cell, viewport),
                   ),
                 ),
               ),
@@ -421,6 +440,40 @@ class _VoronoiViewState extends State<VoronoiView>
                 icon: const Icon(Icons.fit_screen),
               ),
             ),
+            if (_selectedPath case final selectedPath?)
+              if (cells.where((cell) => cell.id == selectedPath).firstOrNull
+                  case final selected?)
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: Material(
+                    color: scheme.surfaceContainerLow,
+                    elevation: 2,
+                    child: ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.description_outlined),
+                      title: Text(
+                        widget.index.notesByPath[selected.id]?.title ??
+                            selected.label,
+                        maxLines: 1,
+                      ),
+                      subtitle: Text(
+                        widget.index.notesByPath.containsKey(selected.id)
+                            ? 'In cluster ${selected.parent >= 0 ? cells[selected.parent].label : selected.label}'
+                            : '${selected.count} notes',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: FilledButton.tonalIcon(
+                        key: const Key('voronoi-open'),
+                        onPressed: () => widget.onOpenPath(selected.id),
+                        icon: const Icon(Icons.open_in_new),
+                        label: const Text('Open'),
+                      ),
+                    ),
+                  ),
+                ),
           ],
         );
       },
@@ -436,6 +489,7 @@ class _VoronoiPainter extends CustomPainter {
     required this.colorScheme,
     required this.viewport,
     required this.transform,
+    required this.selectedPath,
     required this.onActivate,
   }) : super(repaint: transform);
 
@@ -448,10 +502,10 @@ class _VoronoiPainter extends CustomPainter {
   /// Live view transform (also the repaint signal) — read each frame for the
   /// per-cell reveal test, constant-size labels, and culling.
   final TransformationController transform;
+  final String? selectedPath;
 
-  /// What tapping (or activating via a screen reader) a cell does — wired to
-  /// `_VoronoiViewState._activate`, which knows the viewport and can drive
-  /// the zoom animation, neither of which the painter itself has.
+  /// What tapping (or activating via a screen reader) a cell does. The state
+  /// handles selection and overflow cells; the painter only reports the cell.
   final void Function(_Cell cell) onActivate;
 
   /// Visible region in canvas coords (translate+scale only, no rotation).
@@ -519,6 +573,15 @@ class _VoronoiPainter extends CustomPainter {
               : _fillFor(cell, siblingIndex),
       );
       canvas.drawPath(cell.path, border);
+      if (cell.id == selectedPath) {
+        canvas.drawPath(
+          cell.path,
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..color = colorScheme.primary
+            ..strokeWidth = 3 / scale,
+        );
+      }
       labels.add((cell, siblingIndex));
     }
 

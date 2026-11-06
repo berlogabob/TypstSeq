@@ -40,18 +40,25 @@ void main() {
   );
   final communities = computeCommunities(index, minNotes: 2, minCoOccur: 2);
 
-  Widget host({CommunityMap? c, ValueChanged<String>? onOpen}) => MaterialApp(
+  Widget host({
+    CommunityMap? c,
+    ValueChanged<String>? onOpen,
+    ValueChanged<String?>? onSelectionChanged,
+  }) => MaterialApp(
     home: Scaffold(
       body: VoronoiView(
         index: index,
         communities: c,
         indexRevision: 1,
         onOpenPath: onOpen ?? (_) {},
+        onSelectionChanged: onSelectionChanged,
       ),
     ),
   );
 
-  testWidgets('renders and a tap drills down to open a note', (tester) async {
+  testWidgets('renders and a tap selects before Open opens a note', (
+    tester,
+  ) async {
     // At the 800x600 test viewport every cell of this tiny fixture is already
     // past the reveal threshold, so a tap lands on a leaf note cell.
     final opened = <String>[];
@@ -62,8 +69,24 @@ void main() {
 
     await tester.tapAt(tester.getCenter(find.byType(VoronoiView)));
     await tester.pump();
+    expect(opened, isEmpty);
+    expect(find.byKey(const Key('voronoi-open')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('voronoi-open')));
+    await tester.pump();
     expect(opened, hasLength(1));
     expect(index.notesByPath.keys, contains(opened.single));
+  });
+
+  testWidgets('reports Voronoi selection changes', (tester) async {
+    final selected = <String?>[];
+    await tester.pumpWidget(
+      host(c: communities, onSelectionChanged: selected.add),
+    );
+    await _waitForLayout(tester);
+    await tester.tapAt(tester.getCenter(find.byType(VoronoiView)));
+    await tester.pump();
+    expect(selected, hasLength(1));
+    expect(selected.single, isNotNull);
   });
 
   testWidgets('exposes visible cells as semantics nodes', (tester) async {
@@ -99,9 +122,12 @@ void main() {
       expect(byLabel, contains(path));
     }
 
-    // Activating a leaf's semantics node should do exactly what tapping it
-    // does: open the note.
+    // Activating a leaf's semantics node does exactly what tapping it does:
+    // select it, then Open in the shared bar opens the note.
     owner.performAction(byLabel['n1']!.id, SemanticsAction.tap);
+    await tester.pump();
+    expect(opened, isEmpty);
+    await tester.tap(find.byKey(const Key('voronoi-open')));
     await tester.pump();
     expect(opened, ['n1']);
 

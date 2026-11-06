@@ -325,6 +325,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> sharePdfForTesting() => _sharePdf();
   // Graph overview mode: 'local' (default), 'conceptMap', or 'allFiles'.
   String _graphMode = 'local';
+  String? _graphSelectedPath;
   // Concept/note path the local graph is rooted at when expanded from the map.
   String? _graphFocusPath;
 
@@ -5861,6 +5862,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         index: index!,
         communities: communities,
         indexRevision: workspace.indexRevision,
+        initialSelectedPath: _graphSelectedPath,
+        onSelectionChanged: (path) => setState(() => _graphSelectedPath = path),
         onOpenPath: (path) => unawaited(_openPath(path)),
         onOpenNotes: (paths) {
           final ids = paths.toSet();
@@ -5904,6 +5907,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         graph: graph ?? const NoteGraph(nodes: [], edges: []),
         onExportSvg: _shareGraphSvg,
         currentPath: _graphFocusPath ?? current,
+        initialSelectedPath: _graphSelectedPath,
+        onSelectionChanged: (path) => setState(() => _graphSelectedPath = path),
         onAcceptSuggestion: (from, to) async {
           if (_pendingEnrichDecision(from, to) case final decision?) {
             await _enrichOnce(
