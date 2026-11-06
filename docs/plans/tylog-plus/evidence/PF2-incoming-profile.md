@@ -249,3 +249,22 @@ or OCR rows. The locked Mac GUI prevents the sender flow needed to receive a
 copy with eligible rows. No substitute transfer or vault selection was
 attempted. Decision append and Show older measurements remain tracked in the
 next plan item.
+
+## PF2-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest (2026-11-06)
+
+The existing actual-sheet harness and P30 runs complete the available
+measurement path for the registered `.profiletest` copy. Prior profile and
+debug runs found zero mention, audio, or OCR rows in that copy, so the real
+sheet exposed no decision action or older page to measure. The focused tests
+`flutter test test/review_queue_test.dart test/enrich_flow_test.dart` passed
+(34 tests). The full `flutter test` suite passed: 2,111 tests passed and 10
+were skipped.
+
+Before device work, the P30 package inventory showed
+`org.tylog.tylog.profiletest` installed and `org.tylog.tylog` absent. Because
+the required production `firstInstallTime=2026-11-05 15:27:02` cannot be
+queried while that package is absent, no device test or package-changing
+command was run. The Mac screen was locked, so the only authorized way to
+receive a P2P6 copy with eligible rows was unavailable. No vault was selected
+or modified. Real decision and Show older measurements remain tracked in the
+next PF2 item.
