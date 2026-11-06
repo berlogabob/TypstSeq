@@ -38,7 +38,7 @@ class BotVaultDecisions {
       '${dir.path}/decisions.jsonl',
     ).open(mode: FileMode.append);
     try {
-      await file.lock(FileLock.exclusive);
+      await file.lock(FileLock.blockingExclusive);
       await checkBotManifest(root.path);
       await file.setPosition(0);
       final content = utf8.decode(await file.read(await file.length()));

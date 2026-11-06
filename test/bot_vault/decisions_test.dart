@@ -49,6 +49,35 @@ void main() {
     expect((jsonDecode(lines.single) as Map)['action'], 'accepted');
   });
 
+  test('waits for another process holding the outbox lock', () async {
+    if (Platform.isWindows) return;
+    final dir = await Directory('${root.path}/outbox').create();
+    final path = '${dir.path}/decisions.jsonl';
+    await File(path).writeAsString('');
+    final holder = await Process.start('python3', [
+      '-u',
+      '-c',
+      'import fcntl, sys\nf = open(sys.argv[1], "a+")\nfcntl.lockf(f, fcntl.LOCK_EX)\nprint("locked", flush=True)\nsys.stdin.readline()',
+      path,
+    ]);
+    final ready = holder.stdout
+        .transform(utf8.decoder)
+        .transform(const LineSplitter());
+    expect(await ready.first, 'locked');
+    try {
+      final recording = BotVaultDecisions(root).record(item, 'accepted');
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      expect(await File(path).readAsString(), isEmpty);
+      holder.stdin.writeln('release');
+      await recording;
+      expect(await File(path).readAsLines(), hasLength(1));
+    } finally {
+      holder.stdin.writeln('release');
+      await holder.stdin.close();
+      await holder.exitCode;
+    }
+  });
+
   test('ignores an incomplete existing decision when retrying', () async {
     final dir = await Directory('${root.path}/outbox').create();
     final file = File('${dir.path}/decisions.jsonl');
