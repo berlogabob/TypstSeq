@@ -17,6 +17,8 @@ import 'package:tylog/vault_storage.dart';
 import 'package:tylog/widgets/settings/extensions_page.dart';
 import 'package:tylog/workspace_controller.dart';
 
+import 'support/temp_dir.dart';
+
 class _Inspector implements TypstInspector {
   @override
   Future<List<TypstMetadataRecord>> inspect(TypstDocumentInput input) async {
@@ -145,7 +147,7 @@ void main() {
     expect(selected?.id, 'course');
     await tester.pumpWidget(const SizedBox());
     workspace.dispose();
-    await tester.runAsync(() => root.delete(recursive: true));
+    await tester.runAsync(() => deleteTempDir(root));
   });
 
   testWidgets('shows GitHub mount source details on a phone', (tester) async {
@@ -193,7 +195,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.runAsync(() async {
       workspace.dispose();
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
   });
 
@@ -245,7 +247,7 @@ void main() {
         isNull,
       );
       workspace.dispose();
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
   });
 
@@ -299,7 +301,7 @@ void main() {
       }
       expect(client.pushes, 1);
       workspace.dispose();
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
   }, timeout: const Timeout(Duration(seconds: 50)));
 
@@ -389,7 +391,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.runAsync(() async {
       workspace.dispose();
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
   }, timeout: const Timeout(Duration(seconds: 30)));
 
@@ -435,7 +437,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.runAsync(() async {
       workspace.dispose();
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
   }, timeout: const Timeout(Duration(seconds: 30)));
   testWidgets('mounts and reads a versioned bot vault without changing it', (
@@ -508,7 +510,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.runAsync(() async {
       workspace.dispose();
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
   });
 
@@ -602,7 +604,7 @@ void main() {
     await tester.runAsync(() async {
       workspace.dispose();
       await Future<void>.delayed(const Duration(seconds: 1));
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
   });
 
@@ -678,7 +680,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.runAsync(() async {
       workspace.dispose();
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
   });
 
@@ -717,7 +719,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.runAsync(() async {
       workspace.dispose();
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
   });
 
@@ -802,7 +804,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.runAsync(() async {
       workspace.dispose();
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
   }, timeout: const Timeout(Duration(seconds: 30)));
   testWidgets('adds a GitHub repository to mounts settings', (tester) async {
@@ -852,7 +854,7 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     await tester.runAsync(() async {
       workspace.dispose();
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
   }, timeout: const Timeout(Duration(seconds: 30)));
 }

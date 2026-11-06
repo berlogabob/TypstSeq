@@ -62,9 +62,7 @@ void main() {
       'item_id': item,
       'action': 'accepted',
     };
-    await file.writeAsString(
-      jsonEncode({...valid, 'item_id': 'item-partial'}),
-    );
+    await file.writeAsString(jsonEncode({...valid, 'item_id': 'item-partial'}));
     final decisions = BotVaultDecisions(root);
     expect(await decisions.decidedItems(), isEmpty);
     await file.writeAsString(
@@ -147,16 +145,17 @@ void main() {
         .transform(utf8.decoder)
         .transform(const LineSplitter());
     expect(await ready.first, 'locked');
+    var released = false;
     try {
       final recording = BotVaultDecisions(root).record(item, 'accepted');
       await Future<void>.delayed(const Duration(milliseconds: 200));
       expect(await File(path).readAsString(), isEmpty);
-      holder.stdin.writeln('release');
+      await holder.stdin.close();
+      released = true;
       await recording;
       expect(await File(path).readAsLines(), hasLength(1));
     } finally {
-      holder.stdin.writeln('release');
-      await holder.stdin.close();
+      if (!released) await holder.stdin.close();
       await holder.exitCode;
     }
   });

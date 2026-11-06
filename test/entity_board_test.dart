@@ -254,10 +254,12 @@ void main() {
         ),
       ),
     );
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 50)),
-    );
-    await tester.pump();
+    for (var i = 0; i < 100 && find.text('Task 0').evaluate().isEmpty; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      await tester.pump();
+    }
     expect(find.text('Task 0'), findsOneWidget);
     expect(find.text('Task 99', skipOffstage: false), findsNothing);
     await tester.scrollUntilVisible(
@@ -314,7 +316,13 @@ void main() {
     }
 
     await tester.pumpWidget(view());
-    await io();
+    for (
+      var i = 0;
+      i < 100 && find.text('First task').evaluate().isEmpty;
+      i++
+    ) {
+      await io();
+    }
     final gesture = await tester.startGesture(
       tester.getCenter(find.text('First task')),
     );
@@ -393,12 +401,21 @@ void main() {
       }
 
       await tester.pumpWidget(view());
-      await io();
+      for (
+        var i = 0;
+        i < 100 &&
+            find.byKey(const ValueKey('board-column-todo')).evaluate().isEmpty;
+        i++
+      ) {
+        await io();
+      }
       await tester.tap(find.byTooltip('GitHub repository'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
       await tester.enterText(find.byType(TextFormField), 'owner/repo');
       await tester.tap(find.text('Save'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
       for (
         var i = 0;
         i < 20 && find.text('Remote issue').evaluate().isEmpty;
@@ -410,7 +427,13 @@ void main() {
       expect(client.repo, 'owner/repo');
       client.remoteTitle = 'Refreshed issue';
       await tester.tap(find.byTooltip('Sync with GitHub'));
-      await io();
+      for (
+        var i = 0;
+        i < 100 && find.text('Refreshed issue').evaluate().isEmpty;
+        i++
+      ) {
+        await io();
+      }
       expect(find.text('Refreshed issue'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
       await tester.pumpWidget(view());
@@ -561,13 +584,20 @@ void main() {
       await io();
     }
     Future<void> move(String column) async {
+      Future<String> readLog() async {
+        const path = '_system/decisions/github.jsonl';
+        return await vault.storage.exists(path)
+            ? vault.storage.readText(path)
+            : '';
+      }
+
+      final before = await tester.runAsync(readLog) ?? '';
       final gesture = await tester.startGesture(
         tester.getCenter(find.text('Remote issue')),
       );
       await tester.pump(const Duration(milliseconds: 600));
       await gesture.moveTo(
-        tester.getBottomLeft(find.byKey(ValueKey('board-column-$column'))) +
-            const Offset(100, -30),
+        tester.getCenter(find.byKey(ValueKey('board-$column-0'))),
       );
       await tester.pump();
       await gesture.up();
@@ -582,8 +612,17 @@ void main() {
               )
               .first,
         );
-        if (button.onPressed != null) break;
+        final log = await tester.runAsync(readLog) ?? '';
+        final added = Decision.parseLog(
+          log,
+        ).skip(Decision.parseLog(before).length);
+        if (added.isNotEmpty &&
+            added.last.action != 'sent' &&
+            button.onPressed != null) {
+          return;
+        }
       }
+      fail('Move to $column did not finish');
     }
 
     await move('doing');
@@ -972,10 +1011,16 @@ void main() {
         ),
       ),
     );
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 50)),
-    );
-    await tester.pump();
+    for (
+      var i = 0;
+      i < 100 && find.text('high · 2026-12-01').evaluate().isEmpty;
+      i++
+    ) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      await tester.pump();
+    }
     expect(find.text('normal'), findsNothing);
     expect(find.text('high · 2026-12-01'), findsOneWidget);
   });
@@ -1050,7 +1095,9 @@ void main() {
       await tester.pump();
     }
 
-    await settleIo();
+    for (var i = 0; i < 100 && find.text('fixit').evaluate().isEmpty; i++) {
+      await settleIo();
+    }
     expect(find.text('fixit'), findsOneWidget);
     final gesture = await tester.startGesture(
       tester.getCenter(find.text('bug')),

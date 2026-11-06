@@ -41,13 +41,21 @@ void main() {
       );
     });
     Future<void> poll(bool Function() ready) async {
-      for (var i = 0; i < 100 && !ready(); i++) {
+      for (var i = 0; i < 500 && !ready(); i++) {
         await tester.runAsync(
           () => Future<void>.delayed(const Duration(milliseconds: 20)),
         );
         await tester.pump();
       }
-      expect(ready(), isTrue);
+      final switches = find.byType(SegmentedButton<String>);
+      final selected = switches.evaluate().isEmpty
+          ? null
+          : tester.widget<SegmentedButton<String>>(switches).selected;
+      expect(
+        ready(),
+        isTrue,
+        reason: 'Board view did not become ready; selected: $selected',
+      );
     }
 
     await tester.pumpWidget(
@@ -62,14 +70,21 @@ void main() {
         ),
       ),
     );
-    await poll(() => find.text('Kanban').evaluate().isNotEmpty);
+    bool switchReady() {
+      final switches = find.byType(SegmentedButton<String>);
+      return switches.evaluate().isNotEmpty &&
+          tester.widget<SegmentedButton<String>>(switches).onSelectionChanged !=
+              null;
+    }
+
+    await poll(switchReady);
     await tester.tap(find.text('Whiteboard'));
     await tester.pump();
     await poll(
       () => find.byKey(const ValueKey('board-card-old')).evaluate().isNotEmpty,
     );
     Board? saved;
-    for (var i = 0; i < 100; i++) {
+    for (var i = 0; i < 500; i++) {
       saved = await tester.runAsync<Board?>(
         () => readBoard(vault.storage, 'project'),
       );
@@ -89,11 +104,11 @@ void main() {
     await gesture.moveBy(const Offset(40, 40));
     await gesture.up();
     await tester.pump(const Duration(milliseconds: 600));
-    for (var i = 0; i < 100; i++) {
+    for (var i = 0; i < 500; i++) {
       saved = await tester.runAsync<Board?>(
         () => readBoard(vault.storage, 'project'),
       );
-      if (saved?.cards.isNotEmpty == true) break;
+      if (saved?.cards.isNotEmpty == true && saved!.cards.single.x != 30) break;
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 20)),
       );
@@ -107,15 +122,21 @@ void main() {
       ),
       legacy,
     );
+    await poll(switchReady);
     await tester.tap(find.text('Tree'));
     await tester.pump();
     await poll(() => find.text('Pin to whiteboard').evaluate().isNotEmpty);
-    expect(
-      (await tester.runAsync(
+    for (var i = 0; i < 500; i++) {
+      saved = await tester.runAsync<Board?>(
         () => readBoard(vault.storage, 'project'),
-      ))?.layout,
-      'tree',
-    );
+      );
+      if (saved?.layout == 'tree') break;
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump();
+    }
+    expect(saved?.layout, 'tree');
     await tester.pumpWidget(const SizedBox());
   });
 }

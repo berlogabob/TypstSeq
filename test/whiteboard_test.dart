@@ -10,6 +10,8 @@ import 'package:tylog/widgets/entity_board.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog_core/tylog_core.dart';
 
+import 'support/temp_dir.dart';
+
 class CountingStorage extends LocalVaultStorage {
   CountingStorage(super.root);
   int reads = 0;
@@ -38,6 +40,7 @@ void main() {
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 30)),
       );
+      await tester.pump(const Duration(milliseconds: 50));
     }
     return null;
   }
@@ -46,7 +49,7 @@ void main() {
     dir = await Directory.systemTemp.createTemp('whiteboard-test');
     storage = LocalVaultStorage(dir);
   });
-  tearDown(() async => dir.delete(recursive: true));
+  tearDown(() => deleteTempDir(dir));
 
   testWidgets('adds OpenLabTwin hierarchy and shows cached asset stock', (
     tester,
