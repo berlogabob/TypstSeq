@@ -1916,10 +1916,6 @@ class WorkspaceController extends ChangeNotifier {
     final opened = vault;
     if (opened == null || (!always && indexedRevision >= savedRevision)) return;
     final generation = _vaultGeneration;
-    if (mounts.any((mount) => mount.source.extra['botVault'] == true)) {
-      await reloadMounts(rescan: false);
-      if (!_owns(opened, generation)) return;
-    }
     await _scan(opened, generation: generation, updateStatus: updateStatus);
     if (updateStatus && _owns(opened, generation) && _mountWarning != null) {
       status = _mountWarning!;
@@ -1945,10 +1941,6 @@ class WorkspaceController extends ChangeNotifier {
     status = 'Rebuilding index...';
     notifyListeners();
     try {
-      if (mounts.any((mount) => mount.source.extra['botVault'] == true)) {
-        await reloadMounts(rescan: false);
-        if (!_owns(opened, generation) || cancelRebuild) return;
-      }
       await _scan(
         opened,
         generation: generation,
@@ -2024,6 +2016,10 @@ class WorkspaceController extends ChangeNotifier {
       do {
         if (repeat) cancelRebuild = false;
         _rescanQueued = false;
+        if (mounts.any((mount) => mount.source.extra['botVault'] == true)) {
+          await reloadMounts(rescan: false);
+          if (!_owns(opened, generation) || cancelRebuild) break;
+        }
         await _scanOnce(
           opened,
           generation: generation,
