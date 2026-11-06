@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -1039,8 +1041,29 @@ void main() {
       await tester.pump();
     }
 
-    await io();
+    for (var i = 0; i < 5; i++) {
+      await io();
+    }
+    Future<void> waitUntilReady() async {
+      for (var i = 0; i < 50; i++) {
+        await io();
+        if (tester
+                .widget<IconButton>(
+                  find.ancestor(
+                    of: find.byTooltip('Sync with GitHub'),
+                    matching: find.byType(IconButton),
+                  ),
+                )
+                .onPressed !=
+            null) {
+          return;
+        }
+      }
+      fail('Board stayed busy');
+    }
+
     Future<void> move(String column) async {
+      await waitUntilReady();
       final gesture = await tester.startGesture(
         tester.getCenter(
           find.ancestor(
@@ -1056,13 +1079,32 @@ void main() {
       await tester.pump();
       await gesture.up();
       await tester.pump();
-      await io();
+      await waitUntilReady();
     }
 
     await move('doing');
+    for (var i = 0; i < 30 && !source.contains('"doing"'); i++) {
+      await io();
+    }
     expect(client.linkedDoing, isTrue);
     expect(source, contains('"tylog-issue-status": "doing"'));
     expect(source, contains('unsaved edit'));
+    var moveRows = <Decision>[];
+    for (var i = 0; i < 30; i++) {
+      final moveLog = await tester.runAsync(
+        () => vault.storage.readText('_system/decisions/github.jsonl'),
+      );
+      moveRows = Decision.parseLog(
+        moveLog!,
+      ).where((row) => row.source == 'linked-issue-move').toList();
+      if (moveRows.length == 2) break;
+      await io();
+    }
+    expect(moveRows.map((row) => row.action), ['sent', 'seen']);
+    expect(moveRows.first.context, moveRows.last.context);
+    for (var i = 0; i < 5; i++) {
+      await io();
+    }
     client.state = 'closed';
     await move('todo');
     for (var i = 0; i < 30 && !source.contains('"done"'); i++) {
@@ -1155,6 +1197,25 @@ void main() {
         properties: {'github': 'owner/repo'},
       );
       var source = '- #tylog.ref-note("p")[P] fixit broken';
+      await tester.runAsync(() async {
+        await vault.storage.createDirectory('_system/decisions');
+        await vault.storage.appendBytes(
+          '_system/decisions/github.jsonl',
+          utf8.encode(
+            encodeDecisions([
+              Decision(
+                at: '2026-01-01',
+                device: 'github',
+                item: 'owner/repo#123',
+                source: 'linked-issue-move',
+                action: 'sent',
+                target: 'doing',
+                context: 'interrupted',
+              ),
+            ]),
+          ),
+        );
+      });
       VaultIndex makeIndex() => VaultIndex(
         notesByPath: const {'p.typ': project},
         backlinksByTarget: const {},
@@ -1205,9 +1266,31 @@ void main() {
         );
         await tester.pump();
       }
-      final log = await tester.runAsync(
-        () => vault.storage.readText('_system/decisions/github.jsonl'),
+      String? log;
+      for (var i = 0; i < 30; i++) {
+        log = await tester.runAsync(
+          () => vault.storage.readText('_system/decisions/github.jsonl'),
+        );
+        if (log != null &&
+            Decision.parseLog(log).any(
+              (row) =>
+                  row.source == 'linked-issue-move' && row.action == 'seen',
+            )) {
+          break;
+        }
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 40)),
+        );
+        await tester.pump();
+      }
+      final rows = Decision.parseLog(log!);
+      expect(
+        rows
+            .where((row) => row.source == 'linked-issue-move')
+            .map((row) => row.action),
+        ['sent', 'seen'],
       );
+      expect(log, contains('interrupted move to doing'));
       expect(log, contains('owner/repo#123'));
     },
   );

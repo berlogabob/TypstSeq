@@ -161,6 +161,7 @@ class _EntityBoardState extends State<EntityBoard> {
     setState(() => busy = true);
     try {
       var target = column;
+      String? moveId;
       final repository = _repo(issue);
       if (issue.githubNumber != null) {
         if (repository == null ||
@@ -187,6 +188,15 @@ class _EntityBoardState extends State<EntityBoard> {
               .map((label) => label['name'])
               .whereType<String>()
               .toList();
+          moveId = DateTime.now().toUtc().microsecondsSinceEpoch.toString();
+          await _recordRepositoryMove(
+            repository,
+            issue.githubNumber!,
+            moveId,
+            'sent',
+            column,
+            source: 'linked-issue-move',
+          );
           var updated = false;
           try {
             await client.updateIssueColumn(
@@ -249,6 +259,16 @@ class _EntityBoardState extends State<EntityBoard> {
         (source) => setIssueStatus(source, issue, target),
       )) {
         throw StateError('Issue could not be saved');
+      }
+      if (moveId != null) {
+        await _recordRepositoryMove(
+          repository!,
+          issue.githubNumber!,
+          moveId,
+          'seen',
+          target,
+          source: 'linked-issue-move',
+        );
       }
       final next = await widget.refreshIndex();
       if (mounted && next != null) index = next;
@@ -530,8 +550,9 @@ class _EntityBoardState extends State<EntityBoard> {
     int number,
     String id,
     String action,
-    String column,
-  ) async {
+    String column, {
+    String source = 'repository-issue-move',
+  }) async {
     await widget.vault.storage.createDirectory(decisionsDir);
     await widget.vault.storage.appendBytes(
       '$decisionsDir/github.jsonl',
@@ -541,7 +562,7 @@ class _EntityBoardState extends State<EntityBoard> {
             at: DateTime.now().toIso8601String(),
             device: 'github',
             item: '$repository#$number',
-            source: 'repository-issue-move',
+            source: source,
             action: action,
             target: column,
             context: id,
@@ -593,6 +614,43 @@ class _EntityBoardState extends State<EntityBoard> {
     }
   }
 
+  Future<void> _reconcileLinkedMoves(
+    String repository,
+    int number,
+    String column,
+  ) async {
+    const path = '$decisionsDir/github.jsonl';
+    if (!await widget.vault.storage.exists(path)) return;
+    final pending = <String, Decision>{};
+    for (final decision in Decision.parseLog(
+      await widget.vault.storage.readText(path),
+    )) {
+      if (decision.source != 'linked-issue-move' ||
+          decision.item != '$repository#$number' ||
+          decision.context == null) {
+        continue;
+      }
+      if (decision.action == 'sent') pending[decision.context!] = decision;
+      if (decision.action == 'seen') pending.remove(decision.context);
+    }
+    for (final move in pending.values) {
+      await _recordConflict(
+        repository,
+        number,
+        column,
+        'interrupted move to ${move.target}; reconciled on board refresh',
+      );
+      await _recordRepositoryMove(
+        repository,
+        number,
+        move.context!,
+        'seen',
+        column,
+        source: 'linked-issue-move',
+      );
+    }
+  }
+
   Future<void> _sync() async {
     if (busy || widget.githubClient == null) return;
     final issues = issuesForEntity(
@@ -634,6 +692,7 @@ class _EntityBoardState extends State<EntityBoard> {
             'local status ${issue.status}',
           );
         }
+        await _reconcileLinkedMoves(repo, issue.githubNumber!, column);
       }
       final next = await widget.refreshIndex();
       if (mounted && next != null) index = next;
