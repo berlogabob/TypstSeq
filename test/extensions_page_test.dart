@@ -633,6 +633,14 @@ void main() {
     });
     await tester.pump();
     expect(find.textContaining('needs newer TyLog'), findsOneWidget);
+    await tester.runAsync(() async {
+      await workspace.reloadMounts();
+      expect(workspace.status, contains('needs newer TyLog'));
+      expect(workspace.index?.notesByPath['ext/bot/new.typ'], isNull);
+      await File('${bot.path}/bot-vault.json').writeAsString('{"schema":1}');
+      await workspace.reloadMounts();
+      expect(workspace.index?.notesByPath['ext/bot/new.typ'], isNotNull);
+    });
     await tester.pumpWidget(const SizedBox());
     await tester.runAsync(() async {
       workspace.dispose();

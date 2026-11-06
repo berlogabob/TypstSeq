@@ -18,6 +18,7 @@ import 'package:tylog_core/graph.dart';
 import 'package:tylog_core/tylog_core.dart'
     show Decision, decisionsDir, encodeDecisions;
 
+import 'bot_vault/decisions.dart' show checkBotManifest;
 import 'calendar_feeds.dart';
 import 'connectors/connector.dart';
 import 'github/github_auth.dart';
@@ -1205,10 +1206,17 @@ class WorkspaceController extends ChangeNotifier {
             await Directory(
               root,
             ).list().isEmpty.timeout(const Duration(seconds: 2));
+            if (mount.source.extra['botVault'] == true) {
+              await checkBotManifest(root);
+            }
             paths[mount.id] = root;
           }
-        } catch (_) {
-          unavailable.add(mount.name);
+        } catch (error) {
+          unavailable.add(
+            mount.source.extra['botVault'] == true
+                ? '${mount.name} ($error)'
+                : mount.name,
+          );
         }
       }
       if (!_owns(opened, generation) ||
@@ -1230,9 +1238,11 @@ class WorkspaceController extends ChangeNotifier {
       _mountWarning = unavailable.isEmpty
           ? null
           : 'Unavailable extensions: ${unavailable.join(', ')}';
-      if (_mountWarning != null) status = _mountWarning!;
       if (rescan) await _scan(opened, generation: generation);
-      if (_owns(opened, generation)) await loadGitHubConflicts();
+      if (_owns(opened, generation)) {
+        await loadGitHubConflicts();
+        if (_mountWarning != null) status = _mountWarning!;
+      }
     } catch (error) {
       if (!_owns(opened, generation) ||
           loadGeneration != _mountLoadGeneration) {
