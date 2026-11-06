@@ -58,6 +58,10 @@ One Decision row is `{at, device, item, source, action, target, context}`. Actio
 
 External Items (OLT, Microsoft) are cached outside the synced vault and become a note only when the user acts.
 
+## Knowledge states and provenance
+
+Every fact (link, mention, tag) and vocabulary item (tag, entity kind, cluster) carries one status — proposed, accepted, rejected, auto, obsolete — plus `proposed_by` and `confidence`. LLMs and rules only propose; vocabulary never changes without a decision, and cluster merges/splits/renames become proposals in Incoming. Desktop auto-links are recorded with status `auto`. See [docs/adr/0002-knowledge-states.md](../adr/0002-knowledge-states.md).
+
 ## Rules
 
 1. An external Entity (`source: openlabtwin`) is read-only in TyLog; edits go through OLT's API and its own access rules.
