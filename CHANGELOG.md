@@ -5,6 +5,8 @@ their history is in the commit log and the GitHub release notes.
 
 ## Unreleased
 
+## 0.21.1+168
+
 ### New
 
 - Bot vaults: a bot folder (schema 1) mounts read-only under Extensions,
@@ -21,6 +23,7 @@ their history is in the commit log and the GitHub release notes.
 - Old auto-Mentions block writer removed; legacy blocks self-heal on save.
 - Note writes refuse revision records and broken metadata at note paths.
 - GitHub board moves reconcile from the repository listing.
+- Board tests stable under load (CI).
 
 ## 0.21.0+167
 
