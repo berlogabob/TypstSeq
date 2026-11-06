@@ -462,6 +462,18 @@ class _GraphViewState extends State<GraphView>
                       dense: true,
                       leading: const Icon(Icons.description_outlined),
                       title: Text(selected.title, maxLines: 1),
+                      subtitle: switch (connectionReason(
+                        displayGraph,
+                        widget.currentPath,
+                        selected.path,
+                      )) {
+                        final r? => Text(
+                          r,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        _ => null,
+                      },
                       trailing: FilledButton.tonalIcon(
                         key: const Key('graph-open'),
                         onPressed: () => widget.onOpenPath(selected.path),
@@ -1762,4 +1774,63 @@ class _SwatchPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _SwatchPainter oldDelegate) =>
       color != oldDelegate.color || dashed != oldDelegate.dashed;
+}
+
+/// Why [selectedPath] is connected to [rootPath], for the selected-node bar.
+/// Returns null when there is no reason to show (or the two paths match).
+String? connectionReason(
+  NoteGraph graph,
+  String? rootPath,
+  String selectedPath,
+) {
+  if (rootPath == null || rootPath == selectedPath) return null;
+  final titleOf = <String, String>{
+    for (final node in graph.nodes) node.path: node.title,
+  };
+  String t(String path) => titleOf[path] ?? path;
+
+  final selected = graph.nodes
+      .where((node) => node.path == selectedPath)
+      .firstOrNull;
+  final reasons = <String>[];
+
+  for (final edge in graph.edges) {
+    final isLinked = edge.from == rootPath && edge.to == selectedPath;
+    final isLinkedBack = edge.from == selectedPath && edge.to == rootPath;
+    if (edge.kind == GraphEdgeKind.link) {
+      if (isLinked) reasons.add('This note links to it');
+      if (isLinkedBack) reasons.add('It links to this note');
+    } else if (edge.kind == GraphEdgeKind.citation) {
+      if (isLinked) reasons.add('Cited by this note');
+      if (isLinkedBack) reasons.add('It cites this note');
+    }
+    if ((isLinked || isLinkedBack) && selected?.kind == GraphNodeKind.concept) {
+      reasons.add('Tag #${t(selectedPath)}');
+    }
+  }
+
+  // Shared concept: a concept node linked (any direction) to both the root and
+  // the selected note. Scan each concept once for both connections.
+  for (final node in graph.nodes) {
+    if (node.kind != GraphNodeKind.concept) continue;
+    final cPath = node.path;
+    var linksRoot = false;
+    var linksSelected = false;
+    for (final edge in graph.edges) {
+      if (edge.from == cPath && edge.to == rootPath ||
+          edge.from == rootPath && edge.to == cPath) {
+        linksRoot = true;
+      }
+      if (edge.from == cPath && edge.to == selectedPath ||
+          edge.from == selectedPath && edge.to == cPath) {
+        linksSelected = true;
+      }
+    }
+    if (linksRoot && linksSelected) {
+      reasons.add('Both tagged #${t(cPath)}');
+    }
+  }
+
+  if (reasons.isEmpty) return null;
+  return reasons.toSet().take(3).join(' · ');
 }

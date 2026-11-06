@@ -749,4 +749,29 @@ void main() {
     await tester.tap(find.byTooltip('Export SVG'));
     expect(exported, same(graph));
   });
+
+  test('connectionReason explains links, backlinks and shared tags', () {
+    const graph = NoteGraph(
+      nodes: [
+        GraphNode(path: 'a', title: 'A'),
+        GraphNode(path: 'b', title: 'B'),
+        GraphNode(path: 'c', title: 'C'),
+        GraphNode(path: 'concept:x', title: 'x', kind: GraphNodeKind.concept),
+      ],
+      edges: [
+        GraphEdge(from: 'a', to: 'b'),
+        GraphEdge(from: 'c', to: 'a'),
+        GraphEdge(from: 'a', to: 'concept:x', kind: GraphEdgeKind.tag),
+        GraphEdge(from: 'c', to: 'concept:x', kind: GraphEdgeKind.tag),
+      ],
+    );
+    expect(connectionReason(graph, 'a', 'b'), 'This note links to it');
+    expect(
+      connectionReason(graph, 'a', 'c'),
+      'It links to this note · Both tagged #x',
+    );
+    expect(connectionReason(graph, 'a', 'concept:x'), 'Tag #x');
+    expect(connectionReason(graph, 'a', 'a'), isNull);
+    expect(connectionReason(graph, null, 'b'), isNull);
+  });
 }
