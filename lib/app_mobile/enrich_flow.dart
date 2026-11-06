@@ -22,6 +22,20 @@ EnrichDayResolution _resolveEnrichDay(
   (EnrichMentions, NoteRef, EnrichMemory, VaultIndex, String) input,
 ) => resolveEnrichDay(input.$1, input.$2, input.$3, input.$4, input.$5);
 
+typedef _EnrichPageWork = ({
+  String path,
+  NoteRef ref,
+  String source,
+  EnrichMentions mentions,
+});
+
+List<EnrichDayResolution> _resolveEnrichPage(
+  (List<_EnrichPageWork>, EnrichMemory, VaultIndex) input,
+) => [
+  for (final work in input.$1)
+    resolveEnrichDay(work.mentions, work.ref, input.$2, input.$3, work.source),
+];
+
 /// Day-log enrichment in the app: reads the worker's mentions files,
 /// resolves them with [EnrichMemory], and records decisions in the ledger.
 extension _EnrichFlow on _HomeScreenState {
@@ -261,6 +275,92 @@ extension _EnrichFlow on _HomeScreenState {
     );
     _enrichMemo = (memoKey, result);
     return result;
+  }
+
+  Future<Map<String, _EnrichView>> _applyEnrichmentPage(
+    List<String> paths,
+    EnrichMemory memory,
+    VaultIndex currentIndex,
+    int currentIndexRevision,
+  ) async {
+    final results = <String, _EnrichView>{};
+    final pending = <_EnrichPageWork>[];
+    for (final path in paths) {
+      try {
+        final ref = currentIndex.notesByPath[path];
+        final v = vault;
+        if (v == null || ref == null) continue;
+        final mentions = await _readMentions(v, path);
+        if (mentions == null) continue;
+        final source = path == note
+            ? workspace.source
+            : await v.storage.readText(path);
+        if (enrichContentSha(source) != mentions.contentSha) continue;
+        final memoKey = (
+          path,
+          source,
+          mentions.contentSha,
+          memory,
+          currentIndexRevision,
+        );
+        if (_enrichMemo case (final key, final result) when key == memoKey) {
+          results[path] = result;
+        } else {
+          pending.add((
+            path: path,
+            ref: ref,
+            source: source,
+            mentions: mentions,
+          ));
+        }
+      } catch (error) {
+        _enrichTrace('$path error $error');
+      }
+    }
+    if (pending.isEmpty) return results;
+    late final List<EnrichDayResolution> resolutions;
+    try {
+      resolutions = await compute(_resolveEnrichPage, (
+        pending,
+        memory,
+        currentIndex,
+      ));
+    } catch (error) {
+      _enrichTrace('incoming page resolution error $error');
+      for (final work in pending) {
+        try {
+          results[work.path] = await _applyEnrichment(
+            work.path,
+            memory,
+            currentIndex,
+            currentIndexRevision,
+          );
+        } catch (error) {
+          _enrichTrace('${work.path} error $error');
+        }
+      }
+      return results;
+    }
+    for (var i = 0; i < pending.length; i++) {
+      final work = pending[i];
+      final resolution = resolutions[i];
+      final view = (
+        decisions: resolution.decisions,
+        tags: resolution.tags,
+        markers: resolution.markers,
+        source: work.source,
+      );
+      final memoKey = (
+        work.path,
+        work.source,
+        work.mentions.contentSha,
+        memory,
+        currentIndexRevision,
+      );
+      _enrichMemo = (memoKey, view);
+      results[work.path] = view;
+    }
+    return results;
   }
 
   Future<void> _recordEnrichFeedback(
@@ -543,20 +643,11 @@ extension _EnrichIncoming on _HomeScreenState {
     }) async {
       final indexRevision = workspace.indexRevision;
       if (paths == null) {
-        if (!await v.storage.exists(enrichMentionsDir)) return {};
-        final files = await v.storage.list(
-          path: enrichMentionsDir,
-          recursive: true,
-        );
         paths =
-            files
-                .where((f) => !f.isDirectory && f.path.endsWith('.json'))
-                .map(
-                  (f) =>
-                      '${f.path.substring(enrichMentionsDir.length + 1, f.path.length - 5)}.typ',
-                )
+            currentIndex.notesByPath.keys
                 .where(
-                  (p) => p.startsWith('daily/') && (day == null || day == p),
+                  (path) =>
+                      path.startsWith('daily/') && (day == null || day == path),
                 )
                 .toList()
               ..sort((a, b) => b.compareTo(a));
@@ -581,26 +672,23 @@ extension _EnrichIncoming on _HomeScreenState {
       }
       final memory = await _enrichMemory(v, currentIndex);
       if (workspace.indexRevision != indexRevision) return {};
+      final pageViews = await _applyEnrichmentPage(
+        eligiblePage,
+        memory,
+        currentIndex,
+        indexRevision,
+      );
+      if (workspace.indexRevision != indexRevision) return {};
       for (final path in eligiblePage) {
         views.remove(path);
-        try {
-          final view = await _applyEnrichment(
-            path,
-            memory,
-            currentIndex,
-            indexRevision,
-          );
-          if (workspace.indexRevision != indexRevision) return {};
-          if (view.decisions.isEmpty &&
-              view.tags.isEmpty &&
-              view.markers.isEmpty) {
-            continue;
-          }
-          views[path] = view;
-          await _recordEnrichShown(v, path, view, memory);
-        } catch (error) {
-          _enrichTrace('$path error $error');
+        final view = pageViews[path] ?? _noEnrich;
+        if (view.decisions.isEmpty &&
+            view.tags.isEmpty &&
+            view.markers.isEmpty) {
+          continue;
         }
+        views[path] = view;
+        await _recordEnrichShown(v, path, view, memory);
       }
       final ordered = views.keys.toList()..sort((a, b) => b.compareTo(a));
       return {for (final path in ordered) path: views[path]!};
@@ -616,31 +704,42 @@ extension _EnrichIncoming on _HomeScreenState {
     >
     loadQueue({bool next = false, String? refreshPath}) async {
       try {
-        final mentions = await load(next: next, refreshPath: refreshPath);
-        final decisions = decisionSnapshot ??= await loadDecisions(
-          v.storage,
-          includeEnrichment: false,
-        );
+        final mentionsFuture = load(next: next, refreshPath: refreshPath);
+        final decisionsFuture = decisionSnapshot == null
+            ? loadDecisions(v.storage, includeEnrichment: false)
+            : Future.value(decisionSnapshot!);
+        final mentions = await mentionsFuture;
+        final decisions = await decisionsFuture;
+        decisionSnapshot ??= decisions;
+        if (day != null) {
+          return (
+            mentions,
+            <OcrReviewRow>[],
+            <AudioProposal>[],
+            <HealthFinding>[],
+          );
+        }
+        final queue = await Future.wait<Object>([
+          loadOcrReviewRows(
+            v.storage,
+            workspace.mounts.map((mount) => mount.id),
+            decisions,
+            offset: ocrOffset,
+            summary: _actionableSidecars,
+          ),
+          loadAudioProposals(
+            v.storage,
+            decisions,
+            offset: audioOffset,
+            summary: _actionableSidecars,
+          ),
+          loadHealthFindings(v.storage),
+        ]);
         return (
           mentions,
-          day == null
-              ? await loadOcrReviewRows(
-                  v.storage,
-                  workspace.mounts.map((mount) => mount.id),
-                  decisions,
-                  offset: ocrOffset,
-                  summary: _actionableSidecars,
-                )
-              : <OcrReviewRow>[],
-          day == null
-              ? await loadAudioProposals(
-                  v.storage,
-                  decisions,
-                  offset: audioOffset,
-                  summary: _actionableSidecars,
-                )
-              : <AudioProposal>[],
-          day == null ? await loadHealthFindings(v.storage) : <HealthFinding>[],
+          queue[0] as List<OcrReviewRow>,
+          queue[1] as List<AudioProposal>,
+          queue[2] as List<HealthFinding>,
         );
       } catch (error) {
         loadError = error;

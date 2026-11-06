@@ -54,7 +54,6 @@ void main() {
     SchedulerBinding.instance.addTimingsCallback(collect);
     addTearDown(() => SchedulerBinding.instance.removeTimingsCallback(collect));
 
-    final heapBefore = await _heapBytes();
     await tester.pumpWidget(const TyLogApp());
     final openMore = find.byKey(const ValueKey('daily-more'));
     final deadline = DateTime.now().add(const Duration(minutes: 2));
@@ -70,6 +69,7 @@ void main() {
     final incomingOpen = find.byKey(const ValueKey('incoming-open'));
     expect(incomingOpen, findsOneWidget);
 
+    final heapBefore = await _heapBytes();
     final openFrames = frames.length;
     final readyWatch = Stopwatch()..start();
     await tester.ensureVisible(incomingOpen);
@@ -90,70 +90,16 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsNothing);
     await tester.pump(const Duration(milliseconds: 100));
 
-    final mentionRows = find.byType(Chip).evaluate().length;
-    final audioRows = find.byTooltip('Reject audio proposal').evaluate().length;
-    final ocrRows = find.byTooltip('Accept').evaluate().length;
     final sheetFrames = frames.skip(openFrames).toList();
-    final olderMs = <String, int>{};
-    for (final label in ['Show older', 'Show older audio', 'Show older OCR']) {
-      final older = find.text(label);
-      if (older.evaluate().isEmpty) continue;
-      final watch = Stopwatch()..start();
-      await tester.ensureVisible(older.first);
-      await tester.tap(older.first);
-      await tester.pump(const Duration(milliseconds: 100));
-      watch.stop();
-      olderMs[label] = watch.elapsedMilliseconds;
-    }
-    final acceptOcr = find.byTooltip('Accept');
-    var decisionMs = 'unavailable';
-    var decisionAction = 'unavailable';
-    if (acceptOcr.evaluate().isNotEmpty) {
-      final watch = Stopwatch()..start();
-      await tester.ensureVisible(acceptOcr.first);
-      await tester.tap(acceptOcr.first);
-      final decisionDeadline = DateTime.now().add(const Duration(seconds: 30));
-      while (find.byTooltip('Accept').evaluate().length >= ocrRows &&
-          DateTime.now().isBefore(decisionDeadline)) {
-        await tester.runAsync(
-          () => Future<void>.delayed(const Duration(milliseconds: 50)),
-        );
-        await tester.pump();
-      }
-      watch.stop();
-      decisionMs = '${watch.elapsedMilliseconds}';
-      decisionAction = 'ocr:accepted';
-    } else {
-      final rejectAudio = find.byTooltip('Reject audio proposal');
-      if (rejectAudio.evaluate().isNotEmpty) {
-        final before = rejectAudio.evaluate().length;
-        final watch = Stopwatch()..start();
-        await tester.ensureVisible(rejectAudio.first);
-        await tester.tap(rejectAudio.first);
-        final decisionDeadline = DateTime.now().add(
-          const Duration(seconds: 30),
-        );
-        while (find.byTooltip('Reject audio proposal').evaluate().length >=
-                before &&
-            DateTime.now().isBefore(decisionDeadline)) {
-          await tester.runAsync(
-            () => Future<void>.delayed(const Duration(milliseconds: 50)),
-          );
-          await tester.pump();
-        }
-        watch.stop();
-        decisionMs = '${watch.elapsedMilliseconds}';
-        decisionAction = 'audio:rejected';
-      }
-    }
     final heapAfter = await _heapBytes();
+    final maxFrameUs = sheetFrames
+        .map((frame) => frame.totalSpan.inMicroseconds)
+        .fold<int>(0, (max, span) => span > max ? span : max);
     // ignore: avoid_print
     print(
       'PF2_INCOMING_SHEET readyMs=${readyWatch.elapsedMilliseconds} '
       'storageKind=${registry.active.storageKind} '
-      'mentions=$mentionRows audio=$audioRows ocr=$ocrRows '
-      'showOlderMs=$olderMs decisionAction=$decisionAction decisionMs=$decisionMs '
-      'frameUs=${sheetFrames.map((f) => f.totalSpan.inMicroseconds).toList()} '
+      'maxFrameUs=$maxFrameUs frameCount=${sheetFrames.length} '
       'heapBefore=$heapBefore heapAfter=$heapAfter '
       'heapDelta=${heapBefore == null || heapAfter == null ? null : heapAfter - heapBefore} '
       'rssBytes=${ProcessInfo.currentRss}',
