@@ -1915,11 +1915,16 @@ class WorkspaceController extends ChangeNotifier {
   }) async {
     final opened = vault;
     if (opened == null || (!always && indexedRevision >= savedRevision)) return;
-    await _scan(
-      opened,
-      generation: _vaultGeneration,
-      updateStatus: updateStatus,
-    );
+    final generation = _vaultGeneration;
+    if (mounts.any((mount) => mount.source.extra['botVault'] == true)) {
+      await reloadMounts(rescan: false);
+      if (!_owns(opened, generation)) return;
+    }
+    await _scan(opened, generation: generation, updateStatus: updateStatus);
+    if (updateStatus && _owns(opened, generation) && _mountWarning != null) {
+      status = _mountWarning!;
+      notifyListeners();
+    }
   }
 
   /// [force] discards the scan cache and re-compiles every note — the manual
