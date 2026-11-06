@@ -283,11 +283,18 @@ class GitHubClient {
     int number,
     String column,
     List<String> labels, {
-    String? currentColumn,
+    required String currentColumn,
   }) async {
+    final changesLabel =
+        (column == 'doing' && !labels.contains('doing')) ||
+        (column == 'todo' && labels.contains('doing'));
+    if (currentColumn == 'done' && column != 'done' && changesLabel) {
+      throw StateError(
+        'Reopen this issue and set its doing label on GitHub, then refresh the board',
+      );
+    }
     final path = '/repos/${_repo(repo)}/issues/$number';
-    final result =
-        currentColumn != null && (currentColumn == 'done') == (column == 'done')
+    final result = (currentColumn == 'done') == (column == 'done')
         ? <String, dynamic>{}
         : await _json(
             'PATCH',

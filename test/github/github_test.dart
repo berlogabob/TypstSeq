@@ -75,12 +75,53 @@ void main() {
       await request.response.close();
     });
     final client = GitHubClient(null, http, base);
-    await client.updateIssueColumn('a/b', 42, 'doing', ['bug']);
+    await client.updateIssueColumn('a/b', 42, 'doing', [
+      'bug',
+    ], currentColumn: 'todo');
     expect(labels, {'bug', 'concurrent', 'doing'});
-    await client.updateIssueColumn('a/b', 42, 'done', ['bug', 'doing']);
+    await client.updateIssueColumn('a/b', 42, 'done', [
+      'bug',
+      'doing',
+    ], currentColumn: 'doing');
     expect(labels, {'bug', 'concurrent', 'doing'});
-    await client.updateIssueColumn('a/b', 42, 'todo', ['bug', 'doing']);
+    await client.updateIssueColumn('a/b', 42, 'todo', [
+      'bug',
+      'doing',
+    ], currentColumn: 'doing');
     expect(labels, {'bug', 'concurrent'});
+  });
+
+  test('reopening never submits separate state and label changes', () async {
+    var requests = 0;
+    server.listen((request) async {
+      requests++;
+      await request.drain<void>();
+      request.response.write('{}');
+      await request.response.close();
+    });
+    final client = GitHubClient(null, http, base);
+    for (final move in [
+      (column: 'doing', labels: <String>[]),
+      (column: 'todo', labels: <String>['doing']),
+    ]) {
+      await expectLater(
+        client.updateIssueColumn(
+          'a/b',
+          42,
+          move.column,
+          move.labels,
+          currentColumn: 'done',
+        ),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            contains('GitHub'),
+          ),
+        ),
+      );
+    }
+    expect(requests, 0);
   });
 
   test(
