@@ -1965,7 +1965,7 @@ void main() {
     final first = tester.widget<GraphView>(find.byType(GraphView)).graph;
     menu.onSelected!('allFiles');
     await tester.pump();
-    menu.onSelected!('conceptMap');
+    menu.onSelected!('local');
     await tester.pump();
 
     expect(

@@ -494,8 +494,8 @@ class _GraphViewState extends State<GraphView>
             InteractiveViewer(
               transformationController: _transform,
               constrained: false,
-              minScale: 0.1,
-              maxScale: 4,
+              minScale: 0.3,
+              maxScale: 3,
               boundaryMargin: const EdgeInsets.all(80),
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,

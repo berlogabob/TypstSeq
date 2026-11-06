@@ -323,8 +323,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// the Share as PDF item in the More menu.
   @visibleForTesting
   Future<void> sharePdfForTesting() => _sharePdf();
-  // Graph overview mode: 'conceptMap' (default), 'local', or 'allFiles'.
-  String _graphMode = 'conceptMap';
+  // Graph overview mode: 'local' (default), 'conceptMap', or 'allFiles'.
+  String _graphMode = 'local';
   // Concept/note path the local graph is rooted at when expanded from the map.
   String? _graphFocusPath;
 
@@ -364,6 +364,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       'timeline' => buildTimelineGraph(idx, {
         for (final r in _mergedRecent()) r.path: isoDay(r.openedAt),
       }),
+      // No note open yet: focused view would be empty, show the overview.
+      _ when (_graphFocusPath ?? current) == null => buildConceptMap(idx),
       _ => buildLocalNoteGraph(idx, _graphFocusPath ?? current),
     };
     final bounded = boundGraphForLayout(built, currentPath: current);
@@ -6808,11 +6810,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   _graphFocusPath = null;
                 }),
                 itemBuilder: (_) => const [
-                  PopupMenuItem(
-                    value: 'conceptMap',
-                    child: Text('Concept map'),
-                  ),
                   PopupMenuItem(value: 'local', child: Text('Focused')),
+                  PopupMenuItem(value: 'conceptMap', child: Text('Overview')),
+                  PopupMenuDivider(),
                   PopupMenuItem(value: 'allFiles', child: Text('All files')),
                   PopupMenuItem(value: 'timeline', child: Text('Timeline')),
                   PopupMenuItem(value: 'voronoi', child: Text('Voronoi')),
