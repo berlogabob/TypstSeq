@@ -8,6 +8,8 @@ import 'package:tylog/vault_storage.dart';
 import 'package:tylog/workspace_controller.dart';
 import 'package:tylog_core/tylog_core.dart' show loadDecisions;
 
+import 'support/temp_dir.dart';
+
 class _DelayedStorage extends LocalVaultStorage {
   _DelayedStorage(super.root);
 
@@ -42,7 +44,7 @@ void main() {
       )..vault = vault;
       addTearDown(() async {
         workspace.dispose();
-        await root.delete(recursive: true);
+        await deleteTempDir(root);
       });
       await storage.createDirectory('notes/other');
       await storage.writeText(
@@ -91,7 +93,7 @@ void main() {
     )..vault = vault;
     addTearDown(() async {
       workspace.dispose();
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
     await storage.createDirectory('notes/other');
     await storage.writeText(
@@ -133,7 +135,7 @@ void main() {
     )..vault = vault;
     addTearDown(() async {
       workspace.dispose();
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
     await storage.createDirectory('notes/other');
     await storage.writeText(
@@ -175,7 +177,7 @@ void main() {
     )..vault = vault;
     addTearDown(() async {
       workspace.dispose();
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
     await storage.createDirectory('notes/other');
     await storage.writeText(
@@ -217,7 +219,7 @@ void main() {
     )..vault = vault;
     addTearDown(() async {
       workspace.dispose();
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
     await storage.createDirectory('notes/other');
     await storage.writeText(
@@ -259,7 +261,7 @@ void main() {
     )..vault = vault;
     addTearDown(() async {
       workspace.dispose();
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
     await storage.createDirectory('notes/other');
     await storage.writeText(
@@ -305,7 +307,7 @@ void main() {
     )..vault = vault;
     addTearDown(() async {
       workspace.dispose();
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
     await storage.createDirectory('notes/other');
     await storage.writeText(
@@ -349,7 +351,7 @@ void main() {
       )..vault = vault;
       addTearDown(() async {
         workspace.dispose();
-        await root.delete(recursive: true);
+        await deleteTempDir(root);
       });
       await storage.createDirectory('notes/other');
       await storage.writeText(
@@ -402,7 +404,7 @@ void main() {
       )..vault = vault;
       addTearDown(() async {
         workspace.dispose();
-        await root.delete(recursive: true);
+        await deleteTempDir(root);
       });
       for (final id in ['a', 'b']) {
         await storage.writeText(
@@ -469,7 +471,7 @@ void main() {
       )..vault = vault;
       addTearDown(() async {
         workspace.dispose();
-        await root.delete(recursive: true);
+        await deleteTempDir(root);
       });
       for (final id in ['a', 'b']) {
         await storage.writeText(
@@ -542,7 +544,7 @@ void main() {
     )..vault = vault;
     addTearDown(() async {
       workspace.dispose();
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
     await storage.createDirectory('notes/other');
     await storage.writeText(
@@ -582,7 +584,7 @@ void main() {
     )..vault = vault;
     addTearDown(() async {
       workspace.dispose();
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
     await storage.createDirectory('notes/other');
     await storage.writeText(
@@ -629,7 +631,7 @@ void main() {
     )..vault = vault;
     addTearDown(() async {
       workspace.dispose();
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
     await storage.createDirectory('notes/other');
     await storage.writeText(
@@ -678,7 +680,7 @@ void main() {
     )..vault = vault;
     addTearDown(() async {
       workspace.dispose();
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
     await storage.writeText(
       'notes/a.typ',
@@ -759,7 +761,7 @@ void main() {
     )..vault = vault;
     addTearDown(() async {
       workspace.dispose();
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
     for (var i = 0; i < 12; i++) {
       await storage.writeText(
@@ -786,7 +788,7 @@ void main() {
       )..vault = vault;
       addTearDown(() async {
         workspace.dispose();
-        await root.delete(recursive: true);
+        await deleteTempDir(root);
       });
       await storage.writeText(
         'notes/a.typ',
@@ -853,7 +855,7 @@ void main() {
     )..vault = vault;
     addTearDown(() async {
       workspace.dispose();
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
     await storage.createDirectory('notes/other');
     await storage.writeText(
@@ -902,7 +904,7 @@ void main() {
     )..vault = vault;
     addTearDown(() async {
       workspace.dispose();
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
     await storage.createDirectory('notes/other');
     await storage.writeText(
@@ -949,7 +951,7 @@ void main() {
     )..vault = vault;
     addTearDown(() async {
       workspace.dispose();
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
     await storage.createDirectory('notes/other');
     await storage.writeText(
@@ -1008,7 +1010,7 @@ void main() {
     )..vault = vault;
     addTearDown(() async {
       workspace.dispose();
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
     await storage.createDirectory('notes/other');
     await storage.writeText(
@@ -1078,7 +1080,7 @@ void main() {
             ..deviceId = 'test';
       addTearDown(() async {
         workspace.dispose();
-        await root.delete(recursive: true);
+        await deleteTempDir(root);
       });
       await storage.writeText(
         'notes/keep.typ',
@@ -1164,7 +1166,7 @@ void main() {
       )..vault = vault;
       addTearDown(() async {
         workspace.dispose();
-        await root.delete(recursive: true);
+        await deleteTempDir(root);
       });
       await storage.writeText(
         'notes/a.typ',
@@ -1210,7 +1212,7 @@ void main() {
       )..vault = vault;
       addTearDown(() async {
         workspace.dispose();
-        await root.delete(recursive: true);
+        await deleteTempDir(root);
       });
       await storage.writeText(
         'notes/a.typ',
@@ -1272,7 +1274,7 @@ void main() {
     )..vault = vault;
     addTearDown(() async {
       workspace.dispose();
-      await root.delete(recursive: true);
+      await deleteTempDir(root);
     });
     await storage.createDirectory('notes/other');
     await storage.writeText(

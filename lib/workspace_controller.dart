@@ -461,6 +461,9 @@ class WorkspaceController extends ChangeNotifier {
   // a vault switch; only the epoch that started it may publish its result.
   int _vaultGeneration = 0;
   bool _autoClusterStarted = false;
+  // Read at vault open and after a recluster, never per edit: refreshDerived
+  // runs on every change and must not do file I/O.
+  Map<String, List<String>>? _clusterSnapshot;
 
   bool _owns(Vault opened, int generation) =>
       !_disposed && identical(vault, opened) && _vaultGeneration == generation;
@@ -497,36 +500,7 @@ class WorkspaceController extends ChangeNotifier {
     _derivingRevision = revision;
     final CommunityMap next;
     try {
-      Map<String, List<String>>? snapshot;
-      final opened = vault;
-      if (opened != null &&
-          await opened.storage.exists('_system/clusters/snapshot.json')) {
-        try {
-          final json =
-              jsonDecode(
-                    await opened.storage.readText(
-                      '_system/clusters/snapshot.json',
-                    ),
-                  )
-                  as Map;
-          if (json['schema'] == 1 && json['clusters'] is Map) {
-            final rawClusters = json['clusters'] as Map;
-            if (rawClusters.entries.every(
-              (entry) =>
-                  entry.key is String &&
-                  entry.value is List &&
-                  (entry.value as List).every((tag) => tag is String),
-            )) {
-              snapshot = {
-                for (final entry in rawClusters.entries)
-                  entry.key as String: (entry.value as List).cast<String>(),
-              };
-            }
-          }
-        } catch (_) {
-          snapshot = null;
-        }
-      }
+      final snapshot = _clusterSnapshot;
       if (snapshot != null) {
         next = await compute(communitiesFromSnapshotIsolate, (
           current,
@@ -711,6 +685,7 @@ class WorkspaceController extends ChangeNotifier {
     _workerShutdowns.add(flushSearch().catchError((_) {}));
     _vaultGeneration++;
     _autoClusterStarted = false;
+    _clusterSnapshot = null;
     _mountFetcher = null;
     _feedFlight = null;
     _eventCreates.clear();
@@ -858,6 +833,7 @@ class WorkspaceController extends ChangeNotifier {
       vault = opened;
       kindRegistry.value = const {};
       await reloadKindRegistry();
+      await reloadClusterSnapshot();
       if (!_owns(opened, generation)) return;
       entry = next;
       note = today;
@@ -3591,6 +3567,42 @@ class WorkspaceController extends ChangeNotifier {
     return current;
   }
 
+  /// Re-reads `_system/clusters/snapshot.json` (schema 1) into memory; call
+  /// after anything rewrites it, then [refreshDerived].
+  Future<void> reloadClusterSnapshot() async {
+    final opened = vault;
+    Map<String, List<String>>? snapshot;
+    try {
+      if (opened != null &&
+          await opened.storage.exists('_system/clusters/snapshot.json')) {
+        final json =
+            jsonDecode(
+                  await opened.storage.readText(
+                    '_system/clusters/snapshot.json',
+                  ),
+                )
+                as Map;
+        final raw = json['clusters'];
+        if (json['schema'] == 1 &&
+            raw is Map &&
+            raw.entries.every(
+              (e) =>
+                  e.key is String &&
+                  e.value is List &&
+                  (e.value as List).every((tag) => tag is String),
+            )) {
+          snapshot = {
+            for (final e in raw.entries)
+              e.key as String: (e.value as List).cast<String>(),
+          };
+        }
+      }
+    } catch (_) {
+      snapshot = null; // Malformed snapshot: fall back to computing.
+    }
+    if (identical(vault, opened)) _clusterSnapshot = snapshot;
+  }
+
   void _startAutoCluster(VaultIndex current) {
     if (Platform.environment.containsKey('FLUTTER_TEST') ||
         _autoClusterStarted ||
@@ -3629,6 +3641,7 @@ class WorkspaceController extends ChangeNotifier {
       }
       if (stale && _owns(opened, generation)) {
         await runClusterStep(opened.storage, current, now: DateTime.now());
+        await reloadClusterSnapshot();
         await refreshDerived();
       }
     } catch (_) {

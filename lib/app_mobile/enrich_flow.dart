@@ -876,6 +876,7 @@ extension _EnrichIncoming on _HomeScreenState {
                                         currentIndex,
                                         now: DateTime.now(),
                                       );
+                                      await workspace.reloadClusterSnapshot();
                                       await workspace.refreshDerived();
                                       if (context.mounted) {
                                         setSheetState(() {
