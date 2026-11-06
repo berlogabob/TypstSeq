@@ -238,6 +238,46 @@ void main() {
       isNot(contains('ext/ref/reference.typ')),
     );
   });
+  test('manual index rebuild rechecks bot vault compatibility', () async {
+    final root = await Directory.systemTemp.createTemp('bot-rebuild');
+    addTearDown(() => deleteTempDir(root));
+    final bot = await Directory('${root.path}/bot').create();
+    final manifest = File('${bot.path}/bot-vault.json');
+    await manifest.writeAsString('{"schema":1}');
+    await File('${bot.path}/item.typ').writeAsString('= Bot item');
+    final vaultDir = Directory('${root.path}/vault');
+    final storage = LocalVaultStorage(vaultDir);
+    final controller = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      inspector: _FakeInspector(),
+      reconcileTasks: (_) async {},
+    );
+    addTearDown(controller.dispose);
+    await controller.openVault(
+      VaultEntry(id: 'local', name: 'Local', path: vaultDir.path),
+      storage: storage,
+    );
+    await storage.writeText(
+      '_system/settings/mounts.json',
+      jsonEncode([
+        {
+          'id': 'bot',
+          'name': 'Bot',
+          'source': {'kind': 'folder', 'path': bot.path, 'botVault': true},
+          'push': false,
+        },
+      ]),
+    );
+    await controller.reloadMounts();
+    expect(controller.index!.notesByPath, contains('ext/bot/item.typ'));
+    await manifest.writeAsString('{"schema":2}');
+    await controller.rebuildIndex();
+    expect(controller.index!.notesByPath, isNot(contains('ext/bot/item.typ')));
+    expect(controller.status, contains('needs newer TyLog'));
+    await manifest.writeAsString('{"schema":1}');
+    await controller.rebuildIndex();
+    expect(controller.index!.notesByPath, contains('ext/bot/item.typ'));
+  });
   test('save during refresh waits and keeps the edit', () async {
     final root = await Directory.systemTemp.createTemp('mount-race');
     addTearDown(() => deleteTempDir(root));

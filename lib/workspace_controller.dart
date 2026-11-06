@@ -1940,12 +1940,19 @@ class WorkspaceController extends ChangeNotifier {
     status = 'Rebuilding index...';
     notifyListeners();
     try {
+      if (mounts.any((mount) => mount.source.extra['botVault'] == true)) {
+        await reloadMounts(rescan: false);
+        if (!_owns(opened, generation) || cancelRebuild) return;
+      }
       await _scan(
         opened,
         generation: generation,
         force: force,
         showProgress: true,
       );
+      if (_owns(opened, generation) && _mountWarning != null) {
+        status = _mountWarning!;
+      }
     } finally {
       if (_owns(opened, generation)) {
         rebuilding = false;
