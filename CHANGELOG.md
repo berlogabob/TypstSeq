@@ -5,6 +5,28 @@ their history is in the commit log and the GitHub release notes.
 
 ## Unreleased
 
+### New
+
+- Graph opens Focused on the current note (2 hops, busy hubs not expanded);
+  Overview, All files, Timeline and Voronoi sit in the mode menu.
+- Graph explains why a selected note is connected (link, backlink, same tag,
+  suggested link). Suggested links show dashed, with Accept/Reject in the
+  graph; the decision goes to the enrich feedback ledger.
+- Voronoi and graph share the selected note.
+- Knowledge states (ADR 0002): feedback rows carry `proposed_by` and
+  `confidence`; desktop auto-writes are logged as `auto`.
+- Incoming: "Run suggestions now" and "Recluster now"; cluster
+  rename/merge/split proposals with Accept/Reject.
+- `tylog cluster <vault>`: stable cluster labels (Jaccard matching), writes
+  `_system/clusters/snapshot.json` and `proposals.json`; changes apply only
+  after an accepted decision. The app reads the snapshot. LaunchAgent template
+  `tool/launchd/org.tylog.cluster.plist` (not installed by default).
+
+### Fixed
+
+- Graph no longer jumps on filter changes; Fit animates; zoom clamped
+  0.3-3x; plain-language legend; Hubs chip removed.
+
 ## 0.21.1+168
 
 ### New
