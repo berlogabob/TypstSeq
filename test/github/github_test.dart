@@ -125,6 +125,41 @@ void main() {
   });
 
   test(
+    'reopening with an already matching label never overwrites GitHub',
+    () async {
+      var requests = 0;
+      server.listen((request) async {
+        requests++;
+        await request.drain<void>();
+        await request.response.close();
+      });
+      final client = GitHubClient(null, http, base);
+      for (final move in [
+        (column: 'todo', labels: <String>[]),
+        (column: 'doing', labels: <String>['doing']),
+      ]) {
+        await expectLater(
+          client.updateIssueColumn(
+            'a/b',
+            42,
+            move.column,
+            move.labels,
+            currentColumn: 'done',
+          ),
+          throwsA(
+            isA<StateError>().having(
+              (error) => error.message,
+              'message',
+              contains('GitHub'),
+            ),
+          ),
+        );
+      }
+      expect(requests, 0);
+    },
+  );
+
+  test(
     'closing an issue preserves a concurrently changed doing label',
     () async {
       final labels = <String>{'doing'};

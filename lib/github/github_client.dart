@@ -285,12 +285,9 @@ class GitHubClient {
     List<String> labels, {
     required String currentColumn,
   }) async {
-    final changesLabel =
-        (column == 'doing' && !labels.contains('doing')) ||
-        (column == 'todo' && labels.contains('doing'));
-    if (currentColumn == 'done' && column != 'done' && changesLabel) {
+    if (currentColumn == 'done' && column != 'done') {
       throw StateError(
-        'Reopen this issue and set its doing label on GitHub, then refresh the board',
+        'Reopen this issue on GitHub, set its doing label if needed, then refresh the board',
       );
     }
     final path = '/repos/${_repo(repo)}/issues/$number';

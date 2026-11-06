@@ -485,7 +485,8 @@ Issues found:
 - [x] S6-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Durably record repository-only issue moves and reconcile interrupted moves against GitHub when the board opens or refreshes.
 - [x] S6-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Durably track linked issue moves before GitHub updates and reconcile interrupted moves on board refresh.
 - [x] S6-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Block reopening moves that require separate state and doing-label requests; direct the user to GitHub and refresh the board.
-- [ ] S6-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Protect against concurrent changes between preflight and each unconditional GitHub state or doing-label request; restore safe reopening moves that need both changes if an atomic or conditional mechanism becomes available.
+- [x] S6-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Prevent reopening requests from overwriting a concurrent GitHub change; direct the user to reopen on GitHub and refresh the board.
+- [ ] S6-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Protect closing and doing-label requests against concurrent changes after preflight; restore reopening moves if a conditional mechanism becomes available, including moves needing both state and label changes.
 - [x] S7 OLT rooms tree + equipment stock levels on the whiteboard
 - [x] S8 Pack update check: weekly GitHub release check, "update available" in Extensions
 - [x] S9 Mention chooser: select a ranked candidate or search pages from Incoming and daily review.
