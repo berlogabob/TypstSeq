@@ -15,12 +15,21 @@ type Entry = (String, u64, String);
 struct TransferMetrics {
     connections: std::sync::atomic::AtomicU64,
     requests: std::sync::atomic::AtomicU64,
+    initial_changed: std::sync::atomic::AtomicU64,
     resumed: std::sync::atomic::AtomicU64,
 }
 impl TransferMetrics {
     fn connection(&self) {
         self.connections
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+    fn changed_files(&self, count: u64) {
+        let _ = self.initial_changed.compare_exchange(
+            0,
+            count + 1,
+            std::sync::atomic::Ordering::Relaxed,
+            std::sync::atomic::Ordering::Relaxed,
+        );
     }
     fn requested(&self, count: u64) {
         self.requests
@@ -33,9 +42,12 @@ impl TransferMetrics {
     fn summary(&self) -> String {
         let connections = self.connections.load(std::sync::atomic::Ordering::Relaxed);
         format!(
-            "connections={} retries={} blob_requests={} resumed_bytes={}",
+            "connections={} retries={} changed_files={} blob_requests={} resumed_bytes={}",
             connections,
             connections.saturating_sub(1),
+            self.initial_changed
+                .load(std::sync::atomic::Ordering::Relaxed)
+                .saturating_sub(1),
             self.requests.load(std::sync::atomic::Ordering::Relaxed),
             self.resumed.load(std::sync::atomic::Ordering::Relaxed)
         )
@@ -457,6 +469,7 @@ pub(super) fn receive(
                         }
                         Err(e) => return Err(e.to_string()),
                     }
+                    metrics.changed_files(needed.len() as u64);
                     send.write_all(&(needed.len() as u64).to_be_bytes())
                         .await
                         .map_err(|e| e.to_string())?;
@@ -519,15 +532,24 @@ mod tests {
     fn transfer_metrics_count_retries_requests_and_resumed_bytes() {
         let metrics = TransferMetrics::default();
         metrics.connection();
+        metrics.changed_files(2);
         metrics.requested(2);
         metrics.resume(100);
         metrics.connection();
+        metrics.changed_files(1);
         metrics.requested(1);
         metrics.resume(250);
         assert_eq!(
             metrics.summary(),
-            "connections=2 retries=1 blob_requests=3 resumed_bytes=350"
+            "connections=2 retries=1 changed_files=2 blob_requests=3 resumed_bytes=350"
         );
+    }
+    #[test]
+    fn zero_changed_files_is_preserved_on_retry() {
+        let metrics = TransferMetrics::default();
+        metrics.changed_files(0);
+        metrics.changed_files(3);
+        assert!(metrics.summary().contains("changed_files=0"));
     }
     #[test]
     fn new_receiver_can_resume_while_old_connection_is_still_open() {

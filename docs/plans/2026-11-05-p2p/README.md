@@ -363,3 +363,21 @@ transfer was attempted. Battery reported 20,000 µAh, AC connected and status 4
 (not charging). The locked Mac GUI was skipped. Route proof, representative
 bidirectional measurements, retry/resume measurements and safety gates remain
 in P2P5-rest-rest-rest-rest-rest-rest-rest-rest; P2P3 remains no-go.
+
+
+## P2P5-rest-rest-rest-rest-rest-rest-rest-rest changed-file metric (2026-11-06)
+Successful scratch folder receives now include `changed_files` in
+`P2P6_TRANSFER_METRICS`: the number of manifest paths that differed from the
+receiver's destination during the first comparison. This includes missing
+files, counts paths rather than unique content hashes, and stays fixed across
+retries; `blob_requests` still counts repeated requests. A zero count means the
+manifest matched at that comparison. This does not count deletions or prove a
+production reconciliation protocol.
+
+P30 read-only preflight reported the production package missing, with no
+first-install timestamp, while `.profiletest` was installed. Battery reported
+20,000 µAh, AC connected and status 4 (not charging). No app was installed or
+launched, no vault was written, and no transfer or energy measurement was
+attempted. The locked Mac GUI was skipped. The unresolved device, route,
+representative transfer and safety gates are tracked in
+P2P5-rest-rest-rest-rest-rest-rest-rest-rest-rest; P2P3 remains no-go.
