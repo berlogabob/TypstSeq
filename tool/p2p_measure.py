@@ -17,10 +17,14 @@ def adb(*args):
     return subprocess.check_output([ADB, '-s', SERIAL, 'shell', *args], text=True)
 
 
-def check_install():
+def production_install_time():
     output = adb('dumpsys', 'package', 'org.tylog.tylog')
     match = re.search(r'^\s*firstInstallTime=(.+?)\s*$', output, re.M)
-    if not match or match.group(1) != INSTALL_TIME:
+    return match.group(1) if match else None
+
+
+def check_install():
+    if production_install_time() != INSTALL_TIME:
         raise ValueError('Production firstInstallTime missing or changed; device measurement refused')
 
 
@@ -40,6 +44,18 @@ def parse_battery(output):
     for name in ('ac', 'usb', 'wireless'):
         state[name] = field(name + ' powered', 'true|false').lower() == 'true'
     return int(field('charge counter', r'-?\d+')), state
+
+
+def preflight():
+    installed_at = production_install_time()
+    packages = adb('pm', 'list', 'packages').splitlines()
+    isolated = f'package:{PACKAGE}' in packages
+    charge, battery = parse_battery(adb('dumpsys', 'battery'))
+    return dict(production_first_install_time=installed_at,
+                expected_first_install_time=INSTALL_TIME,
+                profiletest_installed=isolated,
+                package_gate_passed=installed_at == INSTALL_TIME and isolated,
+                charge_uah=charge, battery=battery)
 
 
 def capture():
@@ -72,9 +88,17 @@ def delta(before, after):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=['begin', 'end'])
-    parser.add_argument('state', type=Path, help='local temporary measurement state file')
+    parser.add_argument('action', choices=['preflight', 'begin', 'end'])
+    parser.add_argument('state', type=Path, nargs='?', help='local temporary measurement state file')
     args = parser.parse_args()
+    if args.action == 'preflight':
+        if args.state is not None:
+            parser.error('preflight takes no state file')
+        result = preflight()
+        print(json.dumps(result, indent=2))
+        raise SystemExit(0 if result['package_gate_passed'] else 1)
+    if args.state is None:
+        parser.error('begin and end require a state file')
     if args.action == 'begin':
         sample = capture()
         with args.state.open('x') as stream:

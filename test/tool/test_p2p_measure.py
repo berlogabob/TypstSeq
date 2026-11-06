@@ -1,10 +1,25 @@
 import unittest
 from unittest.mock import patch
 
-from tool.p2p_measure import capture, delta, parse_battery, parse_proc_stat
+from tool.p2p_measure import capture, delta, parse_battery, parse_proc_stat, preflight
 
 
 class MeasurementTest(unittest.TestCase):
+    def test_preflight_reports_package_gate_and_battery_without_sampling_process(self):
+        battery = 'AC powered: true\nUSB powered: false\nWireless powered: false\nstatus: 3\nCharge counter: 24000\n'
+        with patch('tool.p2p_measure.adb', side_effect=['', 'package:org.tylog.tylog.profiletest\n', battery]) as call:
+            result = preflight()
+        self.assertEqual(result['production_first_install_time'], None)
+        self.assertFalse(result['package_gate_passed'])
+        self.assertTrue(result['profiletest_installed'])
+        self.assertEqual(result['charge_uah'], 24000)
+        self.assertTrue(result['battery']['ac'])
+        self.assertEqual(call.call_count, 3)
+        with patch('tool.p2p_measure.adb', side_effect=['firstInstallTime=2026-11-05 15:27:02', 'package:org.tylog.tylog.profiletest\n', battery]):
+            self.assertTrue(preflight()['package_gate_passed'])
+        with patch('tool.p2p_measure.adb', side_effect=['firstInstallTime=2026-11-05 15:27:02', '', battery]):
+            self.assertFalse(preflight()['package_gate_passed'])
+
     def test_rejects_missing_or_changed_production_install_before_sampling(self):
         for output in ('', '    firstInstallTime=2026-11-05 15:27:03'):
             with self.subTest(output=output), patch('tool.p2p_measure.adb', return_value=output) as call:

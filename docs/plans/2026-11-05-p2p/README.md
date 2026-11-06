@@ -127,15 +127,16 @@ measurement. No retry, resume, incremental transfer or user-selected folder
 was exercised. The P2P3 product no-go remains in force.
 
 To repeat the scratch-only integration test, run `python3 tool/p2p_lan_control.py
-<Mac-LAN-IP>` on the Mac, then launch `flutter drive --profile` for
-`integration_test/p2p_lan_measurement_test.dart` on each device with
-`--driver=test_driver/integration_test.dart`, `--dart-define=P2P_HARNESS=true`
-and `--dart-define=P2P_CONTROL_HOST=<Mac-LAN-IP>`. For Android pass
-`-d <A24-serial> -PtylogProfileSuffix=.profiletest`; for macOS pass `-d macos`.
-Use the isolated native harness builds and restore the normal build setup as
-above. The coordinator forwards scratch tickets over the local network; run it
-only on a trusted network. The test compares the complete received snapshot and
-restores it under a temporary directory, which it deletes afterward.
+<Mac-LAN-IP>` on the Mac, then run
+`flutter test integration_test/p2p_lan_measurement_test.dart --no-uninstall`
+on each device with `--dart-define=P2P_HARNESS=true` and
+`--dart-define=P2P_CONTROL_HOST=<Mac-LAN-IP>`. For Android pass
+`-d <device-id> -PtylogProfileSuffix=.profiletest`. Use isolated native harness
+builds and restore the normal build setup as above. Never use `flutter drive`
+on a phone containing the real app: it can uninstall that app. The coordinator
+forwards scratch tickets over the local network; run it only on a trusted
+network. The test compares the complete received snapshot and restores it under
+a temporary directory, which it deletes afterward.
 
 ## P2P5-rest-rest changed synthetic blob slice (2026-11-05)
 The developer harness can create a ticket for one modified synthetic note.
@@ -304,3 +305,19 @@ correctly refused to start; no device transfer or new CPU/battery measurement
 was performed. The locked Mac GUI was skipped. Direct LAN proof, representative
 bidirectional transfers and the remaining safety gates are tracked in
 P2P5-rest-rest-rest-rest-rest; P2P3 remains no-go.
+
+## P2P5-rest-rest-rest-rest-rest read-only preflight (2026-11-06)
+Run `python3 tool/p2p_measure.py preflight` before planning a P30 measurement.
+It reports the production first-install timestamp, the expected timestamp,
+whether the isolated package is installed, and the charge counter and power
+state. It exits nonzero when either package gate fails; it does not install,
+launch, or modify either app. The begin/end sampler still independently checks
+the production timestamp before and after each sample.
+
+On this run adb reported `.profiletest` installed but no production package,
+including in `pm list packages -u`, and no first-install timestamp. Preflight
+therefore refused measurement. Battery reported 20,000 µAh, AC connected, and
+status 4 (not charging); this snapshot is not consumption evidence. No app was
+installed or launched, and the locked Mac GUI was skipped. Direct LAN proof,
+bidirectional representative transfers, retries/resume, and meaningful CPU and
+battery deltas remain in P2P5-rest-rest-rest-rest-rest-rest. P2P3 remains no-go.
