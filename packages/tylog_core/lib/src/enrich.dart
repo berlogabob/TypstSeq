@@ -116,6 +116,7 @@ class EnrichMentions {
   const EnrichMentions({
     required this.note,
     required this.contentSha,
+    this.model,
     this.mentions = const [],
     this.keywords = const [],
     this.markers = const [],
@@ -123,6 +124,7 @@ class EnrichMentions {
 
   final String note;
   final String contentSha;
+  final String? model;
   final List<EnrichMention> mentions;
   final List<String> keywords;
 
@@ -137,6 +139,7 @@ class EnrichMentions {
       return EnrichMentions(
         note: json['note'] as String,
         contentSha: json['content_sha'] as String,
+        model: json['model'] as String?,
         mentions: [
           for (final item in json['mentions'] as List? ?? const [])
             if (item is Map) EnrichMention.fromJson(item.cast()),
@@ -165,6 +168,8 @@ class EnrichFeedback {
     required this.at,
     this.context = const [],
     this.shown = false,
+    this.proposedBy,
+    this.confidence,
   });
 
   final String surface;
@@ -176,6 +181,8 @@ class EnrichFeedback {
 
   /// The features ([enrichFeatures]) the note had when the user decided.
   final List<String> context;
+  final String? proposedBy;
+  final double? confidence;
 
   Map<String, Object?> toJson() => {
     'at': at,
@@ -184,6 +191,8 @@ class EnrichFeedback {
     'entity': entity,
     'note': note,
     'context': context,
+    if (proposedBy != null) 'proposed_by': proposedBy,
+    if (confidence != null) 'confidence': confidence,
   };
 
   /// Skips malformed lines: one bad line must not discard the ledger.
@@ -205,6 +214,8 @@ class EnrichFeedback {
         note: json['note'] as String? ?? '',
         at: json['at'] as String? ?? '',
         context: stringList(json['context']),
+        proposedBy: json['proposed_by'] as String?,
+        confidence: (json['confidence'] as num?)?.toDouble(),
       );
     } catch (_) {
       return null;

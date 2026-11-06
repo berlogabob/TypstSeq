@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:test/test.dart';
@@ -195,6 +196,29 @@ void main() {
       expect(decisions, isEmpty);
     },
   );
+
+  test('feedback provenance round-trips and old ledger lines remain valid', () {
+    const feedback = EnrichFeedback(
+      surface: 'André',
+      entity: 'andre-silva',
+      accepted: true,
+      note: 'daily/2026-11-06.typ',
+      at: '2026-11-06T00:00:00Z',
+      proposedBy: 'llm:test-model',
+      confidence: 0.87,
+    );
+    final [roundTripped] = EnrichFeedback.parseLedger(
+      '${jsonEncode(feedback)}\n',
+    );
+    expect(roundTripped.proposedBy, 'llm:test-model');
+    expect(roundTripped.confidence, 0.87);
+
+    final [oldLine] = EnrichFeedback.parseLedger(
+      '{"decision":"accept","surface":"André","entity":"andre-silva"}',
+    );
+    expect(oldLine.proposedBy, isNull);
+    expect(oldLine.confidence, isNull);
+  });
 
   test('candidates show the most recent linked day', () {
     final decisions = resolveMentions(

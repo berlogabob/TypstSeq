@@ -377,12 +377,14 @@ extension _EnrichFlow on _HomeScreenState {
     }
     final ref = currentIndex.notesByPath[path];
     final memory = await _enrichMemory(v, currentIndex);
+    final mentions = await _readMentions(v, path);
     final event = EnrichFeedback(
       surface: mention.surface,
       entity: entity,
       accepted: accepted,
       note: path,
       at: DateTime.now().toUtc().toIso8601String(),
+      proposedBy: mentions?.model == null ? 'llm' : 'llm:${mentions!.model}',
       context: ref == null
           ? const []
           : enrichFeatures(ref, memory.entityIdByTarget).toList(),
