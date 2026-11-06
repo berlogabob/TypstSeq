@@ -642,16 +642,13 @@ extension _EnrichIncoming on _HomeScreenState {
       String? refreshPath,
     }) async {
       final indexRevision = workspace.indexRevision;
-      if (paths == null) {
-        paths =
-            currentIndex.notesByPath.keys
+      paths ??= currentIndex.notesByPath.keys
                 .where(
                   (path) =>
                       path.startsWith('daily/') && (day == null || day == path),
                 )
                 .toList()
               ..sort((a, b) => b.compareTo(a));
-      }
       final page = <String>[];
       if (next) {
         final end = (cursor + 7).clamp(0, paths!.length);

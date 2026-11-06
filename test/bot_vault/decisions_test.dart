@@ -63,7 +63,7 @@ void main() {
       'action': 'accepted',
     };
     await file.writeAsString(
-      '${jsonEncode({...valid, 'item_id': 'item-partial'})}',
+      jsonEncode({...valid, 'item_id': 'item-partial'}),
     );
     final decisions = BotVaultDecisions(root);
     expect(await decisions.decidedItems(), isEmpty);

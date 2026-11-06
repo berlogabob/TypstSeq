@@ -648,8 +648,9 @@ void main() {
       await tester.tap(find.byTooltip('Refresh Bot'));
       final deadline = DateTime.now().add(const Duration(seconds: 10));
       while (workspace.index?.notesByPath['ext/bot/new.typ'] == null) {
-        if (DateTime.now().isAfter(deadline))
+        if (DateTime.now().isAfter(deadline)) {
           throw TimeoutException('new bot item not indexed');
+        }
         await Future<void>.delayed(const Duration(milliseconds: 20));
       }
       await File('${bot.path}/bot-vault.json').writeAsString('{"schema":2}');

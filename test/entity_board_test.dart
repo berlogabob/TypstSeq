@@ -840,8 +840,9 @@ void main() {
             matching: find.text('Remote issue'),
           )
           .evaluate()
-          .isNotEmpty)
+          .isNotEmpty) {
         break;
+      }
     }
     expect(
       find.descendant(
