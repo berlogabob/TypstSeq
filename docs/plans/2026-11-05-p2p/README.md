@@ -273,3 +273,34 @@ remains no-go. The remaining measurements and safety gates are tracked in
 P2P5-rest-rest-rest-rest. The counter unit test passed; the existing native
 reconnection test failed because loopback did not select a direct IP path
 within five seconds on this host, so it did not verify a transfer in this run.
+
+## P2P5-rest-rest-rest-rest P30 measurement preparation (2026-11-06)
+`tool/p2p_measure.py` takes read-only snapshots around a transfer in the running
+`.profiletest` process. It checks the production package's required
+`firstInstallTime` before and after each snapshot and refuses to sample if it is
+missing or different. With the isolated app already running, use:
+
+```sh
+python3 tool/p2p_measure.py begin /tmp/p2p-measure.json
+# Run one transfer, without restarting the test process.
+python3 tool/p2p_measure.py end /tmp/p2p-measure.json
+```
+
+Use a fresh state path for each interval. Output includes elapsed time, process
+CPU seconds and average CPU as a percentage of one core, battery charge-counter
+delta in microamp-hours, and Android battery status and AC/USB/wireless power
+states at both ends (status 2 means charging, 3 discharging, 4 not charging,
+5 full). The counter can update coarsely or be unavailable; a zero delta or
+an externally powered run does not establish battery consumption. Sampling
+includes time between the snapshots, not just transfer activity. A restarted
+process, missing counter, inaccessible `/proc`, or failed timestamp check aborts
+rather than reporting a misleading result. The script neither installs nor
+launches packages. It does not measure route, network bytes, changed blobs,
+retries, or resume; use the existing transfer logs for their available counters.
+
+On this run the P30 was visible by adb but `org.tylog.tylog` was absent from
+its package list, so the required timestamp could not be verified. The sampler
+correctly refused to start; no device transfer or new CPU/battery measurement
+was performed. The locked Mac GUI was skipped. Direct LAN proof, representative
+bidirectional transfers and the remaining safety gates are tracked in
+P2P5-rest-rest-rest-rest-rest; P2P3 remains no-go.
