@@ -253,3 +253,23 @@ No install, launch, kill or transfer was attempted on the device during this
 slice. Battery Service reported AC powered and 80%; no unplugged consumption
 measurement was possible. Resolve the production package state before further
 device work. The Mac GUI was locked and not used. P2P3 remains no-go.
+
+## P2P5-rest-rest-rest transfer counters (2026-11-06)
+Successful folder receives now log `P2P6_TRANSFER_METRICS` with established
+connections, retries (established connections after the first), blob requests,
+and resumed bytes (the sum of requested partial-file offsets). Requests and
+offsets include repeated attempts, so they are not counts of unique changed
+files or unique bytes saved. Failed connection attempts and transfers that never
+complete are not summarized. The existing success line reports received payload
+bytes and elapsed time; neither is total network traffic. These counters expose
+retry and resume behavior for the existing isolated folder runner without
+logging paths, addresses or tickets.
+
+The P30 was visible over adb, but the production package was absent from the
+package list and its required first-install timestamp could not be verified.
+No device install or launch was attempted. The locked Mac GUI was not used.
+No new cross-device, route, CPU or battery measurements are claimed; P2P3
+remains no-go. The remaining measurements and safety gates are tracked in
+P2P5-rest-rest-rest-rest. The counter unit test passed; the existing native
+reconnection test failed because loopback did not select a direct IP path
+within five seconds on this host, so it did not verify a transfer in this run.

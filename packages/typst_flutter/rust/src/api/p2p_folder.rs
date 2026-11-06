@@ -10,6 +10,37 @@ const LIMIT: usize = 16 * 1024 * 1024;
 const TRANSFER_TIMEOUT_SECS: u64 = 7200;
 
 type Entry = (String, u64, String);
+
+#[derive(Default)]
+struct TransferMetrics {
+    connections: std::sync::atomic::AtomicU64,
+    requests: std::sync::atomic::AtomicU64,
+    resumed: std::sync::atomic::AtomicU64,
+}
+impl TransferMetrics {
+    fn connection(&self) {
+        self.connections
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+    fn requested(&self, count: u64) {
+        self.requests
+            .fetch_add(count, std::sync::atomic::Ordering::Relaxed);
+    }
+    fn resume(&self, offset: u64) {
+        self.resumed
+            .fetch_add(offset, std::sync::atomic::Ordering::Relaxed);
+    }
+    fn summary(&self) -> String {
+        let connections = self.connections.load(std::sync::atomic::Ordering::Relaxed);
+        format!(
+            "connections={} retries={} blob_requests={} resumed_bytes={}",
+            connections,
+            connections.saturating_sub(1),
+            self.requests.load(std::sync::atomic::Ordering::Relaxed),
+            self.resumed.load(std::sync::atomic::Ordering::Relaxed)
+        )
+    }
+}
 fn hash(path: &Path) -> Result<(u64, String), String> {
     let mut f = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let mut hash = Sha256::new();
@@ -285,6 +316,7 @@ async fn receive_one(
     index: usize,
     entry: Entry,
     transferred: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    metrics: std::sync::Arc<TransferMetrics>,
 ) -> Result<u64, String> {
     let (mut send, mut recv) = conn.open_bi().await.map_err(|e| e.to_string())?;
     let temp_file = safe_path(&temp, &index.to_string())?;
@@ -298,6 +330,7 @@ async fn receive_one(
     if offset > entry.1 {
         return Err("Partial file too large".into());
     }
+    metrics.resume(offset);
     send.write_all(&(index as u64).to_be_bytes())
         .await
         .map_err(|e| e.to_string())?;
@@ -382,11 +415,13 @@ pub(super) fn receive(
             .map_err(|e| e.to_string())?;
         let result = tokio::time::timeout(std::time::Duration::from_secs(TRANSFER_TIMEOUT_SECS), async {
             let transferred = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+            let metrics = std::sync::Arc::new(TransferMetrics::default());
             loop {
                 let conn = endpoint
                     .connect(addr.clone(), ALPN)
                     .await
                     .map_err(|e| e.to_string())?;
+                metrics.connection();
                 observe_paths(conn.clone());
                 let attempt: Result<_, String> = async {
                     let (mut send, mut recv) = conn.open_bi().await.map_err(|e| e.to_string())?;
@@ -425,6 +460,7 @@ pub(super) fn receive(
                     send.write_all(&(needed.len() as u64).to_be_bytes())
                         .await
                         .map_err(|e| e.to_string())?;
+                    metrics.requested(needed.len() as u64);
                     let mut tasks = tokio::task::JoinSet::new();
                     let mut bytes = 0;
                     for (index, entry) in needed {
@@ -439,8 +475,9 @@ pub(super) fn receive(
                         let t = temp.clone();
                         let r = root.clone();
                         let transferred = transferred.clone();
+                        let metrics = metrics.clone();
                         tasks.spawn(async move {
-                            receive_one(c, t, r, index, entry, transferred).await
+                            receive_one(c, t, r, index, entry, transferred, metrics).await
                         });
                     }
                     while let Some(result) = tasks.join_next().await {
@@ -455,6 +492,7 @@ pub(super) fn receive(
                 .await;
                 match attempt {
                     Ok(_bytes) => {
+                        println!("P2P6_TRANSFER_METRICS {}", metrics.summary());
                         conn.close(0u32.into(), b"done");
                         break Ok(super::p2p_harness::FileTransfer {
                             bytes: transferred.load(std::sync::atomic::Ordering::Relaxed),
@@ -477,6 +515,20 @@ pub(super) fn receive(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn transfer_metrics_count_retries_requests_and_resumed_bytes() {
+        let metrics = TransferMetrics::default();
+        metrics.connection();
+        metrics.requested(2);
+        metrics.resume(100);
+        metrics.connection();
+        metrics.requested(1);
+        metrics.resume(250);
+        assert_eq!(
+            metrics.summary(),
+            "connections=2 retries=1 blob_requests=3 resumed_bytes=350"
+        );
+    }
     #[test]
     fn new_receiver_can_resume_while_old_connection_is_still_open() {
         let dir = std::env::temp_dir().join(format!("p2p-stale-test-{}", std::process::id()));
