@@ -215,3 +215,25 @@ production `org.tylog.tylog` was absent before and after, so its historical
 first-install time could not be queried. No production package command was
 issued. The Mac GUI was skipped because the screen is locked. A new received
 copy with an eligible row is tracked in the next PF2 plan item.
+
+## PF2-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest repeat (2026-11-06)
+
+Repeated the harness with
+`ORG_GRADLE_PROJECT_tylogDebugSuffix=.profiletest flutter test
+integration_test/pf2_incoming_sheet_profile_test.dart -d XPH0219904001750
+--no-uninstall`. The registered app-local P2P6 copy opened successfully;
+Incoming readiness was 4,699 ms, with 17 frame samples and an 881.244 ms
+maximum `FrameTiming.totalSpan`. RSS after sheet load was 763,920,384 bytes;
+Dart heap sampling was unavailable. Enrichment of
+`daily/2026/11/2026-11-06.typ` took 3,812 ms (3,811 ms building memory) and
+found zero decisions, tags, and markers. The real sheet again had no mention,
+audio, or OCR rows, so decision append and Show older measurements were
+unavailable. These debug integration samples are diagnostic and not comparable
+to the profile-build measurements above.
+
+Before and after the device run, read-only `adb` package queries showed
+`org.tylog.tylog.profiletest` installed with `firstInstallTime=2026-11-05
+21:05:34`; the production package `org.tylog.tylog` was absent both times, so
+its historical `firstInstallTime=2026-11-05 15:27:02` could not be queried.
+No command targeted the production package. The Mac screen remained locked;
+the new-copy/actionable-row run is tracked as a separate plan item.
