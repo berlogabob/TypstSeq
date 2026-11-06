@@ -670,7 +670,11 @@ void main() {
     await tester.pump();
     await tester.runAsync(() async {
       await tester.tap(find.byTooltip('Refresh Bot'));
-      await Future<void>.delayed(const Duration(milliseconds: 200));
+      final deadline = DateTime.now().add(const Duration(seconds: 10));
+      while (!workspace.status.contains('needs newer TyLog')) {
+        if (DateTime.now().isAfter(deadline)) break;
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
     });
     await tester.pump();
     expect(find.textContaining('needs newer TyLog'), findsOneWidget);
