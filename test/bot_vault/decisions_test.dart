@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/bot_vault/decisions.dart';
@@ -48,6 +49,24 @@ void main() {
     expect(lines, hasLength(1));
     expect((jsonDecode(lines.single) as Map)['action'], 'accepted');
   });
+
+  test('concurrent isolates record one decision', () async {
+    await Future.wait(
+      List.generate(
+        24,
+        (_) => Isolate.run(() async {
+          await BotVaultDecisions(
+            Directory(root.path),
+          ).record(item, 'accepted');
+        }),
+      ),
+    );
+    final lines = await File(
+      '${root.path}/outbox/decisions.jsonl',
+    ).readAsLines();
+    expect(lines, hasLength(1));
+    expect((jsonDecode(lines.single) as Map)['action'], 'accepted');
+  }, skip: Platform.isWindows);
 
   test('waits for another process holding the outbox lock', () async {
     if (Platform.isWindows) return;
