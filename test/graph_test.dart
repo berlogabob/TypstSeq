@@ -720,6 +720,7 @@ void main() {
     viewer.transformationController!.value = Matrix4.identity()
       ..translateByDouble(50, 50, 0, 1);
     await tester.tap(find.byKey(const Key('graph-fit')));
+    await tester.pumpAndSettle(); // fit animates
     expect(viewer.transformationController!.value, fitted);
     semantics.dispose();
   });

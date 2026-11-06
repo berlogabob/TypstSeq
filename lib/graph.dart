@@ -164,7 +164,16 @@ class _GraphViewState extends State<GraphView>
       widget.graph.nodes.isNotEmpty &&
       widget.graph.nodes.every((n) => n.kind == GraphNodeKind.concept);
 
+  /// Set by filter changes: relayout without jumping the camera.
+  bool _keepView = false;
+
+  void _relayoutKeepingView() {
+    _invalidateLayout();
+    _keepView = true;
+  }
+
   void _invalidateLayout() {
+    _keepView = false;
     _positions = null;
     _positionsCanvas = null;
     _clusters = null;
@@ -363,7 +372,7 @@ class _GraphViewState extends State<GraphView>
                     _focusFilter = _focusFilter == null
                         ? stats.orphanPaths.toSet()
                         : null;
-                    _invalidateLayout();
+                    _relayoutKeepingView();
                   }),
                 ),
               if (stats.hubPaths.isNotEmpty)
@@ -382,7 +391,7 @@ class _GraphViewState extends State<GraphView>
                   onSelected: null,
                   onDeleted: () => setState(() {
                     _focusFilter = null;
-                    _invalidateLayout();
+                    _relayoutKeepingView();
                   }),
                 ),
               if (widget.onExportSvg != null)
@@ -411,7 +420,7 @@ class _GraphViewState extends State<GraphView>
                       if (!_hiddenSources.remove(source)) {
                         _hiddenSources.add(source);
                       }
-                      _invalidateLayout();
+                      _relayoutKeepingView();
                     }),
                   ),
               ],
@@ -525,7 +534,7 @@ class _GraphViewState extends State<GraphView>
               child: IconButton.filledTonal(
                 key: const Key('graph-fit'),
                 tooltip: 'Fit graph',
-                onPressed: () => _fit(viewport, canvas),
+                onPressed: () => _fit(viewport, canvas, animate: true),
                 icon: const Icon(Icons.fit_screen),
               ),
             ),
@@ -537,39 +546,49 @@ class _GraphViewState extends State<GraphView>
 
   void _fitWhenLayoutChanges(Size viewport, Size canvas) {
     if (_lastViewport == viewport && _lastCanvas == canvas) return;
+    final keep = _keepView && _lastViewport == viewport;
+    final first = _lastViewport == null;
     _lastViewport = viewport;
     _lastCanvas = canvas;
+    _keepView = false;
+    if (keep) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _fit(viewport, canvas);
+      if (mounted) _fit(viewport, canvas, animate: !first);
     });
   }
 
-  void _fit(Size viewport, Size canvas) {
+  void _fit(Size viewport, Size canvas, {bool animate = false}) {
+    void apply(Matrix4 end) =>
+        animate ? _animateTo(end) : _transform.value = end;
     if (isTimelineGraph(widget.graph) && canvas.height > canvas.width) {
       // Vertical timeline: fit the width, start at the top (newest day).
       final scale = math.min(1.0, viewport.width / canvas.width);
-      _transform.value = Matrix4.identity()
-        ..translateByDouble(
-          (viewport.width - canvas.width * scale) / 2,
-          0,
-          0,
-          1,
-        )
-        ..scaleByDouble(scale, scale, scale, 1);
+      apply(
+        Matrix4.identity()
+          ..translateByDouble(
+            (viewport.width - canvas.width * scale) / 2,
+            0,
+            0,
+            1,
+          )
+          ..scaleByDouble(scale, scale, scale, 1),
+      );
       return;
     }
     final scale = math.min(
       1.0,
       math.min(viewport.width / canvas.width, viewport.height / canvas.height),
     );
-    _transform.value = Matrix4.identity()
-      ..translateByDouble(
-        (viewport.width - canvas.width * scale) / 2,
-        (viewport.height - canvas.height * scale) / 2,
-        0,
-        1,
-      )
-      ..scaleByDouble(scale, scale, scale, 1);
+    apply(
+      Matrix4.identity()
+        ..translateByDouble(
+          (viewport.width - canvas.width * scale) / 2,
+          (viewport.height - canvas.height * scale) / 2,
+          0,
+          1,
+        )
+        ..scaleByDouble(scale, scale, scale, 1),
+    );
   }
 
   /// Tap routing: while collapsed, a tap on a cluster zone zooms into it (so it
@@ -610,7 +629,7 @@ class _GraphViewState extends State<GraphView>
     );
     // Clamp into [threshold+ε, maxScale] so the zone always expands but never
     // over-zooms past the InteractiveViewer's max.
-    final scale = fit.clamp(kLodZoomThreshold + 0.1, 4.0);
+    final scale = fit.clamp(kLodZoomThreshold + 0.1, 3.0);
     final end = Matrix4.identity()
       ..translateByDouble(
         viewport.width / 2 - target.center.dx * scale,
@@ -619,6 +638,10 @@ class _GraphViewState extends State<GraphView>
         1,
       )
       ..scaleByDouble(scale, scale, scale, 1);
+    _animateTo(end);
+  }
+
+  void _animateTo(Matrix4 end) {
     _zoomAnim = Matrix4Tween(
       begin: _transform.value.clone(),
       end: end,
