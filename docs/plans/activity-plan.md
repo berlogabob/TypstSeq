@@ -701,6 +701,9 @@ Template photo: tylog-form-ocr/templates/iade-techlab/blank-photo.jpg (phone pho
 - [x] P6a FINAL: Bot drafts from compatible bot mounts appear in Incoming; Accept/Reject append contract-v1 decisions to the bot outbox. Fixture tests cover the Incoming source, actions, and schema-1 rows.
 - [x] P6b Bot vaults, bot side in ~/Documents/GitHub/Amadora-News-Bot per the same design: the bot writes its vault (manifest, items as notes per docs/vault-format.md, entities), reads decisions from the outbox. Behind a config flag, default off; no change to posting behaviour. Tests in that repo; commit there.
 
+## Session handoff (2026-11-06)
+Released: TyLog 0.21.0+167, PT pack 1.3.1. Waves 21-28 closed (open 0). Devices: Mac /Applications and A24 on 5305452 (in-place); P30 = test phone (no production app, .profiletest holds a real-vault P2P copy). OCR: tylog-form-ocr F1-F9, batch01 (22 GoPro) + batch02 (91 phone, 47 G4G) in digital-arc-out on the Studio, gemma one-call reader ~19 s/photo, accuracy unchecked by a human. Rules learned: no flutter drive on phones with the real app; codex items need DONE WHEN, no -rest chains; no APKs via Nextcloud.
+
 ## Later
 - P2P5 user action: unplug phone 10 min for battery measurement; first resolve the missing P30 production package and verify firstInstallTime 2026-11-05 15:27:02, then prove direct LAN and measure representative scratch folders and larger assets in both directions (CPU, charge-counter delta and charging state, changed blobs, retries and resume), and reassess P2P3.
 - K1 follow-through: serialize append writers across Dart isolates and OS processes, and exercise/reconcile every timed-out provider outcome; the incident log window is gone, so the original writer remains unidentified.

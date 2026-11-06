@@ -5,6 +5,23 @@ their history is in the commit log and the GitHub release notes.
 
 ## Unreleased
 
+### New
+
+- Bot vaults: a bot folder (schema 1) mounts read-only under Extensions,
+  its drafts appear in Incoming, decisions go to the bot outbox
+  (docs/plans/2026-11-05-bot-vaults/contract-v1.md; bot side behind
+  BOT_VAULT_ENABLED in Amadora-News-Bot).
+- P2P harness (debug, test builds only): streamed, resumable, hash-verified
+  folder transfer; full 2.46 GB vault Mac -> P30 in about 6 minutes.
+
+### Fixed
+
+- Incoming opens with far less memory (+138 MB -> +8 MB on 10k notes).
+- Namespace convert ignores articles, screenshots, audio and dailies.
+- Old auto-Mentions block writer removed; legacy blocks self-heal on save.
+- Note writes refuse revision records and broken metadata at note paths.
+- GitHub board moves reconcile from the repository listing.
+
 ## 0.21.0+167
 
 ### New
