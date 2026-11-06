@@ -356,6 +356,7 @@ class _GraphViewState extends State<GraphView>
             children: [
               GraphLegend(
                 visibleKinds: _visibleKinds,
+                presentKinds: {for (final e in displayGraph.edges) e.kind},
                 onToggle: (kind) => setState(() {
                   if (!_visibleKinds.remove(kind)) _visibleKinds.add(kind);
                 }),
@@ -1633,10 +1634,15 @@ class GraphLegend extends StatelessWidget {
   const GraphLegend({
     super.key,
     required this.visibleKinds,
+    required this.presentKinds,
     required this.onToggle,
   });
 
   final Set<GraphEdgeKind> visibleKinds;
+
+  /// Edge kinds that actually appear in the graph, so legend chips for kinds
+  /// with no edges are hidden instead of shown disabled.
+  final Set<GraphEdgeKind> presentKinds;
   final ValueChanged<GraphEdgeKind> onToggle;
 
   @override
@@ -1644,45 +1650,61 @@ class GraphLegend extends StatelessWidget {
     spacing: 8,
     crossAxisAlignment: WrapCrossAlignment.center,
     children: [
-      _LegendEntry(
-        kind: GraphEdgeKind.link,
-        color: edgeColor(GraphEdgeKind.link, Theme.of(context).brightness),
-        label: 'Link',
-        selected: visibleKinds.contains(GraphEdgeKind.link),
-        onToggle: onToggle,
-      ),
-      _LegendEntry(
-        kind: GraphEdgeKind.citation,
-        color: edgeColor(GraphEdgeKind.citation, Theme.of(context).brightness),
-        label: 'Citation',
-        dashed: true,
-        selected: visibleKinds.contains(GraphEdgeKind.citation),
-        onToggle: onToggle,
-      ),
-      _LegendEntry(
-        kind: GraphEdgeKind.tag,
-        color: edgeColor(GraphEdgeKind.tag, Theme.of(context).brightness),
-        label: 'Tag',
-        selected: visibleKinds.contains(GraphEdgeKind.tag),
-        onToggle: onToggle,
-      ),
+      if (presentKinds.contains(GraphEdgeKind.link))
+        _LegendEntry(
+          kind: GraphEdgeKind.link,
+          color: edgeColor(GraphEdgeKind.link, Theme.of(context).brightness),
+          label: 'Links',
+          hint: 'Notes that link to each other with [[ ]]',
+          selected: visibleKinds.contains(GraphEdgeKind.link),
+          onToggle: onToggle,
+        ),
+      if (presentKinds.contains(GraphEdgeKind.citation))
+        _LegendEntry(
+          kind: GraphEdgeKind.citation,
+          color: edgeColor(
+            GraphEdgeKind.citation,
+            Theme.of(context).brightness,
+          ),
+          label: 'Cites',
+          hint: 'A note cites this source',
+          dashed: true,
+          selected: visibleKinds.contains(GraphEdgeKind.citation),
+          onToggle: onToggle,
+        ),
+      if (presentKinds.contains(GraphEdgeKind.tag))
+        _LegendEntry(
+          kind: GraphEdgeKind.tag,
+          color: edgeColor(GraphEdgeKind.tag, Theme.of(context).brightness),
+          label: 'Same tag',
+          hint: 'Notes that share a tag',
+          selected: visibleKinds.contains(GraphEdgeKind.tag),
+          onToggle: onToggle,
+        ),
       // `read` edges (timeline "opened this on day X" graphs) are drawn and
       // togglable via `_visibleKinds` like the other three kinds — without
       // this entry they were visible and filterable but never explained.
-      _LegendEntry(
-        kind: GraphEdgeKind.read,
-        color: edgeColor(GraphEdgeKind.read, Theme.of(context).brightness),
-        label: 'Opened',
-        selected: visibleKinds.contains(GraphEdgeKind.read),
-        onToggle: onToggle,
-      ),
-      _LegendEntry(
-        kind: GraphEdgeKind.finished,
-        color: edgeColor(GraphEdgeKind.finished, Theme.of(context).brightness),
-        label: 'Finished',
-        selected: visibleKinds.contains(GraphEdgeKind.finished),
-        onToggle: onToggle,
-      ),
+      if (presentKinds.contains(GraphEdgeKind.read))
+        _LegendEntry(
+          kind: GraphEdgeKind.read,
+          color: edgeColor(GraphEdgeKind.read, Theme.of(context).brightness),
+          label: 'Read on',
+          hint: 'Day you opened this note',
+          selected: visibleKinds.contains(GraphEdgeKind.read),
+          onToggle: onToggle,
+        ),
+      if (presentKinds.contains(GraphEdgeKind.finished))
+        _LegendEntry(
+          kind: GraphEdgeKind.finished,
+          color: edgeColor(
+            GraphEdgeKind.finished,
+            Theme.of(context).brightness,
+          ),
+          label: 'Finished on',
+          hint: 'Day you finished reading this',
+          selected: visibleKinds.contains(GraphEdgeKind.finished),
+          onToggle: onToggle,
+        ),
     ],
   );
 }
@@ -1694,6 +1716,7 @@ class _LegendEntry extends StatelessWidget {
     required this.label,
     required this.selected,
     required this.onToggle,
+    required this.hint,
     this.dashed = false,
   });
 
@@ -1703,21 +1726,25 @@ class _LegendEntry extends StatelessWidget {
   final bool selected;
   final bool dashed;
   final ValueChanged<GraphEdgeKind> onToggle;
+  final String hint;
 
   @override
-  Widget build(BuildContext context) => FilterChip(
-    avatar: SizedBox(
-      width: 16,
-      height: 10,
-      child: CustomPaint(
-        painter: _SwatchPainter(color: color, dashed: dashed),
+  Widget build(BuildContext context) => Tooltip(
+    message: hint,
+    child: FilterChip(
+      avatar: SizedBox(
+        width: 16,
+        height: 10,
+        child: CustomPaint(
+          painter: _SwatchPainter(color: color, dashed: dashed),
+        ),
       ),
+      label: Text(label),
+      labelStyle: Theme.of(context).textTheme.labelSmall,
+      visualDensity: VisualDensity.compact,
+      selected: selected,
+      onSelected: (_) => onToggle(kind),
     ),
-    label: Text(label),
-    labelStyle: Theme.of(context).textTheme.labelSmall,
-    visualDensity: VisualDensity.compact,
-    selected: selected,
-    onSelected: (_) => onToggle(kind),
   );
 }
 
