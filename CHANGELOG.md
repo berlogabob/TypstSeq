@@ -5,6 +5,8 @@ their history is in the commit log and the GitHub release notes.
 
 ## Unreleased
 
+## 0.22.0+169
+
 ### New
 
 - Graph opens Focused on the current note (2 hops, busy hubs not expanded);
