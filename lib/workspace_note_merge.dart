@@ -45,7 +45,7 @@ extension _DuplicateMerge on WorkspaceController {
             survivor.substring(0, survivor.lastIndexOf('/')) !=
                 loser.substring(0, loser.lastIndexOf('/')) &&
             !RegExp(
-              r"^[\p{L}\p{N}\s.,!?;:'’()*/_=`&+\-]*$",
+              r"^[\p{L}\p{N}\s.,!?;:'’()*/_=`&+%|\-]*$",
               unicode: true,
             ).hasMatch(body))) {
       throw StateError(
