@@ -10,6 +10,120 @@ import 'package:tylog/widgets/unified_board.dart';
 import 'support/temp_dir.dart';
 
 void main() {
+  testWidgets('board reconciles an interrupted repository issue move', (
+    tester,
+  ) async {
+    final dir = await tester.runAsync(
+      () => Directory.systemTemp.createTemp('interrupted-move'),
+    );
+    if (dir == null) throw StateError('No temp directory');
+    addTearDown(() => deleteTempDir(dir));
+    final vault = Vault(dir);
+    await tester.runAsync(() async {
+      await writeBoard(
+        vault.storage,
+        Board.fromJson({
+          'id': 'board',
+          'title': 'P',
+          'scopeEntity': 'p',
+          'github_repo': 'owner/repo',
+        }),
+      );
+      await vault.storage.createDirectory(decisionsDir);
+      await vault.storage.writeText(
+        '$decisionsDir/github.jsonl',
+        encodeDecisions([
+          const Decision(
+            at: '2026-11-06T10:00:00',
+            device: 'github',
+            item: 'owner/repo#42',
+            source: 'repository-issue-move',
+            action: 'sent',
+            target: 'doing',
+            context: 'move-1',
+          ),
+        ]),
+      );
+    });
+    const entity = NoteRef(
+      id: 'p',
+      path: 'p.typ',
+      title: 'P',
+      outgoingLinks: [],
+    );
+    const index = VaultIndex(
+      notesByPath: {'p.typ': entity},
+      backlinksByTarget: {},
+    );
+    final client = _FakeGitHub();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EntityBoard(
+          boardId: 'board',
+          entity: entity,
+          vault: vault,
+          index: index,
+          setStatus: (_, _) async {},
+          mutateNote: (_, _) async => false,
+          refreshIndex: () async => index,
+          githubClient: () async => client,
+        ),
+      ),
+    );
+    String log = '';
+    for (
+      var i = 0;
+      i < 30 &&
+          !Decision.parseLog(
+            log,
+          ).any((d) => d.context == 'move-1' && d.action == 'seen');
+      i++
+    ) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 80)),
+      );
+      await tester.pump();
+      log =
+          (await tester.runAsync(
+            () => vault.storage.readText('$decisionsDir/github.jsonl'),
+          )) ??
+          '';
+    }
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 150)),
+    );
+    await tester.pump();
+    expect(log, contains('interrupted move'));
+    expect(log, contains('move-1'));
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('board-column-todo')),
+        matching: find.text('Remote issue'),
+      ),
+      findsOneWidget,
+    );
+    final count = Decision.parseLog(
+      log,
+    ).where((d) => d.context == 'move-1' && d.action == 'seen').length;
+    expect(count, 1);
+    await tester.tap(find.byTooltip('Sync with GitHub'));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 150)),
+    );
+    await tester.pump();
+    log =
+        (await tester.runAsync(
+          () => vault.storage.readText('$decisionsDir/github.jsonl'),
+        )) ??
+        '';
+    expect(
+      Decision.parseLog(
+        log,
+      ).where((d) => d.context == 'move-1' && d.action == 'seen').length,
+      1,
+    );
+  });
+
   testWidgets('large columns build cards lazily and scroll to the end', (
     tester,
   ) async {
@@ -362,11 +476,31 @@ void main() {
       await tester.pump();
       await gesture.up();
       await tester.pump();
-      await io();
+      for (var i = 0; i < 40; i++) {
+        await io();
+        final button = tester.widget<IconButton>(
+          find
+              .ancestor(
+                of: find.byTooltip('Sync with GitHub'),
+                matching: find.byType(IconButton),
+              )
+              .first,
+        );
+        if (button.onPressed != null) break;
+      }
     }
 
     await move('doing');
     expect(client.remoteStatus, 'doing');
+    final recorded = await tester.runAsync(
+      () => vault.storage.readText('$decisionsDir/github.jsonl'),
+    );
+    final moves = Decision.parseLog(
+      recorded!,
+    ).where((d) => d.source == 'repository-issue-move').toList();
+    expect(moves.map((d) => d.action), ['sent', 'seen']);
+    expect(moves.first.target, 'doing');
+    expect(moves.first.context, moves.last.context);
     await move('done');
     expect(client.remoteStatus, 'done');
     await move('todo');

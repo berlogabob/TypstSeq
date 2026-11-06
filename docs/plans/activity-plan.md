@@ -479,7 +479,8 @@ Issues found:
 - [x] S6-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Record an unknown remote status when both reloads fail after a linked or repository-only move, preserve the local card, and reconcile on manual sync.
 - [x] S6-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Preserve the doing label when closing an issue: closed status does not depend on labels, so closing needs no label deletion.
 - [x] S6-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Recover linked issue status on board open or refresh via the repository listing when the individual issue reload fails.
-- [ ] S6-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Protect issue state and doing-label changes between preflight and update; durably track and reconcile moves interrupted between GitHub's separate, unconditional state and label requests.
+- [x] S6-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Durably record repository-only issue moves and reconcile interrupted moves against GitHub when the board opens or refreshes.
+- [ ] S6-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Protect issue state and doing-label changes between preflight and update; durably track and reconcile linked issue moves interrupted between GitHub's separate, unconditional state and label requests.
 - [x] S7 OLT rooms tree + equipment stock levels on the whiteboard
 - [x] S8 Pack update check: weekly GitHub release check, "update available" in Extensions
 - [x] S9 Mention chooser: select a ranked candidate or search pages from Incoming and daily review.

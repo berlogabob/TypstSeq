@@ -391,6 +391,8 @@ class _EntityBoardState extends State<EntityBoard> {
             .map((label) => label['name'])
             .whereType<String>()
             .toList();
+        final moveId = DateTime.now().toUtc().microsecondsSinceEpoch.toString();
+        await _recordRepositoryMove(repository, number, moveId, 'sent', column);
         var updated = false;
         try {
           await client.updateIssueColumn(
@@ -418,6 +420,13 @@ class _EntityBoardState extends State<EntityBoard> {
               'attempted $column; status changed during move',
             );
           }
+          await _recordRepositoryMove(
+            repository,
+            number,
+            moveId,
+            'seen',
+            _remoteColumn(actual),
+          );
         } catch (error) {
           Map<String, dynamic> actual;
           try {
@@ -441,6 +450,13 @@ class _EntityBoardState extends State<EntityBoard> {
             updated
                 ? 'move to $column could not be verified individually: $error'
                 : 'move to $column failed: $error',
+          );
+          await _recordRepositoryMove(
+            repository,
+            number,
+            moveId,
+            'seen',
+            _remoteColumn(actual),
           );
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -509,6 +525,74 @@ class _EntityBoardState extends State<EntityBoard> {
     );
   }
 
+  Future<void> _recordRepositoryMove(
+    String repository,
+    int number,
+    String id,
+    String action,
+    String column,
+  ) async {
+    await widget.vault.storage.createDirectory(decisionsDir);
+    await widget.vault.storage.appendBytes(
+      '$decisionsDir/github.jsonl',
+      utf8.encode(
+        encodeDecisions([
+          Decision(
+            at: DateTime.now().toIso8601String(),
+            device: 'github',
+            item: '$repository#$number',
+            source: 'repository-issue-move',
+            action: action,
+            target: column,
+            context: id,
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _reconcileRepositoryMoves(
+    String repository,
+    List<Map<String, dynamic>> rows,
+  ) async {
+    const path = '$decisionsDir/github.jsonl';
+    if (!await widget.vault.storage.exists(path)) return;
+    final decisions = Decision.parseLog(
+      await widget.vault.storage.readText(path),
+    );
+    final pending = <String, Decision>{};
+    for (final decision in decisions) {
+      if (decision.source != 'repository-issue-move' ||
+          !decision.item.startsWith('$repository#') ||
+          decision.context == null) {
+        continue;
+      }
+      final key = '${decision.item}:${decision.context}';
+      if (decision.action == 'sent') pending[key] = decision;
+      if (decision.action == 'seen') pending.remove(key);
+    }
+    for (final move in pending.values) {
+      final number = int.tryParse(move.item.substring(repository.length + 1));
+      if (number == null) continue;
+      final matches = rows.where((row) => row['number'] == number);
+      if (matches.isEmpty) continue;
+      final actual = _remoteColumn(matches.first);
+      await _recordConflict(
+        repository,
+        number,
+        actual,
+        'interrupted move to ${move.target}; reconciled on board refresh',
+      );
+      await _recordRepositoryMove(
+        repository,
+        number,
+        move.context!,
+        'seen',
+        actual,
+      );
+    }
+  }
+
   Future<void> _sync() async {
     if (busy || widget.githubClient == null) return;
     final issues = issuesForEntity(
@@ -521,6 +605,7 @@ class _EntityBoardState extends State<EntityBoard> {
       final client = await widget.githubClient!();
       if (repo != null) {
         final rows = await client.repositoryIssues(repo!);
+        await _reconcileRepositoryMoves(repo!, rows);
         if (mounted) setState(() => remoteIssues = rows);
       }
       for (final issue in issues) {
