@@ -129,9 +129,15 @@ void main() {
         '{"revision":{"entityKind":"node","entityId":"n1",'
         '"payloadJson":"{}","createdAtMs":1},"history":[],'
         '"node":{"content":"Existing note"}}';
+    const noHistory =
+        '{"revision":{"entityKind":"node","entityId":"n1",'
+        '"payloadJson":"{}","createdAtMs":1},'
+        '"node":{"content":"Existing note"}}';
     await local.writeText(path, original);
-    await expectLater(local.writeText(path, record), throwsFormatException);
-    expect(await local.readText(path), original);
+    for (final value in [record, noHistory]) {
+      await expectLater(local.writeText(path, value), throwsFormatException);
+      expect(await local.readText(path), original);
+    }
     final calls = <MethodCall>[];
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
@@ -151,7 +157,9 @@ void main() {
       uri: 'content://test/tree',
       name: 'Test',
     );
-    await expectLater(saf.writeText(path, record), throwsFormatException);
+    for (final value in [record, noHistory]) {
+      await expectLater(saf.writeText(path, value), throwsFormatException);
+    }
     expect(calls, isEmpty);
     const legacy = '{"revision":{},"history":[],"node":{"content":"draft"}}';
     await local.writeText(path, legacy);
