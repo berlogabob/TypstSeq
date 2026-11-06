@@ -147,6 +147,7 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
                         title: Text(note.title),
                         onTap: () async {
                           try {
+                            await checkBotManifest(mount.source.path!);
                             final text = await workspace.vault!.storage
                                 .readText(note.path);
                             if (!context.mounted) return;
@@ -207,9 +208,17 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
                             );
                           } catch (error) {
                             if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Could not read item: $error'),
+                              await showDialog<void>(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: const Text('Could not read item'),
+                                  content: Text('$error'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context),
+                                      child: const Text('Close'),
+                                    ),
+                                  ],
                                 ),
                               );
                             }

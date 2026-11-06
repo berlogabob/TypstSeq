@@ -555,6 +555,21 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 100));
     });
     await tester.pumpAndSettle();
+    await tester.runAsync(
+      () => File('${bot.path}/bot-vault.json').writeAsString('{"schema":2}'),
+    );
+    await tester.runAsync(() async {
+      await tester.tap(find.text('item-123'));
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    });
+    await tester.pump();
+    expect(find.textContaining('needs newer TyLog'), findsOneWidget);
+    expect(find.text('Accept'), findsNothing);
+    await tester.tap(find.text('Close').last);
+    await tester.pumpAndSettle();
+    await tester.runAsync(
+      () => File('${bot.path}/bot-vault.json').writeAsString('{"schema":1}'),
+    );
     await tester.runAsync(() async {
       await tester.tap(find.text('item-123'));
       await tester.pump();

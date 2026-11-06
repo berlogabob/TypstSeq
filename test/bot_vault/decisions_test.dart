@@ -35,6 +35,20 @@ void main() {
     },
   );
 
+  test('concurrent decisions stay complete and retry-safe', () async {
+    await Future.wait(
+      List.generate(
+        24,
+        (_) => BotVaultDecisions(root).record(item, 'accepted'),
+      ),
+    );
+    final lines = await File(
+      '${root.path}/outbox/decisions.jsonl',
+    ).readAsLines();
+    expect(lines, hasLength(1));
+    expect((jsonDecode(lines.single) as Map)['action'], 'accepted');
+  });
+
   test('ignores an incomplete existing decision when retrying', () async {
     final dir = await Directory('${root.path}/outbox').create();
     final file = File('${dir.path}/decisions.jsonl');
