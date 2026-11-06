@@ -9,6 +9,7 @@ from pathlib import Path
 
 ADB = str(Path.home() / 'Library/Android/sdk/platform-tools/adb')
 SERIAL = 'XPH0219904001750'
+PRODUCTION = 'org.tylog.tylog'
 PACKAGE = 'org.tylog.tylog.profiletest'
 INSTALL_TIME = '2026-11-05 15:27:02'
 
@@ -49,12 +50,23 @@ def parse_battery(output):
 def preflight():
     installed_at = production_install_time()
     packages = adb('pm', 'list', 'packages').splitlines()
+    all_packages = adb('pm', 'list', 'packages', '-u').splitlines()
     isolated = f'package:{PACKAGE}' in packages
+    active = f'package:{PRODUCTION}' in packages
+    known = f'package:{PRODUCTION}' in all_packages
+    if (active and not known) or (installed_at is not None and not active):
+        state = 'inconsistent'
+    elif active:
+        state = 'installed'
+    elif known:
+        state = 'uninstalled'
+    else:
+        state = 'missing'
     charge, battery = parse_battery(adb('dumpsys', 'battery'))
     return dict(production_first_install_time=installed_at,
                 expected_first_install_time=INSTALL_TIME,
-                profiletest_installed=isolated,
-                package_gate_passed=installed_at == INSTALL_TIME and isolated,
+                profiletest_installed=isolated, production_package_state=state,
+                package_gate_passed=state == 'installed' and installed_at == INSTALL_TIME and isolated,
                 charge_uah=charge, battery=battery)
 
 

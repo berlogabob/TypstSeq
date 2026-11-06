@@ -321,3 +321,22 @@ status 4 (not charging); this snapshot is not consumption evidence. No app was
 installed or launched, and the locked Mac GUI was skipped. Direct LAN proof,
 bidirectional representative transfers, retries/resume, and meaningful CPU and
 battery deltas remain in P2P5-rest-rest-rest-rest-rest-rest. P2P3 remains no-go.
+
+
+## P2P5-rest-rest-rest-rest-rest-rest package-state diagnosis (2026-11-06)
+The preflight now compares the active package list with the list including
+uninstalled packages and reports the production package state as `installed`,
+`uninstalled`, `missing`, or `inconsistent`. A timestamp with no active package,
+or an active package absent from the inclusive list, is inconsistent and fails
+the gate. The expected timestamp and isolated package remain mandatory. This
+is read-only and does not repair or reinstall a package.
+
+On the P30, the only listed Android user was the owner; the production package
+was absent even from the inclusive list and its timestamp was unavailable.
+The isolated package was present. Preflight refused measurements. Battery
+reported 20,000 µAh, AC connected, status 4 (not charging); this is not a
+consumption measurement. No app was installed or launched. The locked Mac GUI
+was skipped. The production installation cannot be restored or its original
+timestamp verified by this diagnostic; device transfers and the remaining
+route, retry, resume, CPU and battery measurements are deferred to
+P2P5-rest-rest-rest-rest-rest-rest-rest. P2P3 remains no-go.

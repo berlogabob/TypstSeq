@@ -7,18 +7,34 @@ from tool.p2p_measure import capture, delta, parse_battery, parse_proc_stat, pre
 class MeasurementTest(unittest.TestCase):
     def test_preflight_reports_package_gate_and_battery_without_sampling_process(self):
         battery = 'AC powered: true\nUSB powered: false\nWireless powered: false\nstatus: 3\nCharge counter: 24000\n'
-        with patch('tool.p2p_measure.adb', side_effect=['', 'package:org.tylog.tylog.profiletest\n', battery]) as call:
+        with patch('tool.p2p_measure.adb', side_effect=['', 'package:org.tylog.tylog.profiletest\n', 'package:org.tylog.tylog.profiletest\n', battery]) as call:
             result = preflight()
         self.assertEqual(result['production_first_install_time'], None)
         self.assertFalse(result['package_gate_passed'])
         self.assertTrue(result['profiletest_installed'])
         self.assertEqual(result['charge_uah'], 24000)
         self.assertTrue(result['battery']['ac'])
-        self.assertEqual(call.call_count, 3)
-        with patch('tool.p2p_measure.adb', side_effect=['firstInstallTime=2026-11-05 15:27:02', 'package:org.tylog.tylog.profiletest\n', battery]):
+        self.assertEqual(call.call_count, 4)
+        with patch('tool.p2p_measure.adb', side_effect=['firstInstallTime=2026-11-05 15:27:02', 'package:org.tylog.tylog.profiletest\npackage:org.tylog.tylog\n', 'package:org.tylog.tylog.profiletest\npackage:org.tylog.tylog\n', battery]):
             self.assertTrue(preflight()['package_gate_passed'])
-        with patch('tool.p2p_measure.adb', side_effect=['firstInstallTime=2026-11-05 15:27:02', '', battery]):
+        with patch('tool.p2p_measure.adb', side_effect=['firstInstallTime=2026-11-05 15:27:02', 'package:org.tylog.tylog\n', 'package:org.tylog.tylog\n', battery]):
             self.assertFalse(preflight()['package_gate_passed'])
+
+    def test_preflight_identifies_missing_uninstalled_and_inconsistent_production(self):
+        battery = 'AC powered: true\nUSB powered: false\nWireless powered: false\nstatus: 4\nCharge counter: 20000\n'
+        isolated = 'package:org.tylog.tylog.profiletest\n'
+        production = 'package:org.tylog.tylog\n'
+        cases = [
+            ('', isolated, isolated, 'missing', False),
+            ('', isolated, isolated + production, 'uninstalled', False),
+            ('firstInstallTime=2026-11-05 15:27:02', isolated, isolated, 'inconsistent', False),
+            ('firstInstallTime=2026-11-05 15:27:02', isolated + production, isolated + production, 'installed', True),
+        ]
+        for stamp, active, all_packages, state, passed in cases:
+            with self.subTest(state=state), patch('tool.p2p_measure.adb', side_effect=[stamp, active, all_packages, battery]):
+                result = preflight()
+                self.assertEqual(result['production_package_state'], state)
+                self.assertEqual(result['package_gate_passed'], passed)
 
     def test_rejects_missing_or_changed_production_install_before_sampling(self):
         for output in ('', '    firstInstallTime=2026-11-05 15:27:03'):
