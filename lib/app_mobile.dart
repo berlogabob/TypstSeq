@@ -24,7 +24,7 @@ import 'package:tylog_audio/tylog_audio.dart'
     show audioDurationMs, peaksFromWav;
 import 'package:tylog_core/enrich.dart';
 import 'package:tylog_core/tylog_core.dart'
-    show Decision, decisionsDir, encodeDecisions, loadDecisions;
+    show Decision, decisionsDir, encodeDecisions, loadDecisions, runClusterStep;
 import 'package:tylog_core/values.dart';
 import 'package:url_launcher/url_launcher.dart';
 

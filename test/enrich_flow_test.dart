@@ -464,12 +464,6 @@ void main() {
     await _pump(tester);
     await _openIncoming(tester);
     expect(find.text('Rename cluster ai → agents'), findsOneWidget);
-    await tester.tap(find.byTooltip('Recluster now'));
-    await tester.pump();
-    final request =
-        jsonDecode(await storage.readText('_system/clusters/run-request.json'))
-            as Map;
-    expect(DateTime.tryParse(request['requested_at'] as String), isNotNull);
     await tester.tap(find.text('Accept'));
     await _pump(tester);
     final decision = Decision.parseLog(
@@ -479,6 +473,10 @@ void main() {
     expect(decision.action, 'accepted');
     expect(decision.target, 'rename:ai->agents');
     expect(find.text('Rename cluster ai → agents'), findsNothing);
+    await tester.tap(find.byTooltip('Recluster now'));
+    await _pump(tester);
+    expect(await storage.exists('_system/clusters/snapshot.json'), isTrue);
+    expect(find.text('Clusters updated'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
 

@@ -9,6 +9,7 @@ export 'src/enrich.dart';
 export 'src/eval_links.dart';
 export 'src/clusters.dart';
 export 'src/cluster_snapshot.dart';
+export 'src/cluster_step.dart';
 export 'src/graph.dart';
 export 'src/knowledge.dart';
 export 'src/index_donor.dart';

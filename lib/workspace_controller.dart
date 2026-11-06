@@ -12,7 +12,9 @@ import 'package:tylog_core/tylog_core.dart'
         encodeMounts,
         parseMounts,
         mountsSettingsPath,
-        CompositeVaultStorage;
+        CompositeVaultStorage,
+        runClusterStep,
+        ClusterSnapshot;
 import 'package:tylog_core/enrich.dart' show selfHealAutoEntities;
 
 import 'package:tylog_core/graph.dart';
@@ -458,6 +460,7 @@ class WorkspaceController extends ChangeNotifier {
   // Every open/close starts a new ownership epoch. Async I/O may finish after
   // a vault switch; only the epoch that started it may publish its result.
   int _vaultGeneration = 0;
+  bool _autoClusterStarted = false;
 
   bool _owns(Vault opened, int generation) =>
       !_disposed && identical(vault, opened) && _vaultGeneration == generation;
@@ -707,6 +710,7 @@ class WorkspaceController extends ChangeNotifier {
     // The search file is a cache; a vault that vanished mid-close just loses it.
     _workerShutdowns.add(flushSearch().catchError((_) {}));
     _vaultGeneration++;
+    _autoClusterStarted = false;
     _mountFetcher = null;
     _feedFlight = null;
     _eventCreates.clear();
@@ -868,6 +872,7 @@ class WorkspaceController extends ChangeNotifier {
           : cached;
       if (_disposed || generation != _vaultGeneration) return;
       index = loaded;
+      if (loaded != null) _startAutoCluster(loaded);
       // Not via _retainIndex — a new vault must not inherit the previous one's
       // index object. But the resolver still has to exist from the moment the
       // index does: this is the fast path, so the editor starts rendering
@@ -3549,6 +3554,7 @@ class WorkspaceController extends ChangeNotifier {
     // object in place, so reading `index` here would derive from pre-update
     // contents.
     _publishCalendar(next);
+    _startAutoCluster(next);
     final current = index;
     if (current == null ||
         identical(current, next) ||
@@ -3583,6 +3589,51 @@ class WorkspaceController extends ChangeNotifier {
       ..clear()
       ..addAll(next.issueLines);
     return current;
+  }
+
+  void _startAutoCluster(VaultIndex current) {
+    if (Platform.environment.containsKey('FLUTTER_TEST') ||
+        _autoClusterStarted ||
+        !(Platform.isMacOS || Platform.isWindows || Platform.isLinux)) {
+      return;
+    }
+    _autoClusterStarted = true;
+    unawaited(_autoClusterIfStale(current));
+  }
+
+  // shortcut: phones skip automatic clustering to avoid concurrent writes to synced vaults.
+  Future<void> _autoClusterIfStale(VaultIndex current) async {
+    final opened = vault;
+    final generation = _vaultGeneration;
+    if (opened == null) return;
+    try {
+      var stale = true;
+      if (await opened.storage.exists('_system/clusters/snapshot.json')) {
+        try {
+          final snapshot = ClusterSnapshot.fromJson(
+            jsonDecode(
+                  await opened.storage.readText(
+                    '_system/clusters/snapshot.json',
+                  ),
+                )
+                as Map,
+          );
+          stale =
+              DateTime.now().toUtc().difference(
+                DateTime.parse(snapshot.generatedAt).toUtc(),
+              ) >
+              const Duration(hours: 24);
+        } on Object {
+          stale = true;
+        }
+      }
+      if (stale && _owns(opened, generation)) {
+        await runClusterStep(opened.storage, current, now: DateTime.now());
+        await refreshDerived();
+      }
+    } catch (_) {
+      // Automatic clustering is best-effort; the Incoming action can retry.
+    }
   }
 
   Future<void> _runIdleMaintenance() async {

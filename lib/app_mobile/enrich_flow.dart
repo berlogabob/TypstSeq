@@ -863,10 +863,48 @@ extension _EnrichIncoming on _HomeScreenState {
                                 IconButton(
                                   tooltip: 'Recluster now',
                                   icon: const Icon(Icons.hub),
-                                  onPressed: () => v.storage.writeText(
-                                    '_system/clusters/run-request.json',
-                                    '${jsonEncode({'requested_at': DateTime.now().toUtc().toIso8601String()})}\n',
-                                  ),
+                                  onPressed: () async {
+                                    try {
+                                      final currentIndex = index;
+                                      if (currentIndex == null) {
+                                        throw StateError(
+                                          'Vault index is not ready',
+                                        );
+                                      }
+                                      await runClusterStep(
+                                        v.storage,
+                                        currentIndex,
+                                        now: DateTime.now(),
+                                      );
+                                      await workspace.refreshDerived();
+                                      if (context.mounted) {
+                                        setSheetState(() {
+                                          future = loadQueue();
+                                        });
+                                      }
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Clusters updated'),
+                                          ),
+                                        );
+                                      }
+                                    } catch (error) {
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              'Cluster update failed: $error',
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
                                 ),
                                 IconButton(
                                   tooltip: 'Run suggestions now',

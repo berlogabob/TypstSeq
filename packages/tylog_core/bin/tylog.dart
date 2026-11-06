@@ -554,131 +554,17 @@ Future<int> _cluster(List<String> args) async {
   )) {
     if (event case MaintenanceIndexed(index: final built)) index = built;
   }
-  final next = <String, Set<String>>{};
-  for (final entry in computeCommunities(index).tagToCluster.entries) {
-    next.putIfAbsent(entry.value, () => <String>{}).add(entry.key);
-  }
-  final snapshotFile = File('${root.path}/_system/clusters/snapshot.json');
-  Map<String, Set<String>> previous = {};
-  try {
-    final decoded = ClusterSnapshot.fromJson(
-      jsonDecode(await snapshotFile.readAsString()) as Map,
-    );
-    previous = decoded.clusters;
-  } on FileSystemException {
-    /* First run. */
-  } on FormatException {
-    /* Rebuild malformed snapshots. */
-  }
-  final match = matchClusters(previous, next);
-  final decisions = await _clusterChangeDecisions(root);
-  final clusters = <String, Set<String>>{
-    for (final entry in next.entries)
-      match.stableLabel[entry.key] ?? entry.key: entry.value,
-  };
-  for (final change in match.changes) {
-    if (!const {'rename', 'merge', 'split'}.contains(change.kind)) continue;
-    final id = _clusterChangeId(change);
-    if (decisions.accepted.contains(id)) {
-      // Accepted vocabulary changes take the labels and membership from `to`.
-      for (final label in change.from) {
-        clusters.remove(label);
-      }
-      for (final label in change.to) {
-        clusters.remove(match.stableLabel[label] ?? label);
-        if (next.containsKey(label)) clusters[label] = next[label]!;
-      }
-    } else {
-      // Until accepted (including rejected changes), keep the old vocabulary.
-      for (final label in change.to) {
-        clusters.remove(match.stableLabel[label] ?? label);
-        clusters.remove(label);
-      }
-      for (final label in change.from) {
-        if (previous.containsKey(label)) clusters[label] = previous[label]!;
-      }
-    }
-  }
-  final now = DateTime.now().toUtc().toIso8601String();
-  await _atomicJson(
-    snapshotFile,
-    ClusterSnapshot(generatedAt: now, clusters: clusters).toJson(),
-  );
-  final proposals = [
-    for (final change in match.changes)
-      if (!decisions.rejected.contains(_clusterChangeId(change)) &&
-          !decisions.accepted.contains(_clusterChangeId(change)))
-        {
-          'id': _clusterChangeId(change),
-          'kind': change.kind,
-          'from': change.from,
-          'to': change.to,
-        },
-  ];
+  final result = await runClusterStep(storage, index, now: DateTime.now());
   if (requestedRun) state['last_run_request'] = requested;
   if (scheduledRun) state['last_scheduled_date'] = date;
   await stateFile.parent.create(recursive: true);
   final stateTmp = File('${stateFile.path}.tmp');
   await stateTmp.writeAsString(jsonEncode(state), flush: true);
   await stateTmp.rename(stateFile.path);
-  await _atomicJson(File('${root.path}/_system/clusters/proposals.json'), {
-    'schema': 1,
-    'generated_at': now,
-    'changes': proposals,
-  });
   stdout.writeln(
-    'Wrote ${clusters.length} clusters and ${proposals.length} proposal(s)',
+    'Wrote ${result.clusterCount} clusters and ${result.proposalCount} proposal(s)',
   );
   return 0;
-}
-
-String _clusterChangeId(ClusterChange change) =>
-    '${change.kind}:${change.from.join('+')}->${change.to.join('+')}';
-
-class _ClusterChangeDecisions {
-  const _ClusterChangeDecisions(this.accepted, this.rejected);
-  final Set<String> accepted;
-  final Set<String> rejected;
-}
-
-Future<_ClusterChangeDecisions> _clusterChangeDecisions(Directory root) async {
-  final accepted = <String>{};
-  final rejected = <String>{};
-  final directory = Directory('${root.path}/_system/decisions');
-  if (!await directory.exists()) {
-    return _ClusterChangeDecisions(accepted, rejected);
-  }
-  await for (final entry in directory.list()) {
-    if (entry is! File || !entry.path.endsWith('.jsonl')) continue;
-    for (final line in await entry.readAsLines()) {
-      try {
-        final row = jsonDecode(line);
-        if (row is Map &&
-            row['source'] == 'clusters' &&
-            row['target'] is String) {
-          if (row['action'] == 'accepted') {
-            accepted.add(row['target'] as String);
-          }
-          if (row['action'] == 'rejected') {
-            rejected.add(row['target'] as String);
-          }
-        }
-      } on FormatException {
-        /* Ignore a partial ledger line. */
-      }
-    }
-  }
-  return _ClusterChangeDecisions(accepted, rejected);
-}
-
-Future<void> _atomicJson(File file, Object value) async {
-  await file.parent.create(recursive: true);
-  final temporary = File('${file.path}.tmp');
-  await temporary.writeAsString(
-    '${const JsonEncoder.withIndent('  ').convert(value)}\n',
-    flush: true,
-  );
-  await temporary.rename(file.path);
 }
 
 Future<String> _cliDeviceId(VaultStorage storage) async {
