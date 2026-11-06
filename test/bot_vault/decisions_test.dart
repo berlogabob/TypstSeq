@@ -36,6 +36,22 @@ void main() {
     },
   );
 
+  test('writes accepted and rejected contract-v1 events', () async {
+    await File('${root.path}/items/item-456.typ').writeAsString('draft');
+    final decisions = BotVaultDecisions(root);
+    await decisions.record(item, 'accepted');
+    await decisions.record('item-456', 'rejected');
+    final rows = (await File(
+      '${root.path}/outbox/decisions.jsonl',
+    ).readAsLines()).map((line) => jsonDecode(line) as Map<String, dynamic>);
+    expect(rows.map((row) => row['action']), ['accepted', 'rejected']);
+    for (final row in rows) {
+      expect(row['schema'], 1);
+      expect(row['id'], isNotEmpty);
+      expect(DateTime.parse(row['at'] as String).isUtc, isTrue);
+    }
+  });
+
   test('review hides only complete, valid decision rows', () async {
     final outbox = await Directory('${root.path}/outbox').create();
     final file = File('${outbox.path}/decisions.jsonl');

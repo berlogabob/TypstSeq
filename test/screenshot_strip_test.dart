@@ -63,6 +63,24 @@ void main() {
     );
   });
 
+  test('botIncomingOnDay includes only bot item notes from bot mounts', () {
+    final draft = NoteRef(
+      id: 'item-123',
+      path: 'ext/bot/items/item-123.typ',
+      title: 'Bot draft',
+      kind: 'article',
+      outgoingLinks: const [],
+    );
+    final ordinary = NoteRef(
+      id: 'item-456',
+      path: 'ext/folder/items/item-456.typ',
+      title: 'Folder note',
+      kind: 'article',
+      outgoingLinks: const [],
+    );
+    expect(botIncomingOnDay(_index([draft, ordinary]), {'bot'}), [draft]);
+  });
+
   testWidgets('long press dismiss calls onDecide', (tester) async {
     final note = _shot('shot-aaaaaaaaaaaaaaaa');
     (NoteRef?, String?)? decision;
@@ -84,6 +102,36 @@ void main() {
     await tester.tap(find.text('Dismiss'));
     await tester.pumpAndSettle();
     expect(decision, (note, 'dismissed'));
+  });
+
+  testWidgets('bot draft Incoming offers accept and reject decisions', (
+    tester,
+  ) async {
+    final note = NoteRef(
+      id: 'item-123',
+      path: 'ext/bot/items/item-123.typ',
+      title: 'Bot draft',
+      kind: 'article',
+      outgoingLinks: const [],
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ScreenshotStrip(
+            index: _index(const []),
+            day: '2026-10-21',
+            onOpenPath: (_) {},
+            incoming: true,
+            external: [note],
+            onDecide: (_, _) {},
+          ),
+        ),
+      ),
+    );
+    await tester.longPress(find.text('Bot draft'));
+    await tester.pumpAndSettle();
+    expect(find.text('Accept'), findsOneWidget);
+    expect(find.text('Reject'), findsOneWidget);
   });
 
   testWidgets('external booking renders and tap does not open a vault path', (

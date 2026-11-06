@@ -54,6 +54,25 @@ extension _IncomingFlow on _HomeScreenState {
     final v = vault;
     final device = vaultRegistry?.deviceId;
     if (v == null || device == null) return;
+    if (RegExp(
+          r'^ext/([^/]+)/items/(item-[a-zA-Z0-9_-]+)\.typ$',
+        ).firstMatch(note.path)
+        case final botMatch?) {
+      if (!{'accepted', 'rejected'}.contains(action)) return;
+      final mount = workspace.mounts
+          .where((mount) => mount.id == botMatch[1])
+          .firstOrNull;
+      if (mount?.source.extra['botVault'] != true ||
+          mount?.source.path == null) {
+        return;
+      }
+      await BotVaultDecisions(
+        Directory(mount!.source.path!),
+      ).record(botMatch[2]!, action);
+      _rebuild(() => _botDecidedItems.add(note.id));
+      unawaited(workspace.refreshIndex(updateStatus: false, always: true));
+      return;
+    }
     if (note.kind == 'github-conflict') {
       final entry = workspace.githubConflicts
           .where(

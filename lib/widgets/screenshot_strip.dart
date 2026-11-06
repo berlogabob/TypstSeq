@@ -67,6 +67,18 @@ List<NoteRef> incomingOnDay(VaultIndex? index, String day) {
   return notes;
 }
 
+List<NoteRef> botIncomingOnDay(VaultIndex? index, Set<String> botMountIds) =>
+    (index?.notes ?? const <NoteRef>[])
+        .where(
+          (note) => botMountIds.any(
+            (id) => RegExp(
+              '^ext/${RegExp.escape(id)}/items/item-[a-zA-Z0-9_-]+\\.typ\$',
+            ).hasMatch(note.path),
+          ),
+        )
+        .toList()
+      ..sort((a, b) => a.path.compareTo(b.path));
+
 String? screenshotAssetPath(NoteRef note) {
   final date = note.date;
   if (date == null ||
@@ -217,6 +229,13 @@ class ScreenshotStrip extends StatelessWidget {
                                           ? [
                                               ('Keep mine', 'keep-mine'),
                                               ('Take theirs', 'take-theirs'),
+                                            ]
+                                          : RegExp(
+                                              r'^ext/[^/]+/items/item-[a-zA-Z0-9_-]+\.typ$',
+                                            ).hasMatch(note.path)
+                                          ? [
+                                              ('Accept', 'accepted'),
+                                              ('Reject', 'rejected'),
                                             ]
                                           : [
                                               (

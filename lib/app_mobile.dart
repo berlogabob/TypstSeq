@@ -40,6 +40,7 @@ import 'saved_searches.dart';
 import 'markdown_article_import.dart';
 import 'screenshots_ocr.dart';
 import 'widgets/screenshot_strip.dart';
+import 'bot_vault/decisions.dart';
 import 'olt/olt_client.dart';
 import 'olt/olt_cache.dart';
 import 'connectors/olt_connector.dart';
@@ -304,6 +305,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final _mentionQueryCache = MentionQueryCache();
   final _actionableSidecars = ActionableSidecarSummary();
   final Set<String> _reservedTaskIds = {};
+  final Set<String> _botDecidedItems = {};
   final sourceController = TextEditingController();
   final sourceEditorKey = GlobalKey<EditorState>();
   var _plainEditorKey = GlobalKey<VirtualPlainEditorState>();
@@ -6421,6 +6423,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (day == isoDay(DateTime.now())) {
         external.addAll(githubConflictNotes(workspace.githubConflicts));
       }
+      final botMountIds = workspace.mounts
+          .where((mount) => mount.source.extra['botVault'] == true)
+          .map((mount) => mount.id)
+          .toSet();
+      external.addAll(
+        botIncomingOnDay(
+          index,
+          botMountIds,
+        ).where((note) => !_botDecidedItems.contains(note.id)),
+      );
       final incomingCount = incomingOnDay(index, day).length + external.length;
       final referenceCount = dailyMore.isEmpty ? 0 : backlinks.length;
       dailyMore.insert(
