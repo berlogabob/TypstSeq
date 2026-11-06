@@ -396,3 +396,28 @@ no transfer or battery consumption measurement was attempted. The locked Mac
 GUI was skipped. The package, route, bidirectional measurement and safety gates
 remain in P2P5-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest; P2P3 remains
 no-go.
+
+## P2P5-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest scratch fixture (2026-11-06)
+Create two reproducible disposable source folders, each at a new path:
+
+```sh
+python3 tool/p2p6/scratch_fixture.py /tmp/p2p-base --variant base
+python3 tool/p2p6/scratch_fixture.py /tmp/p2p-changed --variant changed
+```
+
+Each contains 200 synthetic notes and two 8 MiB deterministic binary assets.
+The changed variant modifies one note and one whole asset; all other bytes
+match. `--notes` and `--asset-mib` set positive sizes. The command refuses an
+existing destination and never opens a vault. Use these folders with the
+existing isolated runner and a disposable receiver destination; prepare a
+matching baseline on the receiver before comparing changed-blob metrics. This
+fixture is synthetic, not a substitute for representative user-selected folders.
+Remove the generated directories when finished.
+
+P30 read-only preflight found `.profiletest` installed but the production
+package missing, with no first-install timestamp; battery reported 20,000 µAh,
+AC connected and status 4 (not charging). The required package gate failed,
+so no device app was installed or launched and no transfer, CPU or battery
+delta was measured. The locked Mac GUI was skipped. Direct LAN evidence,
+bidirectional runs, retries/resume and the safety gates remain in the next
+plan item. P2P3 remains no-go.
