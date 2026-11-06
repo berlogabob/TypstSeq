@@ -354,6 +354,46 @@ void main() {
       expect(await storage.exists('notes/c.typ'), isTrue);
     },
   );
+  test('merges cross-folder prose with decomposed accents', () async {
+    final root = await Directory.systemTemp.createTemp('merge-accents-');
+    final storage = LocalVaultStorage(root);
+    final vault = Vault.withStorage(storage);
+    await vault.ensureCreated();
+    final workspace = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      reconcileTasks: (_) async {},
+    )..vault = vault;
+    addTearDown(() async {
+      workspace.dispose();
+      await root.delete(recursive: true);
+    });
+    await storage.createDirectory('notes/other');
+    await storage.writeText(
+      'notes/a.typ',
+      replaceNoteHeader('First.', const NoteMetadataDraft(id: 'a', title: 'A')),
+    );
+    const body = 'Cafe\u0301 and ac\u0327a\u0303o.';
+    await storage.writeText(
+      'notes/other/b.typ',
+      replaceNoteHeader(body, const NoteMetadataDraft(id: 'b', title: 'B')),
+    );
+    workspace.index = await scanVaultStorage(storage);
+    await workspace.mergeDuplicate(
+      await workspace.previewDuplicateMerge('notes/a.typ', 'notes/other/b.typ'),
+    );
+    final result = await storage.readText('notes/a.typ');
+    expect(result, contains(body));
+    expect(await storage.exists('notes/other/b.typ'), isFalse);
+    expect(await loadDecisions(storage), hasLength(1));
+    final compile = Process.runSync('typst', [
+      'compile',
+      '--root',
+      root.path,
+      '${root.path}/notes/a.typ',
+      '${root.path}/out.pdf',
+    ]);
+    expect(compile.exitCode, 0, reason: '${compile.stderr}');
+  });
   test('merges cross-folder prose with ampersands and plus signs', () async {
     final root = await Directory.systemTemp.createTemp('merge-punctuation-');
     final storage = LocalVaultStorage(root);
