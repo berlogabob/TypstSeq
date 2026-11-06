@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:tylog/app_mobile.dart';
 import 'package:tylog/vault_registry.dart';
+import 'package:vm_service/vm_service.dart' show VmService;
 import 'package:vm_service/vm_service_io.dart';
 
 Future<int?> _heapBytes() async {
@@ -17,7 +18,13 @@ Future<int?> _heapBytes() async {
     scheme: uri.scheme == 'https' ? 'wss' : 'ws',
     path: '${uri.path}ws',
   );
-  final service = await vmServiceConnectUri(ws.toString());
+  VmService service;
+  try {
+    service = await vmServiceConnectUri(ws.toString());
+  } on SocketException catch (error) {
+    developer.log('PF2_HEAP_UNAVAILABLE $error');
+    return null;
+  }
   try {
     final vm = await service.getVM();
     final isolate = vm.isolates?.firstWhere((i) => i.isSystemIsolate != true);
@@ -49,7 +56,7 @@ void main() {
 
     final heapBefore = await _heapBytes();
     await tester.pumpWidget(const TyLogApp());
-    final openMore = find.textContaining('More ·');
+    final openMore = find.byKey(const ValueKey('daily-more'));
     final deadline = DateTime.now().add(const Duration(minutes: 2));
     while (openMore.evaluate().isEmpty && DateTime.now().isBefore(deadline)) {
       await tester.runAsync(
@@ -87,18 +94,20 @@ void main() {
     final audioRows = find.byTooltip('Reject audio proposal').evaluate().length;
     final ocrRows = find.byTooltip('Accept').evaluate().length;
     final sheetFrames = frames.skip(openFrames).toList();
-    final older = find.text('Show older');
-    var olderMs = 'unavailable';
-    if (older.evaluate().isNotEmpty) {
+    final olderMs = <String, int>{};
+    for (final label in ['Show older', 'Show older audio', 'Show older OCR']) {
+      final older = find.text(label);
+      if (older.evaluate().isEmpty) continue;
       final watch = Stopwatch()..start();
       await tester.ensureVisible(older.first);
       await tester.tap(older.first);
       await tester.pump(const Duration(milliseconds: 100));
       watch.stop();
-      olderMs = '${watch.elapsedMilliseconds}';
+      olderMs[label] = watch.elapsedMilliseconds;
     }
     final acceptOcr = find.byTooltip('Accept');
     var decisionMs = 'unavailable';
+    var decisionAction = 'unavailable';
     if (acceptOcr.evaluate().isNotEmpty) {
       final watch = Stopwatch()..start();
       await tester.ensureVisible(acceptOcr.first);
@@ -113,6 +122,29 @@ void main() {
       }
       watch.stop();
       decisionMs = '${watch.elapsedMilliseconds}';
+      decisionAction = 'ocr:accepted';
+    } else {
+      final rejectAudio = find.byTooltip('Reject audio proposal');
+      if (rejectAudio.evaluate().isNotEmpty) {
+        final before = rejectAudio.evaluate().length;
+        final watch = Stopwatch()..start();
+        await tester.ensureVisible(rejectAudio.first);
+        await tester.tap(rejectAudio.first);
+        final decisionDeadline = DateTime.now().add(
+          const Duration(seconds: 30),
+        );
+        while (find.byTooltip('Reject audio proposal').evaluate().length >=
+                before &&
+            DateTime.now().isBefore(decisionDeadline)) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 50)),
+          );
+          await tester.pump();
+        }
+        watch.stop();
+        decisionMs = '${watch.elapsedMilliseconds}';
+        decisionAction = 'audio:rejected';
+      }
     }
     final heapAfter = await _heapBytes();
     // ignore: avoid_print
@@ -120,7 +152,7 @@ void main() {
       'PF2_INCOMING_SHEET readyMs=${readyWatch.elapsedMilliseconds} '
       'storageKind=${registry.active.storageKind} '
       'mentions=$mentionRows audio=$audioRows ocr=$ocrRows '
-      'showOlderMs=$olderMs decisionMs=$decisionMs '
+      'showOlderMs=$olderMs decisionAction=$decisionAction decisionMs=$decisionMs '
       'frameUs=${sheetFrames.map((f) => f.totalSpan.inMicroseconds).toList()} '
       'heapBefore=$heapBefore heapAfter=$heapAfter '
       'heapDelta=${heapBefore == null || heapAfter == null ? null : heapAfter - heapBefore} '

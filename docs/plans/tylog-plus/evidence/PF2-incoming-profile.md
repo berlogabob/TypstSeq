@@ -189,3 +189,29 @@ screen was locked, so GUI or P2P sender actions were skipped.
 The actual-sheet measurement still needs a runner that targets the installed
 `.profiletest` app without Flutter's debug-package path, plus a received copy
 with eligible rows for measuring a decision append and Show older paging.
+
+## PF2-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest (2026-11-06)
+
+Added a registry-preserving Flutter integration-test path by setting
+`ORG_GRADLE_PROJECT_tylogDebugSuffix=.profiletest` and signing that isolated
+debug variant with the release key when available. The signed build matched
+the installed `.profiletest` certificate. Ran
+`ORG_GRADLE_PROJECT_tylogDebugSuffix=.profiletest flutter test
+integration_test/pf2_incoming_sheet_profile_test.dart -d XPH0219904001750
+--no-uninstall`; it retained the package's original
+`firstInstallTime=2026-11-05 21:05:34` and loaded the registered 10,085-note
+P2P6 copy. The harness now targets the daily More panel by a stable key,
+captures all three Show older controls, and records an OCR accept or audio
+reject when those rows exist.
+
+The actual sheet opened successfully. In this debug integration build, sheet
+readiness was 8,489 ms; 30 frame samples had a 44.071 ms median and 818.004 ms
+maximum; process RSS was 705,859,584 bytes. Dart heap was unavailable because
+the test VM service socket refused a device-local connection. The queue had no
+mention, audio, or OCR rows, so paging and decision append were unavailable.
+These debug-run numbers are diagnostic only and are not comparable to the
+earlier profile-build measurements. The profile package remained installed;
+production `org.tylog.tylog` was absent before and after, so its historical
+first-install time could not be queried. No production package command was
+issued. The Mac GUI was skipped because the screen is locked. A new received
+copy with an eligible row is tracked in the next PF2 plan item.

@@ -6458,6 +6458,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 ),
                 child: SingleChildScrollView(
                   child: ExpansionTile(
+                    key: const ValueKey('daily-more'),
                     initiallyExpanded: _dailyMoreExpanded,
                     onExpansionChanged: (value) => _dailyMoreExpanded = value,
                     title: Text(

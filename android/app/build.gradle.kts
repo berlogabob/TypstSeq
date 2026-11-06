@@ -58,9 +58,13 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix = (project.findProperty("tylogDebugSuffix") as? String)
+            val debugSuffix = (project.findProperty("tylogDebugSuffix") as? String)
                 ?.takeIf { it.startsWith(".") && it.length > 1 }
                 ?: ".debug"
+            applicationIdSuffix = debugSuffix
+            if (debugSuffix == ".profiletest" && keystorePropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
         release {
             if (keystorePropertiesFile.exists()) {
