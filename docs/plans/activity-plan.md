@@ -463,7 +463,8 @@ Issues found:
 - [x] S3b-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Merge cross-folder bodies containing ampersands and plus signs.
 - [x] S3b-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Merge cross-folder prose containing percent signs and vertical bars.
 - [x] S3b-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Merge cross-folder prose containing typographic quotation marks, dashes and ellipses.
-- [ ] S3b-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Merge noncanonical pages and preserve remaining metadata (including other matching properties, conflicts and kinds); handle other cross-folder bodies, repoint other link forms and references outside indexed notes, handle ambiguous names, and recover safely from partial writes.
+- [x] S3b-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Merge cross-folder prose containing euro, pound and yen currency symbols.
+- [ ] S3b-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest Merge noncanonical pages and preserve remaining metadata (including other matching properties, conflicts and kinds); handle other cross-folder bodies, repoint other link forms and references outside indexed notes, handle ambiguous names, and recover safely from partial writes.
 - [x] S4 Person timeline: dailies, audio, screenshots, tasks mentioning the person, by date
 - [x] S5 Audio -> task/agenda proposals in Incoming
 - [x] S5-rest Link accepted audio tasks to the From person when present.

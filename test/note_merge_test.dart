@@ -29,6 +29,52 @@ class _DelayedStorage extends LocalVaultStorage {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('merges cross-folder prose with currency symbols', () async {
+    final root = await Directory.systemTemp.createTemp('merge-currency-');
+    final storage = LocalVaultStorage(root);
+    final vault = Vault.withStorage(storage);
+    await vault.ensureCreated();
+    final workspace = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      reconcileTasks: (_) async {},
+    )..vault = vault;
+    addTearDown(() async {
+      workspace.dispose();
+      await root.delete(recursive: true);
+    });
+    await storage.createDirectory('notes/other');
+    await storage.writeText(
+      'notes/a.typ',
+      replaceNoteHeader('Keep.', const NoteMetadataDraft(id: 'a', title: 'A')),
+    );
+    await storage.writeText(
+      'notes/other/b.typ',
+      replaceNoteHeader(
+        'Budget: €20, £30, ¥400.',
+        const NoteMetadataDraft(id: 'b', title: 'B'),
+      ),
+    );
+    workspace.index = await scanVaultStorage(storage);
+    final preview = await workspace.previewDuplicateMerge(
+      'notes/a.typ',
+      'notes/other/b.typ',
+    );
+    await workspace.mergeDuplicate(preview);
+    expect(
+      await storage.readText('notes/a.typ'),
+      contains('Budget: €20, £30, ¥400.'),
+    );
+    expect(await storage.exists('notes/other/b.typ'), isFalse);
+    expect(await loadDecisions(storage), hasLength(1));
+    final compile = Process.runSync('typst', [
+      'compile',
+      '--root',
+      root.path,
+      '${root.path}/notes/a.typ',
+      '${root.path}/out.pdf',
+    ]);
+    expect(compile.exitCode, 0, reason: '${compile.stderr}');
+  });
   test('merges cross-folder prose with typographic punctuation', () async {
     final root = await Directory.systemTemp.createTemp('merge-typography-');
     final storage = LocalVaultStorage(root);
