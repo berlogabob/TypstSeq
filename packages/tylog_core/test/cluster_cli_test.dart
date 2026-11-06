@@ -63,7 +63,7 @@ void main() {
     await cluster();
     expect(
       ((await read('_system/clusters/snapshot.json'))['clusters'] as Map)['ai'],
-      ['agents', 'ai', 'llm'],
+      ['ai', 'llm'],
     );
     expect((await read('_system/clusters/proposals.json'))['changes'], [
       {
@@ -79,12 +79,48 @@ void main() {
       'device': 't',
       'item': 'rename:ai->agents',
       'source': 'clusters',
-      'action': 'rejected',
+      'action': 'accepted',
       'target': 'rename:ai->agents',
       'context': {},
     });
     await write('_system/clusters/run-request.json', {'requested_at': 'r3'});
     await cluster();
+    expect(
+      ((await read('_system/clusters/snapshot.json'))['clusters'] as Map),
+      {
+        'agents': ['agents', 'ai', 'llm'],
+        'cooking': ['cooking', 'food'],
+      },
+    );
+    expect((await read('_system/clusters/proposals.json'))['changes'], isEmpty);
+
+    // Rejected changes remain unapplied and are excluded from proposals.
+    await write('_system/clusters/snapshot.json', {
+      'schema': 1,
+      'generated_at': '2026-11-06T17:00:00Z',
+      'clusters': {
+        'ai': ['ai', 'llm'],
+        'cooking': ['cooking', 'food'],
+      },
+    });
+    await write('_system/decisions/t.jsonl', {
+      'at': '2026-11-06T17:00:00Z',
+      'device': 't',
+      'item': 'rename:ai->agents',
+      'source': 'clusters',
+      'action': 'rejected',
+      'target': 'rename:ai->agents',
+      'context': {},
+    });
+    await write('_system/clusters/run-request.json', {'requested_at': 'r4'});
+    await cluster();
+    expect(
+      ((await read('_system/clusters/snapshot.json'))['clusters'] as Map),
+      {
+        'ai': ['ai', 'llm'],
+        'cooking': ['cooking', 'food'],
+      },
+    );
     expect((await read('_system/clusters/proposals.json'))['changes'], isEmpty);
   });
 }

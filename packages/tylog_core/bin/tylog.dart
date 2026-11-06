@@ -571,26 +571,32 @@ Future<int> _cluster(List<String> args) async {
     /* Rebuild malformed snapshots. */
   }
   final match = matchClusters(previous, next);
-  final rejected = await _rejectedClusterChanges(root);
-  final blocked = match.changes
-      .where(
-        (change) =>
-            (change.kind == 'merge' || change.kind == 'split') &&
-            rejected.contains(_clusterChangeId(change)),
-      )
-      .toList();
+  final decisions = await _clusterChangeDecisions(root);
   final clusters = <String, Set<String>>{
     for (final entry in next.entries)
       match.stableLabel[entry.key] ?? entry.key: entry.value,
   };
-  // A rejected merge/split keeps its previous clusters until the decision changes.
-  for (final change in blocked) {
-    for (final label in change.from) {
-      if (previous.containsKey(label)) clusters[label] = previous[label]!;
-    }
-    final discard = change.kind == 'merge' ? change.to : change.to.skip(1);
-    for (final label in discard) {
-      clusters.remove(match.stableLabel[label] ?? label);
+  for (final change in match.changes) {
+    if (!const {'rename', 'merge', 'split'}.contains(change.kind)) continue;
+    final id = _clusterChangeId(change);
+    if (decisions.accepted.contains(id)) {
+      // Accepted vocabulary changes take the labels and membership from `to`.
+      for (final label in change.from) {
+        clusters.remove(label);
+      }
+      for (final label in change.to) {
+        clusters.remove(match.stableLabel[label] ?? label);
+        if (next.containsKey(label)) clusters[label] = next[label]!;
+      }
+    } else {
+      // Until accepted (including rejected changes), keep the old vocabulary.
+      for (final label in change.to) {
+        clusters.remove(match.stableLabel[label] ?? label);
+        clusters.remove(label);
+      }
+      for (final label in change.from) {
+        if (previous.containsKey(label)) clusters[label] = previous[label]!;
+      }
     }
   }
   final now = DateTime.now().toUtc().toIso8601String();
@@ -600,7 +606,8 @@ Future<int> _cluster(List<String> args) async {
   );
   final proposals = [
     for (final change in match.changes)
-      if (!rejected.contains(_clusterChangeId(change)))
+      if (!decisions.rejected.contains(_clusterChangeId(change)) &&
+          !decisions.accepted.contains(_clusterChangeId(change)))
         {
           'id': _clusterChangeId(change),
           'kind': change.kind,
@@ -628,10 +635,19 @@ Future<int> _cluster(List<String> args) async {
 String _clusterChangeId(ClusterChange change) =>
     '${change.kind}:${change.from.join('+')}->${change.to.join('+')}';
 
-Future<Set<String>> _rejectedClusterChanges(Directory root) async {
+class _ClusterChangeDecisions {
+  const _ClusterChangeDecisions(this.accepted, this.rejected);
+  final Set<String> accepted;
+  final Set<String> rejected;
+}
+
+Future<_ClusterChangeDecisions> _clusterChangeDecisions(Directory root) async {
+  final accepted = <String>{};
   final rejected = <String>{};
   final directory = Directory('${root.path}/_system/decisions');
-  if (!await directory.exists()) return rejected;
+  if (!await directory.exists()) {
+    return _ClusterChangeDecisions(accepted, rejected);
+  }
   await for (final entry in directory.list()) {
     if (entry is! File || !entry.path.endsWith('.jsonl')) continue;
     for (final line in await entry.readAsLines()) {
@@ -639,16 +655,20 @@ Future<Set<String>> _rejectedClusterChanges(Directory root) async {
         final row = jsonDecode(line);
         if (row is Map &&
             row['source'] == 'clusters' &&
-            row['action'] == 'rejected' &&
             row['target'] is String) {
-          rejected.add(row['target'] as String);
+          if (row['action'] == 'accepted') {
+            accepted.add(row['target'] as String);
+          }
+          if (row['action'] == 'rejected') {
+            rejected.add(row['target'] as String);
+          }
         }
       } on FormatException {
         /* Ignore a partial ledger line. */
       }
     }
   }
-  return rejected;
+  return _ClusterChangeDecisions(accepted, rejected);
 }
 
 Future<void> _atomicJson(File file, Object value) async {
