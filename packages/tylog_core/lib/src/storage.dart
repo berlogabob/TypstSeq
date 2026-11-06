@@ -53,7 +53,13 @@ void guardNoteWrite(String path, List<int> bytes) {
     final hasContent =
         value['node'] is Map && value['node']['content'] is String;
     final id = revision['id'];
-    if ((id is String &&
+    final hasGeneratedNodeId =
+        id is String &&
+        RegExp(r'^note-[0-9a-f]{64}$').hasMatch(id) &&
+        revision['entityKind'] == 'node' &&
+        revision['entityId'] is String;
+    if (hasGeneratedNodeId ||
+        (id is String &&
             (hasContent ||
                 (id.startsWith('note-') && value['history'] is List))) ||
         hasMetadata) {

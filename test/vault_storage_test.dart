@@ -98,6 +98,54 @@ void main() {
     },
   );
 
+  test(
+    'partial node revisions with a generated id cannot replace notes',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('tylog_partial_id_');
+      addTearDown(() => deleteTempDir(dir));
+      final local = LocalVaultStorage(dir);
+      const path = 'notes/a.typ';
+      const original = 'Existing note';
+      final id = 'note-${'a' * 64}';
+      final record = jsonEncode({
+        'revision': {'id': id, 'entityKind': 'node', 'entityId': 'n1'},
+      });
+      await local.writeText(path, original);
+      await expectLater(local.writeText(path, record), throwsFormatException);
+      expect(await local.readText(path), original);
+      final calls = <MethodCall>[];
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(AndroidTreeVaultStorage.channel, (
+        call,
+      ) async {
+        calls.add(call);
+        return null;
+      });
+      addTearDown(
+        () => messenger.setMockMethodCallHandler(
+          AndroidTreeVaultStorage.channel,
+          null,
+        ),
+      );
+      final saf = AndroidTreeVaultStorage(
+        uri: 'content://test/tree',
+        name: 'Test',
+      );
+      await expectLater(saf.writeText(path, record), throwsFormatException);
+      expect(calls, isEmpty);
+      for (final revision in [
+        {'id': 'note-draft', 'entityKind': 'node', 'entityId': 'n1'},
+        {'id': id, 'entityKind': 'other', 'entityId': 'n1'},
+        {'id': id, 'entityKind': 'node'},
+      ]) {
+        final legacy = jsonEncode({'revision': revision});
+        await local.writeText(path, legacy);
+        expect(await local.readText(path), legacy);
+      }
+    },
+  );
+
   test('incomplete revision records cannot replace notes', () async {
     final dir = await Directory.systemTemp.createTemp(
       'tylog_partial_revision_',
