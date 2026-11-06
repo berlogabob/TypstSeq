@@ -7,6 +7,7 @@ export 'src/attention.dart';
 export 'src/date_words.dart';
 export 'src/enrich.dart';
 export 'src/eval_links.dart';
+export 'src/clusters.dart';
 export 'src/graph.dart';
 export 'src/knowledge.dart';
 export 'src/index_donor.dart';
