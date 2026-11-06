@@ -27,6 +27,12 @@ def production_install_time():
 def check_install():
     if production_install_time() != INSTALL_TIME:
         raise ValueError('Production firstInstallTime missing or changed; device measurement refused')
+    packages = adb('pm', 'list', 'packages').splitlines()
+    all_packages = adb('pm', 'list', 'packages', '-u').splitlines()
+    if (f'package:{PRODUCTION}' not in packages or
+            f'package:{PRODUCTION}' not in all_packages or
+            f'package:{PACKAGE}' not in packages):
+        raise ValueError('Production or isolated package gate failed; device measurement refused')
 
 
 def parse_proc_stat(output):

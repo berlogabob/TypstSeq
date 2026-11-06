@@ -381,3 +381,18 @@ launched, no vault was written, and no transfer or energy measurement was
 attempted. The locked Mac GUI was skipped. The unresolved device, route,
 representative transfer and safety gates are tracked in
 P2P5-rest-rest-rest-rest-rest-rest-rest-rest-rest; P2P3 remains no-go.
+
+## P2P5-rest-rest-rest-rest-rest-rest-rest-rest-rest sampling gate (2026-11-06)
+The measurement sampler now checks the production timestamp, the active and
+inclusive production package lists, and the active `.profiletest` package both
+before and after each sample. This prevents a successful preflight followed by
+inconsistent package state from producing a measurement. It still refuses a
+missing or changed production timestamp and makes no device changes.
+
+P30 preflight reported the production package missing and its timestamp
+unavailable; `.profiletest` was installed. Battery reported 20,000 µAh, AC
+connected and status 4 (not charging). No app was installed or launched, and
+no transfer or battery consumption measurement was attempted. The locked Mac
+GUI was skipped. The package, route, bidirectional measurement and safety gates
+remain in P2P5-rest-rest-rest-rest-rest-rest-rest-rest-rest-rest; P2P3 remains
+no-go.

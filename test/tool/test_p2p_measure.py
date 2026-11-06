@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from tool.p2p_measure import capture, delta, parse_battery, parse_proc_stat, preflight
+from tool.p2p_measure import capture, check_install, delta, parse_battery, parse_proc_stat, preflight
 
 
 class MeasurementTest(unittest.TestCase):
@@ -36,6 +36,20 @@ class MeasurementTest(unittest.TestCase):
                 self.assertEqual(result['production_package_state'], state)
                 self.assertEqual(result['package_gate_passed'], passed)
 
+    def test_sampling_gate_rejects_inconsistent_or_missing_packages(self):
+        isolated = 'package:org.tylog.tylog.profiletest\n'
+        production = 'package:org.tylog.tylog\n'
+        stamp = 'firstInstallTime=2026-11-05 15:27:02'
+        for active, known in ((isolated, isolated), (production, production),
+                              (isolated + production, isolated)):
+            with self.subTest(active=active, known=known), patch(
+                'tool.p2p_measure.adb', side_effect=[stamp, active, known]
+            ):
+                with self.assertRaisesRegex(ValueError, 'package gate'):
+                    check_install()
+        with patch('tool.p2p_measure.adb', side_effect=[stamp, isolated + production, isolated + production]):
+            check_install()
+
     def test_rejects_missing_or_changed_production_install_before_sampling(self):
         for output in ('', '    firstInstallTime=2026-11-05 15:27:03'):
             with self.subTest(output=output), patch('tool.p2p_measure.adb', return_value=output) as call:
@@ -47,12 +61,16 @@ class MeasurementTest(unittest.TestCase):
         package = 'firstInstallTime=2026-11-05 15:27:02'
         stat = '42 (test) S ' + ' '.join(str(x) for x in range(4, 23))
         battery = 'AC powered: true\nUSB powered: false\nWireless powered: false\nstatus: 2\nCharge counter: 5000\n'
-        with patch('tool.p2p_measure.adb', side_effect=[package, '42', stat, '100', battery, package]) as call:
+        packages = 'package:org.tylog.tylog\npackage:org.tylog.tylog.profiletest\n'
+        with patch('tool.p2p_measure.adb', side_effect=[package, packages, packages, '42', stat, '100', battery, package, packages, packages]) as call:
             sample = capture()
         self.assertEqual((sample['pid'], sample['cpu_ticks'], sample['charge_uah']), (42, 29, 5000))
-        self.assertEqual(call.call_count, 6)
-        with patch('tool.p2p_measure.adb', side_effect=[package, '42', stat, '100', battery, '']):
+        self.assertEqual(call.call_count, 10)
+        with patch('tool.p2p_measure.adb', side_effect=[package, packages, packages, '42', stat, '100', battery, '']):
             with self.assertRaisesRegex(ValueError, 'firstInstallTime'):
+                capture()
+        with patch('tool.p2p_measure.adb', side_effect=[package, packages, packages, '42', stat, '100', battery, package, packages, '']):
+            with self.assertRaisesRegex(ValueError, 'package gate'):
                 capture()
 
     def test_proc_stat_handles_spaces_and_parentheses(self):
