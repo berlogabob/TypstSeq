@@ -315,4 +315,36 @@ re-read. The registered P2P6 copy's previous actual-sheet runs found no
 eligible rows. The Mac GUI was locked, so no sender action, transfer, alternate
 vault selection, package install, or decision write was attempted. Receiving a
 copy with an eligible row and measuring its real decision append and Show
-older pages remains the next PF2 item.
+older pages remained the uncompleted PF2 device/data follow-through at that
+time.
+
+## PF2 FINAL — NEEDS DEVICE + DATA (2026-11-06)
+
+The actual Incoming sheet harness is marked **needs device + data**. Prior
+P30 runs against the registered `.profiletest` P2P6 copy found no eligible
+mention, audio, or OCR rows. The Mac screen is locked, and receiving another
+authorized P2P6 copy requires the Mac sender GUI. No transfer, substitute
+fixture, or vault selection was attempted. The current harness
+(`integration_test/pf2_incoming_sheet_profile_test.dart`) measures sheet
+readiness, frame timings, heap when available, and RSS; it does not yet
+exercise an eligible mention decision or Show older paging.
+
+Exact completion steps when the Mac sender GUI and an authorized copy with an
+eligible row are available:
+
+1. Use the existing P2P6 sender flow to receive that authorized copy into the
+   isolated `org.tylog.tylog.profiletest` app-local registry on P30 serial
+   `XPH0219904001750`; do not select another vault or create substitute data.
+2. Extend the sheet harness to record visible eligible mention/audio/OCR row
+   counts, tap and record the real mention decision append, and tap each
+   available Show older control/page while collecting the existing readiness,
+   frame, heap, and RSS measurements.
+3. Run
+   `ORG_GRADLE_PROJECT_tylogDebugSuffix=.profiletest flutter test integration_test/pf2_incoming_sheet_profile_test.dart -d XPH0219904001750 --no-uninstall`
+   and record the output and resulting queue contents here. This command
+   previously preserved the registered `.profiletest` copy. Do not invoke
+   `flutter drive` or any command targeting `org.tylog.tylog`.
+
+The Mac GUI was unavailable in this session, so those device/data steps remain
+in `Later`; the readiness-only harness and prior zero-eligible-row results
+are documented above.
