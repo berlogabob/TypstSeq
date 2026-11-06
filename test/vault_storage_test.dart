@@ -134,7 +134,10 @@ void main() {
         '"payloadJson":"{}","createdAtMs":1},'
         '"node":{"content":"Existing note"}}';
     await local.writeText(path, original);
-    for (final value in [record, noHistory]) {
+    const metadataOnly =
+        '{"revision":{"entityKind":"node","entityId":"n1",'
+        '"payloadJson":"{}","createdAtMs":1}}';
+    for (final value in [record, noHistory, metadataOnly]) {
       await expectLater(local.writeText(path, value), throwsFormatException);
       expect(await local.readText(path), original);
     }
@@ -157,7 +160,7 @@ void main() {
       uri: 'content://test/tree',
       name: 'Test',
     );
-    for (final value in [record, noHistory]) {
+    for (final value in [record, noHistory, metadataOnly]) {
       await expectLater(saf.writeText(path, value), throwsFormatException);
     }
     expect(calls, isEmpty);

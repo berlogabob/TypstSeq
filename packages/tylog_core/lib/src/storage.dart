@@ -55,9 +55,8 @@ void guardNoteWrite(String path, List<int> bytes) {
     final id = revision['id'];
     if ((id is String &&
             (hasContent ||
-                (id.startsWith('note-') &&
-                    (value['history'] is List || hasMetadata)))) ||
-        (hasMetadata && (hasContent || value['history'] is List))) {
+                (id.startsWith('note-') && value['history'] is List))) ||
+        hasMetadata) {
       stderr.writeln('Refusing revision envelope at note path: $path');
       throw FormatException('Refusing revision envelope at note path: $path');
     }
