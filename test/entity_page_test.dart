@@ -55,6 +55,28 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('event header offers Add to Google Calendar', (tester) async {
+    final opened = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: EntityHeader(
+            note: _note(
+              id: 'jantar',
+              title: 'Jantar',
+              kind: 'event',
+              properties: {'start': '2026-11-12T20:30'},
+            ).copyWith(date: '2026-11-12'),
+            onOpenUrl: opened.add,
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Add to Google Calendar'));
+    expect(opened.single, startsWith('https://calendar.google.com/'));
+    expect(opened.single, contains('20261112T203000'));
+  });
+
   testWidgets('EntityHeader shows aliases + a tappable email', (tester) async {
     final tapped = <String>[];
     await tester.pumpWidget(

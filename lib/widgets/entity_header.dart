@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import 'app_icons.dart';
+import '../calendar_feeds.dart' show googleCalendarTemplateUrl;
 import '../models.dart';
 import 'constants.dart';
 
@@ -61,6 +62,9 @@ class _EntityHeaderState extends State<EntityHeader> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final expanded = _expandedIds.contains(note.id);
+    final calendarUrl = note.kind == 'event'
+        ? googleCalendarTemplateUrl(note)
+        : null;
     final tags = note.tags.where((tag) => tag != note.kind).toList();
     final properties = note.properties.entries
         .where(
@@ -96,6 +100,13 @@ class _EntityHeaderState extends State<EntityHeader> {
                       onPressed: onOpenTimeline,
                       icon: const Icon(Icons.timeline),
                       label: const Text('Timeline'),
+                    ),
+                  if (calendarUrl != null)
+                    TextButton.icon(
+                      key: const Key('entity-google-calendar'),
+                      onPressed: () => onOpenUrl(calendarUrl),
+                      icon: const Icon(Icons.edit_calendar_outlined),
+                      label: const Text('Add to Google Calendar'),
                     ),
                   if (onOpenBoard != null)
                     TextButton.icon(

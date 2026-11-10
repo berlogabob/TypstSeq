@@ -40,6 +40,7 @@ class FeedEvent {
 }
 
 String materializedEventLabel(NoteRef note) {
+  if (note.properties['event_type'] == 'screenshot') return note.title;
   if (note.properties['event_type'] != 'consultation') {
     return '${note.title} · ${note.properties['source_status'] ?? 'current'}';
   }
@@ -263,4 +264,40 @@ List<FeedEvent> searchFeedEvents(
           );
   });
   return matches;
+}
+
+/// A Google Calendar "create event" link for an event note, prefilled with its
+/// title, time and place. Opens the Google Calendar app or web page; the user
+/// saves it there. A start without an end lasts one hour; no start is all-day.
+/// Null when the note has no date.
+// ponytail: local wall-clock times, no `ctz`; Google reads them in the
+// user's calendar time zone, which is right for events seen on this phone.
+String? googleCalendarTemplateUrl(NoteRef note) {
+  final date = DateTime.tryParse(note.date ?? '');
+  if (date == null) return null;
+  String two(int n) => n.toString().padLeft(2, '0');
+  String day(DateTime d) => '${d.year}${two(d.month)}${two(d.day)}';
+  String stamp(DateTime d) =>
+      '${day(d)}T${two(d.hour)}${two(d.minute)}${two(d.second)}';
+  final start = DateTime.tryParse(
+    note.properties['start']?.toString() ?? '',
+  )?.toLocal();
+  final String dates;
+  if (start == null) {
+    dates = '${day(date)}/${day(date.add(const Duration(days: 1)))}';
+  } else {
+    final end =
+        DateTime.tryParse(
+          note.properties['end']?.toString() ?? '',
+        )?.toLocal() ??
+        start.add(const Duration(hours: 1));
+    dates = '${stamp(start)}/${stamp(end)}';
+  }
+  final place = note.properties['place'] ?? note.properties['address'];
+  return Uri.https('calendar.google.com', '/calendar/render', {
+    'action': 'TEMPLATE',
+    'text': note.title,
+    'dates': dates,
+    if (place != null && '$place'.trim().isNotEmpty) 'location': '$place',
+  }).toString();
 }
