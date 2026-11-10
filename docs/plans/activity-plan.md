@@ -766,5 +766,5 @@ Before Friday (user): Studio stays on, logged in, Tailscale running.
 - [x] 1 Merge leftovers fixed (test fails without the fix).
 - [x] 2 Screenshot watcher restarted (org.tylog.screenshots, new code with dated events); Fill info end to end on the Mac with the real vault: button -> request -> enrich worker (kickstarted) -> not_found draft in ~10 s -> Incoming 'Nothing reliable found ... Dismiss' -> ledger row source fill. Test draft dismissed.
 - [x] 3 Mac check (release build from this branch, real vault, user's app quit and reopened after): merged Fernando page (IADE organization + OpenLabTwin, 11 references), one-line header, Board without Tree with + and help, Edit details dialog (key:: lines, spacing), Incoming Tasks and dates + Fill info sections. Nothing written to the vault except the dismissed test draft and its ledger row.
-- [ ] 4 Push branch, CI green.
+- [x] 4 Branch pushed (origin/wave30-entities), CI run 42905314797 success.
 - Seen: enrich worker log 'HTTP Error 502: Bad Gateway' from the Studio for daily/2026/11/2026-11-03 (Ornith endpoint); check the Studio model server before Friday.
