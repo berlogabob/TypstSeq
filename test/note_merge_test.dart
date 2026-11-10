@@ -31,6 +31,43 @@ class _DelayedStorage extends LocalVaultStorage {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('merges a cross-folder body with labelled links and tasks', () async {
+    final root = await Directory.systemTemp.createTemp('merge-links-');
+    final storage = LocalVaultStorage(root);
+    final vault = Vault.withStorage(storage);
+    await vault.ensureCreated();
+    final workspace = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      reconcileTasks: (_) async {},
+    )..vault = vault;
+    addTearDown(() async {
+      workspace.dispose();
+      await deleteTempDir(root);
+    });
+    await storage.createDirectory('projects');
+    await storage.writeText(
+      'projects/a.typ',
+      replaceNoteHeader('Keep.', const NoteMetadataDraft(id: 'a', title: 'A')),
+    );
+    await storage.writeText(
+      'notes/b.typ',
+      replaceNoteHeader(
+        '- in #tylog.ref-note("Portugal")[Portugal]\n'
+        '#tylog.task(id: "t1", text: "Call")\n',
+        const NoteMetadataDraft(id: 'b', title: 'B'),
+      ),
+    );
+    workspace.index = await scanVaultStorage(storage);
+    await workspace.mergeDuplicate(
+      await workspace.previewDuplicateMerge('projects/a.typ', 'notes/b.typ'),
+    );
+    expect(
+      await storage.readText('projects/a.typ'),
+      contains('#tylog.ref-note("Portugal")[Portugal]'),
+    );
+    expect(await storage.exists('notes/b.typ'), isFalse);
+  });
+
   test(
     'merges cross-folder prose with bullet and middle-dot separators',
     () async {

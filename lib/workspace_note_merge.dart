@@ -1,5 +1,17 @@
 part of 'workspace_controller.dart';
 
+/// Stand-in for `/_system/tylog.typ` when checking that a moved body compiles:
+/// every helper a body uses takes any arguments (`ref-note("x")[Label]`, tasks
+/// with named fields). The old one-argument `ref-note(id)` rejected every page
+/// with an ordinary labelled link.
+const _mergeHelperStub =
+    '#let _stub(..args) = [Reference]\n'
+    '#let ref-note = _stub\n'
+    '#let task = _stub\n'
+    '#let attachment = _stub\n'
+    '#let date-ref = _stub\n'
+    '#let tag = _stub\n';
+
 class DuplicateMergePreview {
   DuplicateMergePreview._(this.survivor, this.loser, this.before, this.after);
   final String survivor;
@@ -64,7 +76,7 @@ extension _DuplicateMerge on WorkspaceController {
             source: '#import "/_system/tylog.typ" as tylog\n$body',
             files: {
               '/_system/tylog.typ': Uint8List.fromList(
-                utf8.encode('#let ref-note(id) = [Reference]\n'),
+                utf8.encode(_mergeHelperStub),
               ),
             },
           );
@@ -282,7 +294,7 @@ Future<void> _validateTypstBodyWithCli(String body) async {
     await helper.create(recursive: true);
     await File(
       '${helper.path}/tylog.typ',
-    ).writeAsString('#let ref-note(id) = [Reference]\n');
+    ).writeAsString(_mergeHelperStub);
     final source = File('${root.path}/body.typ');
     await source.writeAsString('#import "/_system/tylog.typ" as tylog\n$body');
     final result = await Process.run('typst', [
