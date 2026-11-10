@@ -19,6 +19,7 @@ import time
 import unicodedata
 from urllib.request import Request, urlopen
 
+import fill_worker
 import transcribe_worker as tw
 
 
@@ -342,6 +343,12 @@ def run_once(vault, *, chat=None, now=None, state_path=None, limit=20, clock=tim
     task, connections = load_task(vault)
     requested = tw._read_json(vault / "_system/enrich/run-request.json").get("requested_at")
     force = bool(requested) and requested != state.get("last_run_request")
+    if any((vault / "_system/enrich/fill/requests").glob("*.json")):
+        # "Fill info" is an explicit request: answer it whatever the schedule.
+        try:
+            fill_worker.process(vault, chat or make_chat(task, connections))
+        except Exception as error:
+            print(f"fill: {error}")
     if not due(task, state, now, force):
         return 0
     chat = chat or make_chat(task, connections)
