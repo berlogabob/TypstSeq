@@ -744,6 +744,21 @@ void main() {
       expect(linkMentionInline(source, mention, entity('t', 'tylog')), source);
     });
 
+    test('inline link leaves an existing link line alone (2026-11-10)', () {
+      const source = '= d\n\n- #tylog.ref-note("fm")[Fernando Marson]\n';
+      for (final (surface, id) in [('tylog', 't'), ('Fernando Marson', 'fm')]) {
+        expect(
+          linkMentionInline(
+            source,
+            EnrichMention(surface: surface, type: 'person', line: 3),
+            entity(id, surface),
+          ),
+          source,
+          reason: surface,
+        );
+      }
+    });
+
     test('inline link edits only that mention and skips existing markup', () {
       const mention = EnrichMention(surface: 'André', type: 'person', line: 7);
       final out = linkMentionInline(header, mention, silva);

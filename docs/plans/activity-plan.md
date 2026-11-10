@@ -769,3 +769,8 @@ Before Friday (user): Studio stays on, logged in, Tailscale running.
 - [x] 3 Mac check (release build from this branch, real vault, user's app quit and reopened after): merged Fernando page (IADE organization + OpenLabTwin, 11 references), one-line header, Board without Tree with + and help, Edit details dialog (key:: lines, spacing), Incoming Tasks and dates + Fill info sections. Nothing written to the vault except the dismissed test draft and its ledger row.
 - [x] 4 Branch pushed (origin/wave30-entities), CI run 42905314797 success.
 - Seen: enrich worker log 'HTTP Error 502: Bad Gateway' from the Studio for daily/2026/11/2026-11-03 (Ornith endpoint); check the Studio model server before Friday.
+
+## After 0.23.0 tag (2026-11-10 evening, user findings)
+- [x] Today's daily (2026-11-10) did not compile: the Mac app 0.22.0 auto-linked "tylog" inside `#tylog.ref-note(` (22:51) and nested the Fernando link in its own label (22:55), ledger rows proposed_by auto. Same bug as 2026-11-03, fixed in 0.23.0; line repaired, compiles; vault scan: no other file broken. Test pins today's exact line.
+- [x] Voronoi did not show cluster names: an open cluster drew only its tags. Open top-level clusters now draw their name over the region (semi-transparent) and expose a "<name> cluster" semantics header. Ships in 0.23.1.
+- [ ] "Old screenshots not translated": all 2,613 screenshot notes have a Description; asked the user what is missing.

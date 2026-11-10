@@ -542,6 +542,9 @@ class _VoronoiPainter extends CustomPainter {
       ..color = colorScheme.surface
       ..strokeWidth = 1.2 / scale;
     final labels = <(_Cell, int)>[]; // cell + sibling index, drawn last
+    // Open clusters show their tags; their own name is drawn over them like a
+    // region name on a map, or it vanished at normal zoom.
+    final regions = <_Cell>[];
 
     void draw(int index, int siblingIndex) {
       final cell = cells[index];
@@ -551,6 +554,7 @@ class _VoronoiPainter extends CustomPainter {
         for (final c in cell.children) {
           draw(c, child++);
         }
+        if (cell.depth == 0) regions.add(cell);
         // Parent outline on top of its children, heavier for higher levels.
         canvas.drawPath(
           cell.path,
@@ -649,6 +653,31 @@ class _VoronoiPainter extends CustomPainter {
         ),
       );
     }
+
+    for (final cell in regions) {
+      final fontSize = (math.min(cell.bbox.width, cell.bbox.height) * scale / 7)
+          .clamp(14.0, 34.0);
+      final tp = TextPainter(
+        text: TextSpan(
+          text: prettyGraphLabel(cell.label),
+          style: TextStyle(
+            color: colorScheme.onSurface.withValues(alpha: 0.55),
+            fontSize: fontSize / scale,
+            fontWeight: FontWeight.w700,
+            height: 1.1,
+            shadows: [
+              Shadow(color: colorScheme.surface, blurRadius: 6 / scale),
+            ],
+          ),
+        ),
+        textAlign: TextAlign.center,
+        textDirection: TextDirection.ltr,
+        maxLines: 2,
+        ellipsis: '…',
+      )..layout(maxWidth: cell.bbox.width * 0.8);
+      if (tp.height > cell.bbox.height * 0.5) continue;
+      tp.paint(canvas, cell.centroid - Offset(tp.width / 2, tp.height / 2));
+    }
   }
 
   /// Exposes exactly the cells [paint] currently draws as leaves — the same
@@ -672,6 +701,18 @@ class _VoronoiPainter extends CustomPainter {
     void visit(int index) {
       final cell = cells[index];
       if (_isOpen(cell, scale)) {
+        if (cell.depth == 0) {
+          result.add(
+            CustomPainterSemantics(
+              rect: cell.bbox,
+              properties: SemanticsProperties(
+                label: '${prettyGraphLabel(cell.label)} cluster',
+                textDirection: TextDirection.ltr,
+                header: true,
+              ),
+            ),
+          );
+        }
         for (final c in cell.children) {
           visit(c);
         }

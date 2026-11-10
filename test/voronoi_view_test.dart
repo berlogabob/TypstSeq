@@ -121,6 +121,12 @@ void main() {
     for (final path in index.notesByPath.keys) {
       expect(byLabel, contains(path));
     }
+    // Open clusters still name themselves (their names vanished at normal
+    // zoom once their tags were shown).
+    expect(
+      byLabel.keys.where((label) => label.endsWith(' cluster')),
+      isNotEmpty,
+    );
 
     // Activating a leaf's semantics node does exactly what tapping it does:
     // select it, then Open in the shared bar opens the note.
