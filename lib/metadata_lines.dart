@@ -34,7 +34,17 @@ NoteMetadataDraft applyMetadataLines(
   String? title,
   String? kind,
 }) {
-  final ids = <String, String>{};
+  // Titles are not unique (several pages may be called "IADE"): a parent the
+  // note already has keeps its id; only new titles are looked up.
+  final byId = {for (final n in notes) n.id: n};
+  final current = note.properties['part_of'];
+  final ids = <String, String>{
+    for (final id in [
+      if (current is String) current,
+      if (current is List) ...current.whereType<String>(),
+    ])
+      if (byId[id] != null) byId[id]!.title.toLowerCase(): id,
+  };
   for (final n in notes) {
     ids.putIfAbsent(n.title.toLowerCase(), () => n.id);
   }
@@ -74,9 +84,6 @@ NoteMetadataDraft applyMetadataLines(
     date: note.date,
     tags: tags,
     aliases: aliases,
-    properties: {
-      ...properties,
-      if (parents.isNotEmpty) 'part_of': parents,
-    },
+    properties: {...properties, if (parents.isNotEmpty) 'part_of': parents},
   );
 }

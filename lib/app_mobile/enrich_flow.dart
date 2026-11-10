@@ -577,12 +577,43 @@ extension _EnrichFlow on _HomeScreenState {
       path: path,
       accepted: true,
     );
-    await workspace.mutateNote(
+    await _editTagsKeepingMentions(
       path,
       (source) => updateNoteTags(source, add: [tag]),
     );
     await _refreshEnrichDay(path);
     unawaited(workspace.refreshIndex(always: true));
+  }
+
+  /// A header tag edit is the user's own answer, not new text: re-stamp the
+  /// mentions file so the day's other suggestions stay instead of waiting for
+  /// the worker to re-read an "edited" day.
+  Future<void> _editTagsKeepingMentions(
+    String path,
+    String Function(String source) edit,
+  ) async {
+    final v = vault;
+    if (v == null) return;
+    final before = path == note
+        ? workspace.source
+        : await v.storage.readText(path);
+    final mentions = await _readMentions(v, path);
+    final after = edit(before);
+    if (after == before ||
+        !await workspace.mutateNote(
+          path,
+          (current) => current == before ? after : edit(current),
+        )) {
+      return;
+    }
+    if (mentions == null || enrichContentSha(before) != mentions.contentSha) {
+      return;
+    }
+    final file = enrichMentionsPath(path);
+    final json = (jsonDecode(await v.storage.readText(file)) as Map)
+        .cast<String, Object?>();
+    json['content_sha'] = enrichContentSha(after);
+    await v.storage.writeText(file, '${jsonEncode(json)}\n');
   }
 
   Future<void> _rejectEnrichTag(String path, String tag) async {
@@ -592,7 +623,7 @@ extension _EnrichFlow on _HomeScreenState {
       path: path,
       accepted: false,
     );
-    await workspace.mutateNote(
+    await _editTagsKeepingMentions(
       path,
       (source) => updateNoteTags(source, remove: tag),
     );

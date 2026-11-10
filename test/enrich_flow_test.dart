@@ -732,6 +732,14 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('enrich-tag-add')));
     await _pump(tester);
     expect(home.workspace.source, contains('"design"'));
+    // A tag is an answer, not new text: the mentions file is re-stamped so
+    // the day's other suggestions are not treated as stale.
+    final mentions =
+        jsonDecode(await storage.readText(enrichMentionsPath(_dayPath))) as Map;
+    expect(
+      mentions['content_sha'],
+      enrichContentSha(await storage.readText(_dayPath)),
+    );
     final ledger = await storage.readText('$enrichFeedbackDir/dev1.jsonl');
     final row = jsonDecode(ledger.trim().split('\n').last) as Map;
     expect(row['entity'], 'tag:design');

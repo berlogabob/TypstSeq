@@ -2079,7 +2079,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             mainAxisSize: MainAxisSize.min,
             children: [
               SelectableText('ID: ${current.id}'),
+              const SizedBox(height: kSpace12),
               _dialogField(title, label: 'Title'),
+              const SizedBox(height: kSpace12),
               _dialogField(
                 kindField,
                 label: 'Kind',

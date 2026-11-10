@@ -815,6 +815,8 @@ class _EntityBoardState extends State<EntityBoard> {
     ];
     return Scaffold(
       appBar: AppBar(
+        // Embedded in the board screen, which already has the back arrow.
+        automaticallyImplyLeading: !widget.embedded,
         title: widget.embedded
             ? null
             : Column(
@@ -911,24 +913,27 @@ class _EntityBoardState extends State<EntityBoard> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        column.toUpperCase(),
-                                        style: Theme.of(
-                                          context,
-                                        ).textTheme.titleMedium,
+                                SizedBox(
+                                  height: 48,
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          column.toUpperCase(),
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.titleMedium,
+                                        ),
                                       ),
-                                    ),
-                                    if (column == 'todo')
-                                      IconButton(
-                                        key: const Key('board-add-task'),
-                                        tooltip: 'Add task',
-                                        onPressed: busy ? null : _addTask,
-                                        icon: const Icon(Icons.add),
-                                      ),
-                                  ],
+                                      if (column == 'todo')
+                                        IconButton(
+                                          key: const Key('board-add-task'),
+                                          tooltip: 'Add task',
+                                          onPressed: busy ? null : _addTask,
+                                          icon: const Icon(Icons.add),
+                                        ),
+                                    ],
+                                  ),
                                 ),
                                 if (column == 'todo' &&
                                     tasks.isEmpty &&

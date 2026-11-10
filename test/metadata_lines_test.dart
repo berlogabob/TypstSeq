@@ -60,4 +60,19 @@ void main() {
     expect(draft.properties.containsKey('part_of'), isFalse);
     expect(draft.tags, isEmpty);
   });
+
+  test('a kept parent title keeps its id when titles repeat', () {
+    const otherIade = NoteRef(
+      id: 'iade-note',
+      path: 'notes/iade-2.typ',
+      title: 'IADE',
+      outgoingLinks: [],
+    );
+    final draft = applyMetadataLines(
+      fernando,
+      'part of:: IADE',
+      [otherIade, _iade],
+    );
+    expect(draft.properties['part_of'], ['20260715-001621-iade']);
+  });
 }
