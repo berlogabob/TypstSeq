@@ -249,4 +249,35 @@ void main() {
     );
     expect(await loadOcrReviewRows(storage, ['forms'], [decision]), isEmpty);
   });
+
+  test('cluster changes read as topics with sample tags', () {
+    expect(
+      clusterChangeTitle({
+        'kind': 'merge',
+        'from': ['ai-assistant', 'tech-software'],
+        'to': ['tech-software'],
+      }),
+      'Topics "ai-assistant" and "tech-software" became one topic "tech-software"',
+    );
+    expect(
+      clusterChangeTitle({
+        'kind': 'split',
+        'from': ['a'],
+        'to': ['x', 'y', 'z'],
+      }),
+      'Topic "a" split into "x", "y" and "z"',
+    );
+    expect(
+      clusterChangeSubtitle(
+        {
+          'kind': 'merge',
+          'from': ['ai', 'none'],
+        },
+        {
+          'ai': ['llm', 'agents', 'rag', 'ollama', 'extra'],
+        },
+      ),
+      'ai: llm, agents, rag, ollama\nChanges only how the graph groups tags',
+    );
+  });
 }

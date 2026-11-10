@@ -570,6 +570,21 @@ extension _EnrichFlow on _HomeScreenState {
     await _refreshEnrichDay(path);
   }
 
+  Future<void> _acceptEnrichTag(String path, String tag) async {
+    await _recordEnrichFeedback(
+      EnrichMention(surface: tag, type: 'topic', line: 0),
+      enrichTagEntity(tag),
+      path: path,
+      accepted: true,
+    );
+    await workspace.mutateNote(
+      path,
+      (source) => updateNoteTags(source, add: [tag]),
+    );
+    await _refreshEnrichDay(path);
+    unawaited(workspace.refreshIndex(always: true));
+  }
+
   Future<void> _rejectEnrichTag(String path, String tag) async {
     await _recordEnrichFeedback(
       EnrichMention(surface: tag, type: 'topic', line: 0),
@@ -933,12 +948,12 @@ extension _EnrichIncoming on _HomeScreenState {
                           ),
                           for (final change in clusters)
                             ListTile(
-                              title: Text(
-                                '${switch (change['kind']) {
-                                  'rename' => 'Rename cluster',
-                                  'merge' => 'Merge',
-                                  _ => 'Split',
-                                }} ${((change['from'] as List?) ?? const []).join(' + ')} → ${((change['to'] as List?) ?? const []).join(', ')}',
+                              title: Text(clusterChangeTitle(change)),
+                              subtitle: Text(
+                                clusterChangeSubtitle(
+                                  change,
+                                  workspace.clusterSnapshot,
+                                ),
                               ),
                               trailing: Wrap(
                                 children: [
@@ -1078,6 +1093,14 @@ extension _EnrichIncoming on _HomeScreenState {
                                     () => _rejectEnrichTag(entry.key, tag),
                                     path: entry.key,
                                   ),
+                                  onAcceptTag: (tag) => decide(
+                                    () => _acceptEnrichTag(entry.key, tag),
+                                    path: entry.key,
+                                  ),
+                                  appliedTags:
+                                      currentIndex.notesByPath[entry.key]?.tags
+                                          .toSet() ??
+                                      const {},
                                   onAccept: (mention, target) => decide(
                                     () => _acceptEnrich(
                                       entry.key,

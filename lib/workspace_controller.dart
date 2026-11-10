@@ -465,6 +465,9 @@ class WorkspaceController extends ChangeNotifier {
   // runs on every change and must not do file I/O.
   Map<String, List<String>>? _clusterSnapshot;
 
+  /// Cluster label -> member tags from `_system/clusters/snapshot.json`.
+  Map<String, List<String>>? get clusterSnapshot => _clusterSnapshot;
+
   bool _owns(Vault opened, int generation) =>
       !_disposed && identical(vault, opened) && _vaultGeneration == generation;
 

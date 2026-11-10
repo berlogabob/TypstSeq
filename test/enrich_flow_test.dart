@@ -463,7 +463,7 @@ void main() {
     Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
     await _pump(tester);
     await _openIncoming(tester);
-    expect(find.text('Rename cluster ai → agents'), findsOneWidget);
+    expect(find.text('Topic "ai" is now called "agents"'), findsOneWidget);
     await tester.tap(find.text('Accept'));
     await _pump(tester);
     final decision = Decision.parseLog(
@@ -472,7 +472,7 @@ void main() {
     expect(decision.source, 'clusters');
     expect(decision.action, 'accepted');
     expect(decision.target, 'rename:ai->agents');
-    expect(find.text('Rename cluster ai → agents'), findsNothing);
+    expect(find.text('Topic "ai" is now called "agents"'), findsNothing);
     await tester.tap(find.byTooltip('Recluster now'));
     await _pump(tester);
     expect(await storage.exists('_system/clusters/snapshot.json'), isTrue);
@@ -721,6 +721,21 @@ void main() {
       await storage.readText('$enrichFeedbackDir/dev1.jsonl'),
       contains('tag:design'),
     );
+    await tester.pumpWidget(const SizedBox());
+  }, variant: desktop);
+
+  testWidgets('a suggested tag can be added to the day', (tester) async {
+    final (home, storage) = await _mount(tester);
+    expect(home.workspace.source, isNot(contains('"design"')));
+    await tester.tap(find.byKey(const ValueKey('enrich-tag-design')));
+    await _pump(tester);
+    await tester.tap(find.byKey(const ValueKey('enrich-tag-add')));
+    await _pump(tester);
+    expect(home.workspace.source, contains('"design"'));
+    final ledger = await storage.readText('$enrichFeedbackDir/dev1.jsonl');
+    final row = jsonDecode(ledger.trim().split('\n').last) as Map;
+    expect(row['entity'], 'tag:design');
+    expect(row['decision'], 'accept');
     await tester.pumpWidget(const SizedBox());
   }, variant: desktop);
 

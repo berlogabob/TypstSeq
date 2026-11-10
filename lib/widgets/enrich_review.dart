@@ -22,6 +22,8 @@ class EnrichReview extends StatelessWidget {
     required this.onCreate,
     required this.onIgnore,
     this.onRejectTag,
+    this.onAcceptTag,
+    this.appliedTags = const {},
   });
 
   final List<EnrichDecision> decisions;
@@ -31,6 +33,12 @@ class EnrichReview extends StatelessWidget {
   /// Suggested tags from the day's keywords; dismissing one is remembered.
   final List<String> tags;
   final ValueChanged<String>? onRejectTag;
+
+  /// Adds a suggested tag to the day's header (phones never auto-write).
+  final ValueChanged<String>? onAcceptTag;
+
+  /// Tags already in the day's header; their chips show a check.
+  final Set<String> appliedTags;
 
   /// Lines that look like ones the user files under a marker page (fixit).
   final List<EnrichMarkerOffer> markers;
@@ -94,10 +102,15 @@ class EnrichReview extends StatelessWidget {
             for (final tag in tags)
               InputChip(
                 key: ValueKey('enrich-tag-$tag'),
-                avatar: const Icon(Icons.tag, size: 16),
+                avatar: Icon(
+                  appliedTags.contains(tag) ? Icons.check : Icons.tag,
+                  size: 16,
+                ),
                 label: Text(tag),
-                tooltip: 'Suggested tag from this day',
-                onPressed: onRejectTag == null
+                tooltip: appliedTags.contains(tag)
+                    ? 'Tag added to this day'
+                    : 'Suggested tag: tap to add or remove',
+                onPressed: onRejectTag == null && onAcceptTag == null
                     ? null
                     : () => _confirmRemoveTag(context, tag),
                 deleteIcon: const Icon(Icons.close, size: 16),
@@ -112,19 +125,36 @@ class EnrichReview extends StatelessWidget {
   /// The whole chip opens this, not only the small x: a tap on the word did
   /// nothing before, and people read that as "can't remove".
   Future<void> _confirmRemoveTag(BuildContext context, String tag) async {
-    final remove = await showModalBottomSheet<bool>(
+    final add = !appliedTags.contains(tag) && onAcceptTag != null;
+    final choice = await showModalBottomSheet<bool>(
       context: context,
       builder: (context) => SafeArea(
-        child: ListTile(
-          key: const ValueKey('enrich-tag-remove'),
-          leading: const Icon(Icons.delete_outline),
-          title: Text('Remove tag "$tag"'),
-          subtitle: const Text('It will not be added from your days again'),
-          onTap: () => Navigator.pop(context, true),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (add)
+              ListTile(
+                key: const ValueKey('enrich-tag-add'),
+                leading: const Icon(Icons.add),
+                title: Text('Add tag "$tag" to this day'),
+                onTap: () => Navigator.pop(context, true),
+              ),
+            if (onRejectTag != null)
+              ListTile(
+                key: const ValueKey('enrich-tag-remove'),
+                leading: const Icon(Icons.delete_outline),
+                title: Text('Remove tag "$tag"'),
+                subtitle: const Text(
+                  'It will not be added from your days again',
+                ),
+                onTap: () => Navigator.pop(context, false),
+              ),
+          ],
         ),
       ),
     );
-    if (remove == true) onRejectTag?.call(tag);
+    if (choice == true) onAcceptTag?.call(tag);
+    if (choice == false) onRejectTag?.call(tag);
   }
 
   Future<void> _choose(BuildContext context, EnrichDecision decision) async {

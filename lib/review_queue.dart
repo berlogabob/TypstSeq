@@ -454,3 +454,34 @@ List<T> _page<T>(List<T> rows, int offset, int limit) {
   final end = (start + limit.clamp(1, 100)).clamp(start, rows.length);
   return rows.sublist(start, end);
 }
+
+/// Plain wording for a cluster (graph topic) change in Incoming.
+String clusterChangeTitle(Map<dynamic, dynamic> change) {
+  List<String> names(Object? value) => [
+    for (final label in value as List? ?? const []) '"$label"',
+  ];
+  String list(List<String> items) => items.length <= 2
+      ? items.join(' and ')
+      : '${items.sublist(0, items.length - 1).join(', ')} and ${items.last}';
+  final from = names(change['from']);
+  final to = names(change['to']);
+  return switch (change['kind']) {
+    'rename' => 'Topic ${list(from)} is now called ${list(to)}',
+    'merge' => 'Topics ${list(from)} became one topic ${list(to)}',
+    _ => 'Topic ${list(from)} split into ${list(to)}',
+  };
+}
+
+/// Up to four sample tags per topic the change starts from, so the user can
+/// see what the topics are; the note text is never changed by a decision.
+String clusterChangeSubtitle(
+  Map<dynamic, dynamic> change,
+  Map<String, List<String>>? snapshot,
+) {
+  final samples = [
+    for (final label in change['from'] as List? ?? const [])
+      if ((snapshot?[label] ?? const <String>[]).isNotEmpty)
+        '$label: ${snapshot![label]!.take(4).join(', ')}',
+  ];
+  return [...samples, 'Changes only how the graph groups tags'].join('\n');
+}
