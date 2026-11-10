@@ -291,7 +291,6 @@ Future<void> openEntityWhiteboard(
   required String title,
   Future<Uint8List?> Function(String)? imageResolver,
   ValueChanged<String>? onOpenPath,
-  bool initialTree = false,
   String deviceId = 'unknown',
 }) async {
   final id = '$entityId-wb';
@@ -314,7 +313,6 @@ Future<void> openEntityWhiteboard(
         board: board,
         initialHash: hash,
         deviceId: deviceId,
-        initialTree: initialTree,
         storage: storage,
         index: index,
         imageResolver: imageResolver,
@@ -332,19 +330,15 @@ class Whiteboard extends StatefulWidget {
     required this.index,
     this.imageResolver,
     this.onOpenPath,
-    this.initialTree = false,
     this.initialHash,
     this.deviceId = 'unknown',
     this.embedded = false,
     this.registerFlush,
-    this.onPinTree,
   });
-  final VoidCallback? onPinTree;
   final bool embedded;
   final void Function(Future<void> Function())? registerFlush;
   final String? initialHash;
   final String deviceId;
-  final bool initialTree;
   final Board board;
   final VaultStorage storage;
   final VaultIndex? index;
@@ -358,7 +352,6 @@ class _WhiteboardState extends State<Whiteboard> {
   static const origin = 50000.0;
   late Board board = widget.board;
   late final TransformationController transform;
-  Matrix4? freeViewport;
   Timer? timer;
   Future<void> writes = Future.value();
   String? savedHash;
@@ -369,7 +362,6 @@ class _WhiteboardState extends State<Whiteboard> {
   String? selected;
   String? selectedEdge;
   bool connecting = false;
-  late bool treeMode = widget.initialTree;
   final viewerKey = GlobalKey();
   Offset dragPosition = Offset.zero;
   Set<String> frameCardIds = {};
@@ -454,32 +446,10 @@ class _WhiteboardState extends State<Whiteboard> {
         )
         ..scaleByDouble(v.zoom.toDouble(), v.zoom.toDouble(), 1, 1),
     );
-    if (treeMode) {
-      freeViewport = transform.value.clone();
-      transform.value = treeViewport();
-    }
     transform.addListener(viewportChanged);
   }
 
-  Matrix4 treeViewport() =>
-      Matrix4.identity()..translateByDouble(-origin, -origin, 0, 1);
-
-  void toggleTree() {
-    if (!treeMode) {
-      freeViewport = transform.value.clone();
-      setState(() => treeMode = true);
-      transform.value = treeViewport();
-    } else {
-      setState(() => treeMode = false);
-      if (freeViewport != null) transform.value = freeViewport!;
-    }
-  }
-
   void viewportChanged() {
-    if (treeMode) {
-      if (mounted) setState(() {});
-      return;
-    }
     final m = transform.value;
     final v = BoardViewport(
       x: m.storage[12] + origin * m.getMaxScaleOnAxis(),
@@ -527,19 +497,17 @@ class _WhiteboardState extends State<Whiteboard> {
             generation++;
             if (mounted) {
               setState(() => board = synced);
-              if (!treeMode) {
-                final v = synced.viewport;
-                transform.removeListener(viewportChanged);
-                transform.value = Matrix4.identity()
-                  ..translateByDouble(
-                    v.x.toDouble() - origin * v.zoom,
-                    v.y.toDouble() - origin * v.zoom,
-                    0,
-                    1,
-                  )
-                  ..scaleByDouble(v.zoom.toDouble(), v.zoom.toDouble(), 1, 1);
-                transform.addListener(viewportChanged);
-              }
+              final v = synced.viewport;
+              transform.removeListener(viewportChanged);
+              transform.value = Matrix4.identity()
+                ..translateByDouble(
+                  v.x.toDouble() - origin * v.zoom,
+                  v.y.toDouble() - origin * v.zoom,
+                  0,
+                  1,
+                )
+                ..scaleByDouble(v.zoom.toDouble(), v.zoom.toDouble(), 1, 1);
+              transform.addListener(viewportChanged);
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(
                   content: Text(
@@ -996,13 +964,8 @@ class _WhiteboardState extends State<Whiteboard> {
         ),
       );
     }
-    setState(() {
-      board = next;
-      treeMode = false;
-    });
-    if (freeViewport != null) transform.value = freeViewport!;
+    setState(() => board = next);
     save();
-    widget.onPinTree?.call();
   }
 
   Widget content(BoardCard card) {
@@ -1146,72 +1109,61 @@ class _WhiteboardState extends State<Whiteboard> {
       leading: widget.embedded ? null : BackButton(onPressed: leave),
       title: widget.embedded ? null : Text(board.title),
       actions: [
-        if (board.scopeEntity != null && !treeMode)
+        if (board.scopeEntity != null)
           TextButton(
             key: const Key('board-add-contents'),
             onPressed: pinTree,
             child: const Text('Add contained pages'),
           ),
-        if (treeMode)
-          TextButton(
-            onPressed: pinTree,
-            child: const Text('Pin to whiteboard'),
-          ),
-        if (!treeMode)
-          IconButton(
-            tooltip: 'Paste',
-            onPressed: paste,
-            icon: const Icon(Icons.content_paste),
-          ),
-        if (!treeMode)
-          PopupMenuButton<String>(
-            tooltip: 'Add',
-            icon: const Icon(Icons.add),
-            onSelected: add,
-            itemBuilder: (_) => [
-              for (final item in [
-                'Add from OpenLabTwin',
-                'Note/entity',
-                'Task',
-                'Text',
-                'Link',
-                'Image from file',
-              ])
-                PopupMenuItem(value: item, child: Text(item)),
-            ],
-          ),
-        if (!treeMode)
-          IconButton(
-            tooltip: 'Frame',
-            onPressed: addFrame,
-            icon: const Icon(Icons.crop_square),
-          ),
-        if (!treeMode)
-          IconButton(
-            tooltip: 'Connect',
-            isSelected: connecting,
-            onPressed: () => setState(() => connecting = !connecting),
-            icon: const Icon(Icons.share),
-          ),
-        if (!treeMode && selected != null)
+        IconButton(
+          tooltip: 'Paste',
+          onPressed: paste,
+          icon: const Icon(Icons.content_paste),
+        ),
+        PopupMenuButton<String>(
+          tooltip: 'Add',
+          icon: const Icon(Icons.add),
+          onSelected: add,
+          itemBuilder: (_) => [
+            for (final item in [
+              'Add from OpenLabTwin',
+              'Note/entity',
+              'Task',
+              'Text',
+              'Link',
+              'Image from file',
+            ])
+              PopupMenuItem(value: item, child: Text(item)),
+          ],
+        ),
+        IconButton(
+          tooltip: 'Frame',
+          onPressed: addFrame,
+          icon: const Icon(Icons.crop_square),
+        ),
+        IconButton(
+          tooltip: 'Connect',
+          isSelected: connecting,
+          onPressed: () => setState(() => connecting = !connecting),
+          icon: const Icon(Icons.share),
+        ),
+        if (selected != null)
           IconButton(
             tooltip: 'Open selected card',
             onPressed: () =>
                 openCard(board.cards.firstWhere((c) => c.id == selected)),
             icon: const Icon(Icons.open_in_new),
           ),
-        if (!treeMode)
-          IconButton(
-            tooltip: 'Delete selected card',
-            onPressed: selected == null && selectedEdge == null ? null : delete,
-            icon: const Icon(Icons.delete_outline),
-          ),
+        IconButton(
+          tooltip: 'Delete selected card',
+          onPressed: selected == null && selectedEdge == null ? null : delete,
+          icon: const Icon(Icons.delete_outline),
+        ),
       ],
     ),
     body: Focus(
       autofocus: true,
       onKeyEvent: (_, event) {
-        if (treeMode) return KeyEventResult.ignored;
         if (event is KeyDownEvent &&
             event.logicalKey == LogicalKeyboardKey.keyV &&
             (HardwareKeyboard.instance.isControlPressed ||
@@ -1247,7 +1199,7 @@ class _WhiteboardState extends State<Whiteboard> {
       },
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final displayBoard = treeMode ? treeBoard : board;
+          final displayBoard = board;
           size = Size(constraints.maxWidth, constraints.maxHeight);
           final a = transform.toScene(Offset.zero),
               b = transform.toScene(Offset(size.width, size.height));
@@ -1285,7 +1237,7 @@ class _WhiteboardState extends State<Whiteboard> {
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  if (!treeMode && board.cards.isEmpty)
+                  if (board.cards.isEmpty)
                     Positioned(
                       left:
                           centre.dx -
@@ -1353,22 +1305,19 @@ class _WhiteboardState extends State<Whiteboard> {
                                   .map((c) => c.id)
                                   .toSet();
                             },
-                            onPanUpdate: treeMode
-                                ? null
-                                : (d) {
-                                    dragPosition +=
-                                        d.delta /
-                                        transform.value.getMaxScaleOnAxis();
-                                    setState(
-                                      () => board = board.moveFrame(
-                                        frame.id,
-                                        dragPosition.dx,
-                                        dragPosition.dy,
-                                        cardIds: frameCardIds,
-                                      ),
-                                    );
-                                    scheduleSave();
-                                  },
+                            onPanUpdate: (d) {
+                              dragPosition +=
+                                  d.delta / transform.value.getMaxScaleOnAxis();
+                              setState(
+                                () => board = board.moveFrame(
+                                  frame.id,
+                                  dragPosition.dx,
+                                  dragPosition.dy,
+                                  cardIds: frameCardIds,
+                                ),
+                              );
+                              scheduleSave();
+                            },
                             child: Padding(
                               padding: const EdgeInsets.all(8),
                               child: Text(frame.title),
@@ -1389,11 +1338,10 @@ class _WhiteboardState extends State<Whiteboard> {
                       ),
                     ),
                   ),
-                  if (!treeMode)
-                    for (final edge in visibleEdges)
-                      if (rects[edge.from] case final from?)
-                        if (rects[edge.to] case final to?)
-                          edgeHitTarget(edge, from, to),
+                  for (final edge in visibleEdges)
+                    if (rects[edge.from] case final from?)
+                      if (rects[edge.to] case final to?)
+                        edgeHitTarget(edge, from, to),
                   for (final card in visible)
                     Positioned(
                       left: card.x.toDouble() + origin,
@@ -1407,38 +1355,31 @@ class _WhiteboardState extends State<Whiteboard> {
                         child: GestureDetector(
                           key: ValueKey('board-card-${card.id}'),
                           behavior: HitTestBehavior.opaque,
-                          onTap: treeMode
-                              ? null
-                              : () {
-                                  setState(() {
-                                    selected = card.id;
-                                    selectedEdge = null;
-                                  });
-                                },
-                          onPanStart: treeMode
-                              ? null
-                              : (_) {
-                                  dragPosition = Offset(
-                                    card.x.toDouble(),
-                                    card.y.toDouble(),
-                                  );
-                                  setState(() => selected = card.id);
-                                },
-                          onPanUpdate: treeMode
-                              ? null
-                              : (d) {
-                                  final scale = transform.value
-                                      .getMaxScaleOnAxis();
-                                  dragPosition += d.delta / scale;
-                                  setState(
-                                    () => board = board.moveCard(
-                                      card.id,
-                                      dragPosition.dx,
-                                      dragPosition.dy,
-                                    ),
-                                  );
-                                  scheduleSave();
-                                },
+                          onTap: () {
+                            setState(() {
+                              selected = card.id;
+                              selectedEdge = null;
+                            });
+                          },
+                          onPanStart: (_) {
+                            dragPosition = Offset(
+                              card.x.toDouble(),
+                              card.y.toDouble(),
+                            );
+                            setState(() => selected = card.id);
+                          },
+                          onPanUpdate: (d) {
+                            final scale = transform.value.getMaxScaleOnAxis();
+                            dragPosition += d.delta / scale;
+                            setState(
+                              () => board = board.moveCard(
+                                card.id,
+                                dragPosition.dx,
+                                dragPosition.dy,
+                              ),
+                            );
+                            scheduleSave();
+                          },
                           child: Card(
                             color: selected == card.id
                                 ? Theme.of(
@@ -1453,7 +1394,7 @@ class _WhiteboardState extends State<Whiteboard> {
                                     child: ClipRect(child: content(card)),
                                   ),
                                 ),
-                                if (!treeMode && connecting)
+                                if (connecting)
                                   Positioned(
                                     right: 0,
                                     top: 4,
@@ -1470,42 +1411,38 @@ class _WhiteboardState extends State<Whiteboard> {
                                       ),
                                     ),
                                   ),
-                                if (!treeMode)
-                                  Positioned(
-                                    right: 0,
-                                    bottom: 0,
-                                    child: Semantics(
-                                      label: 'Resize card ${card.id}',
-                                      child: GestureDetector(
-                                        key: ValueKey('resize-${card.id}'),
-                                        onPanUpdate: treeMode
-                                            ? null
-                                            : (d) {
-                                                final scale = transform.value
-                                                    .getMaxScaleOnAxis();
-                                                setState(
-                                                  () =>
-                                                      board = board.resizeCard(
-                                                        card.id,
-                                                        (card.w +
-                                                                d.delta.dx /
-                                                                    scale)
-                                                            .clamp(80, 2000),
-                                                        (card.h +
-                                                                d.delta.dy /
-                                                                    scale)
-                                                            .clamp(50, 2000),
-                                                      ),
-                                                );
-                                                scheduleSave();
-                                              },
-                                        child: const Icon(
-                                          Icons.drag_handle,
-                                          size: 20,
-                                        ),
+                                Positioned(
+                                  right: 0,
+                                  bottom: 0,
+                                  child: Semantics(
+                                    label: 'Resize card ${card.id}',
+                                    child: GestureDetector(
+                                      key: ValueKey('resize-${card.id}'),
+                                      onPanUpdate: (d) {
+                                        final scale = transform.value
+                                            .getMaxScaleOnAxis();
+                                        setState(
+                                          () => board = board.resizeCard(
+                                            card.id,
+                                            (card.w + d.delta.dx / scale).clamp(
+                                              80,
+                                              2000,
+                                            ),
+                                            (card.h + d.delta.dy / scale).clamp(
+                                              50,
+                                              2000,
+                                            ),
+                                          ),
+                                        );
+                                        scheduleSave();
+                                      },
+                                      child: const Icon(
+                                        Icons.drag_handle,
+                                        size: 20,
                                       ),
                                     ),
                                   ),
+                                ),
                               ],
                             ),
                           ),

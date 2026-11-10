@@ -627,7 +627,6 @@ Body
                   index: index,
                   entityId: root.id,
                   title: root.title,
-                  initialTree: true,
                 ),
               ),
             ),
@@ -638,16 +637,15 @@ Body
       await tester.pump();
       for (
         var i = 0;
-        i < 250 && find.text('Pin to whiteboard').evaluate().isEmpty;
+        i < 250 &&
+            find.byKey(const Key('board-add-contents')).evaluate().isEmpty;
         i++
       ) {
         await settleIo(tester);
         await tester.pump(const Duration(milliseconds: 50));
       }
       await tester.pump(const Duration(milliseconds: 400));
-      expect(find.text('Pin to whiteboard'), findsOneWidget);
-      expect(find.byKey(const ValueKey('board-card-root')), findsOneWidget);
-      await tester.tap(find.text('Pin to whiteboard'));
+      await tester.tap(find.byKey(const Key('board-add-contents')));
       await tester.pump();
       Board? saved;
       for (var i = 0; i < 250; i++) {
