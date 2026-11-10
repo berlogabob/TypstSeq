@@ -75,10 +75,19 @@ void main() {
     );
     expect(find.text('Fernando Marson'), findsOneWidget);
     expect(find.text('Person'), findsOneWidget);
+    // Collapsed by default: details stay hidden so the body is on screen.
+    expect(find.text('Fernando'), findsNothing);
+    expect(find.text('fernando@example.com'), findsNothing);
+    expect(find.text('person'), findsNothing); // kind tag is not repeated
+    await tester.tap(find.text('Details (2)'));
+    await tester.pump();
     expect(find.text('Fernando'), findsOneWidget); // alias chip
     expect(find.text('fernando@example.com'), findsOneWidget);
     await tester.tap(find.text('fernando@example.com'));
     expect(tapped, ['mailto:fernando@example.com']);
+    await tester.tap(find.text('Hide details'));
+    await tester.pump();
+    expect(find.text('fernando@example.com'), findsNothing);
   });
 
   testWidgets('LinkedReferences shows the referencing note + mention excerpt', (

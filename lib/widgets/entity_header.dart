@@ -8,8 +8,10 @@ import 'constants.dart';
 
 /// A Logseq-style info card for an entity note (person/place/org…): avatar,
 /// title + kind, aliases, and its `properties` (email tappable), shown above the
-/// note body.
-class EntityHeader extends StatelessWidget {
+/// note body. Collapsed by default (title, kind, relationships and a Details
+/// toggle) so the body stays on screen; aliases, tags and properties show when
+/// expanded.
+class EntityHeader extends StatefulWidget {
   const EntityHeader({
     super.key,
     required this.note,
@@ -31,6 +33,25 @@ class EntityHeader extends StatelessWidget {
   final void Function(String url) onOpenUrl;
   final Future<Uint8List?> Function(String path)? imageResolver;
 
+  @override
+  State<EntityHeader> createState() => _EntityHeaderState();
+}
+
+class _EntityHeaderState extends State<EntityHeader> {
+  // ponytail: expanded state lives for the app session only; persist it per
+  // page if people want it kept across restarts.
+  static final _expandedIds = <String>{};
+
+  NoteRef get note => widget.note;
+  ValueChanged<String>? get onGithubChanged => widget.onGithubChanged;
+  Widget? get relationships => widget.relationships;
+  VoidCallback? get onChangeKindIcon => widget.onChangeKindIcon;
+  VoidCallback? get onOpenBoard => widget.onOpenBoard;
+  VoidCallback? get onOpenTimeline => widget.onOpenTimeline;
+  void Function(String url) get onOpenUrl => widget.onOpenUrl;
+  Future<Uint8List?> Function(String path)? get imageResolver =>
+      widget.imageResolver;
+
   String? get _avatarPath => note.attachments
       .where((a) => a.kind == 'image')
       .map((a) => a.path)
@@ -39,6 +60,8 @@ class EntityHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final expanded = _expandedIds.contains(note.id);
+    final tags = note.tags.where((tag) => tag != note.kind).toList();
     final properties = note.properties.entries
         .where(
           (e) =>
@@ -48,6 +71,11 @@ class EntityHeader extends StatelessWidget {
               '${e.value}'.trim().isNotEmpty,
         )
         .toList();
+    final detailCount =
+        note.aliases.length +
+        tags.length +
+        properties.length +
+        (note.kind == 'project' && onGithubChanged != null ? 1 : 0);
     return Card(
       margin: const EdgeInsets.fromLTRB(kSpace12, kSpace4, kSpace12, kSpace4),
       color: scheme.surfaceContainerLow,
@@ -126,16 +154,35 @@ class EntityHeader extends StatelessWidget {
                 );
               },
             ),
-            if (note.aliases.isNotEmpty) ...[
+            ?relationships,
+            if (detailCount > 0)
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: TextButton.icon(
+                  key: const Key('entity-details-toggle'),
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  onPressed: () => setState(() {
+                    if (!_expandedIds.remove(note.id)) {
+                      _expandedIds.add(note.id);
+                    }
+                  }),
+                  icon: Icon(expanded ? Icons.expand_less : Icons.expand_more),
+                  label: Text(
+                    expanded ? 'Hide details' : 'Details ($detailCount)',
+                  ),
+                ),
+              ),
+            if (expanded && note.aliases.isNotEmpty) ...[
               const SizedBox(height: kSpace4),
               _Chips(icon: Icons.badge_outlined, labels: note.aliases),
             ],
-            if (note.tags.isNotEmpty) ...[
+            if (expanded && tags.isNotEmpty) ...[
               const SizedBox(height: kSpace4),
-              _Chips(icon: Icons.tag, labels: note.tags),
+              _Chips(icon: Icons.tag, labels: tags),
             ],
-            ?relationships,
-            if (note.kind == 'project' && onGithubChanged != null)
+            if (expanded && note.kind == 'project' && onGithubChanged != null)
               TextFormField(
                 key: ValueKey('github-${note.id}'),
                 initialValue: note.properties['github'] as String? ?? '',
@@ -144,12 +191,13 @@ class EntityHeader extends StatelessWidget {
                 ),
                 onFieldSubmitted: onGithubChanged,
               ),
-            for (final entry in properties)
-              _PropertyRow(
-                name: entry.key,
-                value: '${entry.value}',
-                onOpenUrl: onOpenUrl,
-              ),
+            if (expanded)
+              for (final entry in properties)
+                _PropertyRow(
+                  name: entry.key,
+                  value: '${entry.value}',
+                  onOpenUrl: onOpenUrl,
+                ),
           ],
         ),
       ),
