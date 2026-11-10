@@ -4,14 +4,39 @@ extension _IncomingFlow on _HomeScreenState {
   Future<void> _decideAudioProposal(AudioProposal proposal, bool accept) async {
     final v = vault;
     final device = vaultRegistry?.deviceId;
+    final fromScreenshot = proposal.source == 'screenshot';
+    final sourceNote = index?.notesByPath[proposal.note];
     if (v == null ||
         device == null ||
-        index?.notesByPath[proposal.note]?.kind != 'audio') {
+        sourceNote?.kind != (fromScreenshot ? 'screenshot' : 'audio')) {
       return;
     }
-    if (accept) {
+    if (accept &&
+        fromScreenshot &&
+        proposal.kind == 'agenda' &&
+        proposal.date != null &&
+        proposal.time != null) {
+      // A dated, timed item is an event entity of its own, shown in Calendar.
+      await workspace.createPage(
+        proposal.title,
+        kind: 'event',
+        event: FeedEvent(
+          proposal.id.replaceAll(':', '-'),
+          proposal.title,
+          proposal.date!,
+          {
+            'event_type': 'screenshot',
+            'start': '${proposal.date}T${proposal.time}',
+            if (proposal.place != null) 'place': proposal.place,
+            'from': sourceNote!.id,
+          },
+        ),
+      );
+    } else if (accept) {
       await workspace.mutateNote(proposal.note, (source) {
-        final id = proposal.id.replaceFirst('audio:', 'audio-');
+        final id = proposal.id
+            .replaceFirst('audio:', 'audio-')
+            .replaceAll(':', '-');
         if (source.contains('id: ${typstString(id)}')) return source;
         final marker = source.indexOf('// tylog:auto-entities');
         final offset = marker < 0 ? source.length : marker;
@@ -40,7 +65,7 @@ extension _IncomingFlow on _HomeScreenState {
         at: DateTime.now().toIso8601String(),
         device: device,
         item: proposal.id,
-        source: 'audio',
+        source: proposal.source,
         action: accept ? 'accepted' : 'rejected',
         target: proposal.note,
       ),

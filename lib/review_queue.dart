@@ -4,7 +4,7 @@ import 'package:tylog_core/tylog_core.dart';
 
 enum ReviewQueueType {
   mentions('Enrich mentions'),
-  audio('Audio proposals'),
+  audio('Tasks and dates'),
   ocr('OCR rows'),
   bookings('OpenLabTwin bookings'),
   health('Vault health');
@@ -148,10 +148,25 @@ Future<List<OcrReviewRow>> loadOcrReviewRows(
   return _page(result, offset, limit);
 }
 
+/// An Incoming "Add task" / "Add to agenda" item from an audio or screenshot
+/// sidecar; [source] is the Decision source it is recorded under.
 class AudioProposal {
-  const AudioProposal(this.id, this.note, this.text, this.kind, this.date);
-  final String id, note, text, kind;
-  final String? date;
+  const AudioProposal(
+    this.id,
+    this.note,
+    this.text,
+    this.kind,
+    this.date, {
+    this.source = 'audio',
+    this.time,
+    this.place,
+    String? title,
+  }) : title = title ?? text;
+  final String id, note, text, kind, source;
+  final String? date, time, place;
+
+  /// Event title without the time/place suffix in [text].
+  final String title;
 }
 
 /// Caches parsed actionable sidecars by provider identity and file metadata.
@@ -168,16 +183,27 @@ class ActionableSidecarSummary {
     int limit = 20,
   }) async {
     final rows = <AudioProposal>[];
-    try {
-      for (final file in await storage.list(path: '_system/enrich/audio')) {
-        if (file.isDirectory || !file.path.endsWith('.json')) continue;
-        final cached = await _read(storage, file, () => <AudioProposal>[]);
-        rows.addAll(cached.audio);
-      }
-    } catch (_) {}
-    final decided = _decided(decisions, 'audio');
+    for (final (folder, source, prefix) in _actionSources) {
+      try {
+        for (final file in await storage.list(path: folder)) {
+          if (file.isDirectory || !file.path.endsWith('.json')) continue;
+          final cached = await _read(
+            storage,
+            file,
+            () => <AudioProposal>[],
+            parse: (text) =>
+                _parseAudio(text, source: source, notePrefix: prefix),
+          );
+          rows.addAll(cached.audio);
+        }
+      } catch (_) {}
+    }
+    final decided = {
+      for (final (_, source, _) in _actionSources)
+        ..._decided(decisions, source).map((id) => (source, id)),
+    };
     return _page(
-      rows.where((row) => !decided.contains(row.id)).toList(),
+      rows.where((row) => !decided.contains((row.source, row.id))).toList(),
       offset,
       limit,
     );
@@ -309,12 +335,25 @@ Future<String> _readTextBounded(VaultStorage storage, String path) async {
   return utf8.decode(bytes, allowMalformed: true);
 }
 
-List<AudioProposal> _parseAudio(String text) {
+/// Sidecar folders with Incoming "Add task" / "Add to agenda" items, the
+/// Decision source for each, and the folder their notes must live in.
+const _actionSources = [
+  ('_system/enrich/audio', 'audio', 'notes/'),
+  ('_system/enrich/actions', 'screenshot', 'screenshots/'),
+];
+
+List<AudioProposal> _parseAudio(
+  String text, {
+  String source = 'audio',
+  String notePrefix = 'notes/',
+}) {
+  final date = RegExp(r'^\d{4}-\d{2}-\d{2}$');
+  final time = RegExp(r'^\d{2}:\d{2}$');
   try {
     final data = jsonDecode(text) as Map;
     final note = data['note'];
     if (note is! String ||
-        !note.startsWith('notes/') ||
+        !note.startsWith(notePrefix) ||
         !note.endsWith('.typ')) {
       return [];
     }
@@ -331,11 +370,23 @@ List<AudioProposal> _parseAudio(String text) {
             item['kind'] == 'agenda' && item['date'] is String
                 ? 'agenda'
                 : 'task',
-            item['date'] is String &&
-                    RegExp(
-                      r'^\d{4}-\d{2}-\d{2}$',
-                    ).hasMatch(item['date'] as String)
+            item['date'] is String && date.hasMatch(item['date'] as String)
                 ? item['date'] as String
+                : null,
+            source: source,
+            title:
+                item['title'] is String &&
+                    (item['title'] as String).trim().isNotEmpty
+                ? (item['title'] as String).trim()
+                : null,
+            time:
+                item['time'] is String && time.hasMatch(item['time'] as String)
+                ? item['time'] as String
+                : null,
+            place:
+                item['place'] is String &&
+                    (item['place'] as String).trim().isNotEmpty
+                ? (item['place'] as String).trim()
                 : null,
           ),
     ];
@@ -390,51 +441,12 @@ Future<List<AudioProposal>> loadAudioProposals(
   if (summary != null) {
     return summary.audio(storage, decisions, offset: offset, limit: limit);
   }
-  final decided = decisions
-      .where(
-        (d) =>
-            d.source == 'audio' &&
-            (d.action == 'accepted' || d.action == 'rejected'),
-      )
-      .map((d) => d.item)
-      .toSet();
-  final result = <AudioProposal>[];
-  try {
-    for (final file in await storage.list(path: '_system/enrich/audio')) {
-      if (file.isDirectory || !file.path.endsWith('.json')) continue;
-      try {
-        final data = jsonDecode(await storage.readText(file.path)) as Map;
-        final note = data['note'];
-        if (note is! String ||
-            !note.startsWith('notes/') ||
-            !note.endsWith('.typ')) {
-          continue;
-        }
-        for (final item in data['items'] as List) {
-          if (item is! Map ||
-              item['id'] is! String ||
-              item['text'] is! String ||
-              (item['text'] as String).trim().isEmpty ||
-              decided.contains(item['id'])) {
-            continue;
-          }
-          final date = item['date'];
-          result.add(
-            AudioProposal(
-              item['id'],
-              note,
-              item['text'],
-              item['kind'] == 'agenda' && date is String ? 'agenda' : 'task',
-              date is String && RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(date)
-                  ? date
-                  : null,
-            ),
-          );
-        }
-      } catch (_) {}
-    }
-  } catch (_) {}
-  return _page(result, offset, limit);
+  return ActionableSidecarSummary().audio(
+    storage,
+    decisions,
+    offset: offset,
+    limit: limit,
+  );
 }
 
 List<T> _page<T>(List<T> rows, int offset, int limit) {

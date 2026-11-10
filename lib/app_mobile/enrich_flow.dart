@@ -1145,7 +1145,7 @@ extension _EnrichIncoming on _HomeScreenState {
                                                     vaultRegistry?.deviceId ??
                                                     '',
                                                 item: proposal.id,
-                                                source: 'audio',
+                                                source: proposal.source,
                                                 action: 'accepted',
                                               ),
                                             ),
@@ -1165,7 +1165,7 @@ extension _EnrichIncoming on _HomeScreenState {
                                                     vaultRegistry?.deviceId ??
                                                     '',
                                                 item: proposal.id,
-                                                source: 'audio',
+                                                source: proposal.source,
                                                 action: 'rejected',
                                               ),
                                             ),

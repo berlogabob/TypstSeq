@@ -917,6 +917,85 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   }, variant: desktop);
 
+  testWidgets('a timed screenshot item becomes an event file in Calendar', (
+    tester,
+  ) async {
+    final (home, storage) = await _mount(tester);
+    const path = 'screenshots/2026/11/shot-x.typ';
+    const source =
+        '#import "/_system/tylog.typ" as tylog\n#show: tylog.note.with(id: "shot-x", title: "Invite", kind: "screenshot")\n\n== Text\n\nJantar 12 Nov 20:30\n';
+    await tester.runAsync(() async {
+      await storage.writeText(path, source);
+      await storage.writeText(
+        '_system/enrich/actions/shot-x.json',
+        jsonEncode({
+          'schema': 1,
+          'note': path,
+          'items': [
+            {
+              'id': 'shot:shot-x:0',
+              'title': 'Jantar',
+              'text': 'Jantar 20:30 · Tomar',
+              'kind': 'agenda',
+              'date': '2026-11-12',
+              'time': '20:30',
+              'place': 'Tomar',
+            },
+          ],
+        }),
+      );
+    });
+    final oldIndex = home.workspace.index as VaultIndex;
+    home.workspace.index = VaultIndex(
+      notesByPath: {
+        ...oldIndex.notesByPath,
+        path: _note('shot-x', path, 'Invite', 'screenshot'),
+      },
+      backlinksByTarget: const {},
+    );
+    _waitForEnrichmentWorker = true;
+    Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
+    await _pump(tester);
+    await _openIncoming(tester);
+    expect(find.text('Jantar 20:30 · Tomar'), findsOneWidget);
+    await tester.ensureVisible(find.text('Add to agenda'));
+    await tester.tap(find.text('Add to agenda'));
+    await _pump(tester);
+    final event = await tester.runAsync(
+      () => storage.readText('events/2026/11/shot-shot-x-0.typ'),
+    );
+    expect(event, contains('kind: "event"'));
+    expect(event, contains('title: "Jantar"'));
+    expect(event, contains('date: "2026-11-12"'));
+    expect(event, contains('2026-11-12T20:30'));
+    expect(event, contains('Tomar'));
+    expect(
+      await tester.runAsync(() => storage.readText(path)),
+      source,
+      reason: 'the screenshot note is not edited',
+    );
+    final ledger = await tester.runAsync(
+      () => storage.readText('_system/decisions/dev1.jsonl'),
+    );
+    expect(ledger, contains('"source":"screenshot"'));
+    await tester.runAsync(() async {
+      final dir = await Directory.systemTemp.createTemp('shot_event_');
+      addTearDown(() => deleteTempDir(dir));
+      await Directory('${dir.path}/_system').create();
+      await File('typst/tylog/lib.typ').copy('${dir.path}/_system/tylog.typ');
+      await File('${dir.path}/event.typ').writeAsString(event!);
+      final result = await Process.run('typst', [
+        'compile',
+        '--root',
+        dir.path,
+        '${dir.path}/event.typ',
+        '${dir.path}/event.pdf',
+      ]);
+      expect(result.exitCode, 0, reason: result.stderr.toString());
+    });
+    await tester.pumpWidget(const SizedBox());
+  }, variant: desktop);
+
   testWidgets('a note edited since extraction is left alone', (tester) async {
     final (home, storage) = await _mount(tester);
     expect(home.workspace.source, isNot(contains(autoEntitiesMarker)));

@@ -25,7 +25,7 @@ void main() {
   test('Incoming registry lists each review section in display order', () {
     expect(reviewQueueTypes.map((type) => type.label), [
       'Enrich mentions',
-      'Audio proposals',
+      'Tasks and dates',
       'OCR rows',
       'OpenLabTwin bookings',
       'Vault health',
@@ -70,6 +70,46 @@ void main() {
       action: 'rejected',
     );
     expect(await loadAudioProposals(storage, [decision]), isEmpty);
+  });
+
+  test('screenshot actions are proposals under their own source', () async {
+    final dir = await Directory.systemTemp.createTemp('review-shots');
+    addTearDown(() => deleteTempDir(dir));
+    final storage = _CountingStorage(dir);
+    await storage.writeText(
+      '_system/enrich/actions/shot-x.json',
+      '{"schema":1,"note":"screenshots/2026/11/shot-x.typ","items":[{"id":"shot:shot-x:0","title":"Jantar","text":"Jantar 20:30 · Tomar","kind":"agenda","date":"2026-11-12","time":"20:30","place":"Tomar"}]}',
+    );
+    await storage.writeText(
+      '_system/enrich/actions/bad.json',
+      '{"note":"notes/a.typ","items":[{"id":"x","text":"wrong folder"}]}',
+    );
+    final rows = await loadAudioProposals(storage, [
+      Decision(
+        at: 'now',
+        device: 'd',
+        item: 'shot:shot-x:0',
+        source: 'audio',
+        action: 'rejected',
+      ),
+    ]);
+    final row = rows.single;
+    expect(row.source, 'screenshot');
+    expect(row.kind, 'agenda');
+    expect(row.title, 'Jantar');
+    expect((row.date, row.time, row.place), ('2026-11-12', '20:30', 'Tomar'));
+    expect(
+      await loadAudioProposals(storage, [
+        Decision(
+          at: 'now',
+          device: 'd',
+          item: 'shot:shot-x:0',
+          source: 'screenshot',
+          action: 'accepted',
+        ),
+      ]),
+      isEmpty,
+    );
   });
 
   test(
