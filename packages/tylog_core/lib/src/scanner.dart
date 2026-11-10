@@ -1280,6 +1280,43 @@ List<String> _partOf(Object? value, String? project) => {
   if (project != null && project.isNotEmpty) project,
 }.toList();
 
+/// Header values merged with [_bodyProperties]; the header wins per key.
+({List<String> aliases, List<String> partOf, Map<String, Object?> properties})
+_withBody(
+  String source,
+  Iterable<String> headerAliases,
+  Map<String, Object?> headerProperties,
+  String? project,
+) {
+  final body = _bodyProperties(source);
+  return (
+    aliases: _sorted({...headerAliases, ...body.aliases}),
+    partOf: {
+      ..._partOf(headerProperties['part_of'], project),
+      ...body.partOf,
+    }.toList(),
+    properties: {...body.properties, ...headerProperties},
+  );
+}
+
+/// Header-only aliases/properties kept in [NoteRef.queryFacts] when body lines
+/// added any, so a re-derivation can drop a removed line.
+Map<String, Object?> _headerFacts(
+  Iterable<String> headerAliases,
+  Map<String, Object?> headerProperties,
+  ({List<String> aliases, List<String> partOf, Map<String, Object?> properties})
+  merged,
+) =>
+    merged.properties.length == headerProperties.length &&
+        merged.aliases.length == headerAliases.toSet().length &&
+        merged.partOf.length ==
+            _partOf(headerProperties['part_of'], null).length
+    ? const {}
+    : {
+        'header_properties': headerProperties,
+        'header_aliases': headerAliases.toList(),
+      };
+
 NoteRef _queriedNote(
   String path,
   String source,
@@ -1291,6 +1328,15 @@ NoteRef _queriedNote(
   final note = metadata.note!;
   final stem = path.split('/').last.replaceFirst(_typExtension, '');
   final kind = _text(note['kind']) ?? _kindFromPath(path);
+  final headerAliases = stringList(note['aliases']);
+  final headerProperties = (note['properties'] as Map? ?? const {})
+      .cast<String, Object?>();
+  final merged = _withBody(
+    source,
+    headerAliases,
+    headerProperties,
+    _text(note['project']),
+  );
   return NoteRef(
     id: _text(note['id']) ?? '',
     path: path,
@@ -1300,10 +1346,7 @@ NoteRef _queriedNote(
         ? _screenshotDescription(source)
         : '',
     project: _text(note['project']),
-    partOf: _partOf(
-      (note['properties'] as Map?)?['part_of'],
-      _text(note['project']),
-    ),
+    partOf: merged.partOf,
     date: _text(note['date']) ?? _dailyDateFromPath(kind, path),
     tags: _normalizedTags({
       ...stringList(note['tags']),
@@ -1311,7 +1354,7 @@ NoteRef _queriedNote(
       ..._legacyTags(source),
       ..._kindTag(kind),
     }, synonyms),
-    aliases: _sorted(stringList(note['aliases']).toSet()),
+    aliases: merged.aliases,
     outgoingLinks: _sorted({
       ...metadata.links,
       ..._legacySources(source),
@@ -1344,8 +1387,7 @@ NoteRef _queriedNote(
             title: _cleanContentText(item['title']),
           ),
     ],
-    properties: (note['properties'] as Map? ?? const {})
-        .cast<String, Object?>(),
+    properties: merged.properties,
     fingerprint: fingerprint,
     modifiedMillis: modifiedMillis,
     metadataSource: 'typst-query',
@@ -1353,6 +1395,7 @@ NoteRef _queriedNote(
       'tags': _sorted({...stringList(note['tags']), ...metadata.tags}),
       'links': _sorted(metadata.links.toSet()),
       'dates': metadata.dates,
+      ..._headerFacts(headerAliases, headerProperties, merged),
     },
   );
 }
@@ -1381,8 +1424,28 @@ NoteRef? rederiveNote(
       .cast<Map>()
       .map((item) => item.cast<String, Object?>())
       .toList();
+  final headerProperties =
+      (facts['header_properties'] as Map? ?? cached.properties)
+          .cast<String, Object?>();
+  final headerAliases = facts.containsKey('header_aliases')
+      ? stringList(facts['header_aliases'])
+      : cached.aliases;
+  final merged = _withBody(
+    source,
+    headerAliases,
+    headerProperties,
+    cached.project,
+  );
   return cached.copyWith(
-    partOf: _partOf(cached.properties['part_of'], cached.project),
+    partOf: merged.partOf,
+    aliases: merged.aliases,
+    properties: merged.properties,
+    queryFacts: {
+      for (final entry in facts.entries)
+        if (entry.key != 'header_properties' && entry.key != 'header_aliases')
+          entry.key: entry.value,
+      ..._headerFacts(headerAliases, headerProperties, merged),
+    },
     screenshotDescription: cached.kind == 'screenshot'
         ? _screenshotDescription(source)
         : '',
@@ -1431,6 +1494,13 @@ NoteRef _fallbackNote(
     (call) => call.name == 'tylog.attachment',
   );
   final kind = _field(header, 'kind') ?? _kindFromPath(path);
+  final headerProperties = _parseProperties(header);
+  final merged = _withBody(
+    source,
+    _parseList(header, 'aliases'),
+    headerProperties,
+    _field(header, 'project'),
+  );
   return NoteRef(
     id: _field(header, 'id') ?? stem,
     path: path,
@@ -1440,10 +1510,7 @@ NoteRef _fallbackNote(
         ? _screenshotDescription(source)
         : '',
     project: _field(header, 'project'),
-    partOf: _partOf(
-      _parseProperties(header)['part_of'],
-      _field(header, 'project'),
-    ),
+    partOf: merged.partOf,
     date: _field(header, 'date') ?? _dailyDateFromPath(kind, path),
     tags: _normalizedTags({
       ..._parseList(header, 'tags'),
@@ -1451,7 +1518,7 @@ NoteRef _fallbackNote(
       ..._legacyTags(source),
       ..._kindTag(kind),
     }, synonyms),
-    aliases: _sorted(_parseList(header, 'aliases').toSet()),
+    aliases: merged.aliases,
     outgoingLinks: _sorted({
       ..._firstArguments(calls, 'tylog.ref-note'),
       ..._legacySources(source),
@@ -1479,7 +1546,7 @@ NoteRef _fallbackNote(
             title: _bracketBody(call.source),
           ),
     ],
-    properties: _parseProperties(header),
+    properties: merged.properties,
     fingerprint: fingerprint,
     modifiedMillis: modifiedMillis,
     metadataSource: metadataSource,
@@ -1689,6 +1756,72 @@ Set<String> _legacySources(String source) {
     }
   }
   return result;
+}
+
+final _propertyLine = RegExp(
+  r'^\s*(?:[-*]\s+)?(\p{L}[\p{L}\p{N} _-]{0,39}?)\s*::\s*(.*?)\s*$',
+  unicode: true,
+);
+final _wikiLinkValue = RegExp(r'^\[\[([^\]|]+)(?:\|[^\]]*)?\]\]$');
+
+/// Logseq-style `key:: value` lines at the top of a page (after the header,
+/// blank lines and a `= Title` heading; a leading `- ` is allowed). The run
+/// stops at the first other line. `alias::` adds aliases, `part of::` adds
+/// parents (titles or ids, comma-separated); other keys become properties,
+/// lower-cased with spaces and hyphens as `_`. A `[[Title]]` value is stored
+/// as the title (the link itself comes from [_wikiLinkTargets]). Keys with
+/// their own legacy meaning (tags, source, journal-day) and header-owned keys
+/// (title, id, kind, date) are skipped.
+({List<String> aliases, List<String> partOf, Map<String, Object?> properties})
+_bodyProperties(String source) {
+  final aliases = <String>[];
+  final partOf = <String>[];
+  final properties = <String, Object?>{};
+  final header = _noteHeader(source);
+  final body = header == null ? source : source.substring(header.end);
+  var started = false;
+  for (final line in body.split('\n')) {
+    final trimmed = line.trim();
+    if (!started &&
+        (trimmed.isEmpty || trimmed == ')' || trimmed.startsWith('= '))) {
+      continue;
+    }
+    final match = _propertyLine.firstMatch(line);
+    if (match == null) break;
+    started = true;
+    final key = match[1]!.trim().toLowerCase().replaceAll(
+      RegExp(r'[ -]+'),
+      '_',
+    );
+    var value = unescapeMarkup(match[2]!).trim();
+    value = _wikiLinkValue.firstMatch(value)?.group(1)?.trim() ?? value;
+    if (value.isEmpty ||
+        const {
+          'tags',
+          'source',
+          'journal_day',
+          'title',
+          'id',
+          'kind',
+          'date',
+        }.contains(key)) {
+      continue;
+    }
+    List<String> csv() => [
+      for (final part in value.split(','))
+        if (part.trim().isNotEmpty)
+          _wikiLinkValue.firstMatch(part.trim())?.group(1)?.trim() ??
+              part.trim(),
+    ];
+    if (key == 'alias' || key == 'aliases') {
+      aliases.addAll(csv());
+    } else if (key == 'part_of') {
+      partOf.addAll(csv());
+    } else {
+      properties.putIfAbsent(key, () => value);
+    }
+  }
+  return (aliases: aliases, partOf: partOf, properties: properties);
 }
 
 /// Undoes `tylog_import_core`'s markup escaping.

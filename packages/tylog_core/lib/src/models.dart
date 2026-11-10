@@ -553,7 +553,9 @@ const standardNoteKinds = {...structuralNoteKinds, ...entityNoteKinds};
 /// 12: queried envelope validation problems are part of the cached index.
 /// 13: fallback task properties and canonical attachment paths are retained.
 /// 14: parent entities are derived from properties.part_of and legacy project.
-const kVaultIndexVersion = 17;
+/// 18: Logseq-style `key:: value` lines at the top of a page add aliases,
+///    part_of and properties (derive-only).
+const kVaultIndexVersion = 18;
 
 /// Version of the *Typst query output* a cached entry was built from — the
 /// expensive half.
