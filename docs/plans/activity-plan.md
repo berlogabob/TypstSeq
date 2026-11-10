@@ -750,3 +750,14 @@ Concept: every item is a flat `.typ` file; `kind` + header metadata make it a pe
 - [ ] E10 (Claude, measure only) Gemma 4 E2B LiteRT-LM on P30 `.profiletest`: 10 real days, speed, RAM, JSON quality vs Ornith. Decide before any integration.
 - [ ] E11 (rule, ongoing) Each touched flow moves storage writes out of widgets into a controller/core function with a plain test.
 Order: E1 -> E2 -> E3 (one primitive, then consumers), E5 + E6, E4, E8 + E9, E10; E11 inside each.
+
+## Friday 2026-11-13: distill the enrich model for the phone (user OK to plan, not started)
+Goal: decide with a learning curve whether a small model trained on Ornith's labels can run enrich on the P30. Target: >= 80% of Ornith's mentions on held-out days, almost no invented ones, <= 60 s per day on the P30. Stock Gemma 4 E2B baseline (E10): 5% recall, ~210 s/day.
+Access: MacBook at home -> Studio over Tailscale (`desktop-vdsrh2e`, 100.96.84.51, via relay "mad"; SSH `ssh -i ~/.ssh/techlab UNIDCOM-V001@desktop-vdsrh2e`). Studio: RTX 5080 16 GB, Unsloth Studio in C:\Users\UNIDCOM-V001\.unsloth, uv + Python 3.13, WSL available. Ornith must be unloaded while training (enrich pauses).
+Before Friday (user): Studio stays on, logged in, Tailscale running.
+- [ ] D0 Pre-check from home: SSH works, GPU free (`nvidia-smi`), disk space, Unsloth training works on a 10-example toy run (Windows native or WSL).
+- [ ] D1 Dataset (Mac, no GPU): from `_system/enrich/mentions/**` (3,619 Ornith-labelled notes, 15,232 mentions; 1,006 daily) build pairs: input = numbered day lines only (no entity list, short system prompt), output = {mentions [surface,type,line,hints], keywords}. Hold out the newest ~200 days by date. Keep the 38 user decisions + the 10 E10 days as a separate check. Personal data: dataset stays on the Mac and Studio only.
+- [ ] D2 Learning curve: QLoRA on Gemma 4 E2B with 100 / 300 / 1,000 / 3,000 examples; same held-out eval each (recall/precision vs Ornith, valid JSON, invented mentions). Same curve for one ~1B model (faster on the phone).
+- [ ] D3 Decide from the curve: rising -> train on all; flat below target -> stop and record.
+- [ ] D4 Best model -> GGUF -> P30 (`/data/local/tmp/gemma`, llama.cpp cd4ed90 build in ~/Documents/gemma-bench) -> time 10 E10 days with the short prompt.
+- [ ] D5 Write results here; restore Ornith on the Studio; delete the phone copy.
