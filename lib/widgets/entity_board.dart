@@ -736,6 +736,55 @@ class _EntityBoardState extends State<EntityBoard> {
     }
   }
 
+  /// Writes a new to-do task line at the end of the entity's own page.
+  Future<void> _addTask() async {
+    final field = TextEditingController();
+    final text = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('New task in ${widget.entity.title}'),
+        content: TextField(
+          key: const Key('board-new-task-text'),
+          controller: field,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Task'),
+          onSubmitted: (value) => Navigator.pop(context, value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, field.text),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    // Not disposed here: the dialog still reads it while animating closed.
+    if (text == null || text.trim().isEmpty || !mounted) return;
+    setState(() => busy = true);
+    try {
+      final id = await widget.vault.nextTaskId(text.trim());
+      final saved = await widget.mutateNote(widget.entity.path, (source) {
+        final separator = source.isEmpty || source.endsWith('\n') ? '' : '\n';
+        return '$source$separator${taskSnippet(id: id, text: text.trim())}\n';
+      });
+      if (!saved) throw StateError('Task could not be saved');
+      final next = await widget.refreshIndex();
+      if (mounted && next != null) index = next;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not add task: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final tasks = tasksForEntity(widget.entity.id, index);
@@ -862,12 +911,41 @@ class _EntityBoardState extends State<EntityBoard> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                Text(
-                                  column.toUpperCase(),
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.titleMedium,
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        column.toUpperCase(),
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.titleMedium,
+                                      ),
+                                    ),
+                                    if (column == 'todo')
+                                      IconButton(
+                                        key: const Key('board-add-task'),
+                                        tooltip: 'Add task',
+                                        onPressed: busy ? null : _addTask,
+                                        icon: const Icon(Icons.add),
+                                      ),
+                                  ],
                                 ),
+                                if (column == 'todo' &&
+                                    tasks.isEmpty &&
+                                    issues.isEmpty &&
+                                    remoteIssues.isEmpty)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 8),
+                                    child: Text(
+                                      'No tasks yet. Tap + or write a task on '
+                                      'any page that is part of '
+                                      '${widget.entity.title}. Drag cards '
+                                      'between columns to change status.',
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.bodySmall,
+                                    ),
+                                  ),
                                 Expanded(
                                   child: CustomScrollView(
                                     slivers: [

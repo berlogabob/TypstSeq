@@ -144,6 +144,21 @@ void main() {
 '''),
       '= First body line\n',
     );
+    expect(
+      boardNotePreview('''#import "/_system/tylog.typ" as tylog
+
+#show: tylog.note.with(
+  id: "castle",
+  title: "Castle (old)",
+  kind: "place",
+  properties: (note: "a \\" ) b",),
+)
+
+= Castle
+Body
+'''),
+      '= Castle\nBody\n',
+    );
   });
 
   testWidgets('Library Boards lists board titles and card counts', (

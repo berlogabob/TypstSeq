@@ -122,21 +122,9 @@ void main() {
       ),
       legacy,
     );
-    await poll(switchReady);
-    await tester.tap(find.text('Tree'));
-    await tester.pump();
-    await poll(() => find.text('Pin to whiteboard').evaluate().isNotEmpty);
-    for (var i = 0; i < 500; i++) {
-      saved = await tester.runAsync<Board?>(
-        () => readBoard(vault.storage, 'project'),
-      );
-      if (saved?.layout == 'tree') break;
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 20)),
-      );
-      await tester.pump();
-    }
-    expect(saved?.layout, 'tree');
+    // Tree is no longer a board view; the whiteboard adds contained pages.
+    expect(find.text('Tree'), findsNothing);
+    expect(find.byKey(const Key('board-add-contents')), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
 }

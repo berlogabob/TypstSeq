@@ -17,15 +17,45 @@ import 'entity_tree.dart';
 import 'note_picker_sheet.dart';
 
 String boardNotePreview(String source) {
-  final lines = source.trimLeft().split('\n');
+  final text = source.trimLeft();
+  final header = RegExp(
+    r'^#show: tylog\.note',
+    multiLine: true,
+  ).firstMatch(text);
   var body = 0;
-  while (body < lines.length &&
-      (lines[body].trim().isEmpty ||
-          lines[body].startsWith('#import ') ||
-          lines[body].startsWith('#show: tylog.note'))) {
-    body++;
+  if (header != null) {
+    // Skip the whole header call, which usually spans several lines; quoted
+    // values may contain parentheses.
+    var depth = 0;
+    var quoted = false;
+    for (
+      var i = text.indexOf('(', header.start);
+      i >= 0 && i < text.length;
+      i++
+    ) {
+      final c = text[i];
+      if (quoted) {
+        if (c == '\\') {
+          i++;
+        } else if (c == '"') {
+          quoted = false;
+        }
+      } else if (c == '"') {
+        quoted = true;
+      } else if (c == '(') {
+        depth++;
+      } else if (c == ')' && --depth == 0) {
+        body = i + 1;
+        break;
+      }
+    }
   }
-  return lines.skip(body).join('\n').trimLeft();
+  return text
+      .substring(body)
+      .split('\n')
+      .skipWhile((line) => line.trim().isEmpty || line.startsWith('#import '))
+      .join('\n')
+      .trimLeft();
 }
 
 class BoardsTab extends StatefulWidget {
@@ -906,7 +936,20 @@ class _WhiteboardState extends State<Whiteboard> {
     );
   }
 
-  void pinTree() => pinBoard(treeBoard);
+  void pinTree() {
+    final tree = treeBoard;
+    if (tree.cards.length <= 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Nothing is part of ${board.title} yet. Add "Part of" on a page.',
+          ),
+        ),
+      );
+      return;
+    }
+    pinBoard(tree);
+  }
 
   void pinBoard(Board tree) {
     final ids = <String, String>{};
@@ -1103,10 +1146,11 @@ class _WhiteboardState extends State<Whiteboard> {
       leading: widget.embedded ? null : BackButton(onPressed: leave),
       title: widget.embedded ? null : Text(board.title),
       actions: [
-        if (board.scopeEntity != null && !widget.embedded)
+        if (board.scopeEntity != null && !treeMode)
           TextButton(
-            onPressed: toggleTree,
-            child: Text(treeMode ? 'Whiteboard' : 'Tree'),
+            key: const Key('board-add-contents'),
+            onPressed: pinTree,
+            child: const Text('Add contained pages'),
           ),
         if (treeMode)
           TextButton(

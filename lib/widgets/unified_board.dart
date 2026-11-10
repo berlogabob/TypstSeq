@@ -82,7 +82,10 @@ class _UnifiedBoardState extends State<UnifiedBoard> {
       hash = await storage.exists(boardPath(saved.id))
           ? await storage.hash(boardPath(saved.id))
           : null;
-      layout = {'columns', 'free', 'tree'}.contains(saved.layout)
+      // A board saved in the old Tree view opens as its whiteboard.
+      layout = saved.layout == 'tree'
+          ? 'free'
+          : {'columns', 'free'}.contains(saved.layout)
           ? saved.layout
           : 'columns';
       board = await canvasBoard(saved);
@@ -184,7 +187,6 @@ class _UnifiedBoardState extends State<UnifiedBoard> {
                 segments: const [
                   ButtonSegment(value: 'columns', label: Text('Kanban')),
                   ButtonSegment(value: 'free', label: Text('Whiteboard')),
-                  ButtonSegment(value: 'tree', label: Text('Tree')),
                 ],
                 selected: {layout},
                 onSelectionChanged: busy
@@ -212,10 +214,8 @@ class _UnifiedBoardState extends State<UnifiedBoard> {
                         initialHash: hash,
                         storage: widget.vault.storage,
                         index: widget.index,
-                        initialTree: layout == 'tree',
                         embedded: true,
                         registerFlush: (callback) => flush = callback,
-                        onPinTree: () => select('free'),
                         deviceId: widget.deviceId,
                         imageResolver: widget.imageResolver,
                         onOpenPath: widget.onOpenPath,

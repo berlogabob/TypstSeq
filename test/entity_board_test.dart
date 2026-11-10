@@ -274,6 +274,91 @@ void main() {
     );
     expect(find.text('Task 99'), findsOneWidget);
   });
+  testWidgets('empty board explains itself and adds a task to the page', (
+    tester,
+  ) async {
+    final dir = await tester.runAsync(
+      () => Directory.systemTemp.createTemp('add-task-board'),
+    );
+    if (dir == null) throw StateError('No temp directory');
+    addTearDown(() => deleteTempDir(dir));
+    final vault = Vault(dir);
+    const entity = NoteRef(
+      id: 'p',
+      path: 'notes/p.typ',
+      title: 'Trip',
+      outgoingLinks: [],
+    );
+    const index = VaultIndex(
+      notesByPath: {'notes/p.typ': entity},
+      backlinksByTarget: {},
+    );
+    var source =
+        '#import "/_system/tylog.typ" as tylog\n#show: tylog.note.with(id: "p", title: "Trip", kind: "project")\n\n= Trip';
+    var refreshed = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EntityBoard(
+          boardId: 'add',
+          entity: entity,
+          vault: vault,
+          index: index,
+          setStatus: (_, _) async {},
+          mutateNote: (path, edit) async {
+            expect(path, 'notes/p.typ');
+            source = edit(source);
+            return true;
+          },
+          refreshIndex: () async {
+            refreshed++;
+            return index;
+          },
+        ),
+      ),
+    );
+    for (
+      var i = 0;
+      i < 100 && find.byKey(const Key('board-add-task')).evaluate().isEmpty;
+      i++
+    ) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump();
+    }
+    expect(find.textContaining('No tasks yet'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('board-add-task')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('board-new-task-text')),
+      'Book the table',
+    );
+    await tester.tap(find.text('Add'));
+    for (var i = 0; i < 50 && refreshed == 0; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump();
+    }
+    expect(refreshed, 1);
+    expect(source, contains('= Trip\n#tylog.task('));
+    expect(source, contains('text: "Book the table"'));
+    await tester.runAsync(() async {
+      await Directory('${dir.path}/_system').create(recursive: true);
+      await File('typst/tylog/lib.typ').copy('${dir.path}/_system/tylog.typ');
+      await File('${dir.path}/p.typ').writeAsString(source);
+      final result = await Process.run('typst', [
+        'compile',
+        '--root',
+        dir.path,
+        '${dir.path}/p.typ',
+        '${dir.path}/p.pdf',
+      ]);
+      expect(result.exitCode, 0, reason: result.stderr.toString());
+    });
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('reordering tasks persists and reloads their order', (
     tester,
   ) async {
