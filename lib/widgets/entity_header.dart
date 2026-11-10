@@ -24,7 +24,11 @@ class EntityHeader extends StatefulWidget {
     this.relationships,
     this.onGithubChanged,
     this.onFillInfo,
+    this.onEditDetails,
   });
+
+  /// Opens the one metadata editor (`key:: value` lines).
+  final VoidCallback? onEditDetails;
 
   /// Requests a draft of this page from public sources (Incoming > Fill info).
   final VoidCallback? onFillInfo;
@@ -53,6 +57,7 @@ class _EntityHeaderState extends State<EntityHeader> {
   VoidCallback? get onOpenBoard => widget.onOpenBoard;
   VoidCallback? get onOpenTimeline => widget.onOpenTimeline;
   VoidCallback? get onFillInfo => widget.onFillInfo;
+  VoidCallback? get onEditDetails => widget.onEditDetails;
   void Function(String url) get onOpenUrl => widget.onOpenUrl;
   Future<Uint8List?> Function(String path)? get imageResolver =>
       widget.imageResolver;
@@ -104,6 +109,13 @@ class _EntityHeaderState extends State<EntityHeader> {
                       onPressed: onOpenTimeline,
                       icon: const Icon(Icons.timeline),
                       label: const Text('Timeline'),
+                    ),
+                  if (onEditDetails != null)
+                    IconButton(
+                      key: const Key('entity-edit-details'),
+                      tooltip: 'Edit details',
+                      onPressed: onEditDetails,
+                      icon: const Icon(Icons.edit_note),
                     ),
                   if (onFillInfo != null)
                     TextButton.icon(
@@ -178,23 +190,27 @@ class _EntityHeaderState extends State<EntityHeader> {
             ),
             ?relationships,
             if (detailCount > 0)
-              Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: TextButton.icon(
-                  key: const Key('entity-details-toggle'),
-                  style: TextButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
-                  ),
-                  onPressed: () => setState(() {
-                    if (!_expandedIds.remove(note.id)) {
-                      _expandedIds.add(note.id);
-                    }
-                  }),
-                  icon: Icon(expanded ? Icons.expand_less : Icons.expand_more),
-                  label: Text(
-                    expanded ? 'Hide details' : 'Details ($detailCount)',
-                  ),
-                ),
+              Row(
+                children: [
+                  if (detailCount > 0)
+                    TextButton.icon(
+                      key: const Key('entity-details-toggle'),
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      onPressed: () => setState(() {
+                        if (!_expandedIds.remove(note.id)) {
+                          _expandedIds.add(note.id);
+                        }
+                      }),
+                      icon: Icon(
+                        expanded ? Icons.expand_less : Icons.expand_more,
+                      ),
+                      label: Text(
+                        expanded ? 'Hide details' : 'Details ($detailCount)',
+                      ),
+                    ),
+                ],
               ),
             if (expanded && note.aliases.isNotEmpty) ...[
               const SizedBox(height: kSpace4),

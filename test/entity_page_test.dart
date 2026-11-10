@@ -55,6 +55,23 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('header Edit opens the one details editor', (tester) async {
+    var edits = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: EntityHeader(
+            note: _note(id: 'empty', title: 'Empty', kind: 'person'),
+            onOpenUrl: (_) {},
+            onEditDetails: () => edits++,
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byTooltip('Edit details'));
+    expect(edits, 1);
+  });
+
   testWidgets('event header offers Add to Google Calendar', (tester) async {
     final opened = <String>[];
     await tester.pumpWidget(

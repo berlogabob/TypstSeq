@@ -1764,6 +1764,17 @@ final _propertyLine = RegExp(
 );
 final _wikiLinkValue = RegExp(r'^\[\[([^\]|]+)(?:\|[^\]]*)?\]\]$');
 
+/// One Logseq-style `key:: value` line (a leading `- ` is allowed). The key is
+/// lower-cased with spaces and hyphens as `_`; null when the line is not one.
+({String key, String value})? parsePropertyLine(String line) {
+  final match = _propertyLine.firstMatch(line);
+  if (match == null) return null;
+  return (
+    key: match[1]!.trim().toLowerCase().replaceAll(RegExp(r'[ -]+'), '_'),
+    value: match[2]!.trim(),
+  );
+}
+
 /// Logseq-style `key:: value` lines at the top of a page (after the header,
 /// blank lines and a `= Title` heading; a leading `- ` is allowed). The run
 /// stops at the first other line. `alias::` adds aliases, `part of::` adds
@@ -1786,14 +1797,11 @@ _bodyProperties(String source) {
         (trimmed.isEmpty || trimmed == ')' || trimmed.startsWith('= '))) {
       continue;
     }
-    final match = _propertyLine.firstMatch(line);
-    if (match == null) break;
+    final parsed = parsePropertyLine(line);
+    if (parsed == null) break;
     started = true;
-    final key = match[1]!.trim().toLowerCase().replaceAll(
-      RegExp(r'[ -]+'),
-      '_',
-    );
-    var value = unescapeMarkup(match[2]!).trim();
+    final key = parsed.key;
+    var value = unescapeMarkup(parsed.value).trim();
     value = _wikiLinkValue.firstMatch(value)?.group(1)?.trim() ?? value;
     if (value.isEmpty ||
         const {

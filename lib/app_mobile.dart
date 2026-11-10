@@ -34,6 +34,7 @@ import 'bibliography.dart';
 import 'controlled_editor.dart';
 import 'editor_autocomplete.dart' show MentionQueryCache;
 import 'entity_kinds.dart';
+import 'metadata_lines.dart';
 import 'graph.dart';
 import 'knowledge_screen.dart';
 import 'saved_searches.dart';
@@ -2065,33 +2066,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (!mounted) return;
     }
     final title = TextEditingController(text: current.title);
-    final tagsText = TextEditingController(text: current.tags.join(', '));
-    final aliases = TextEditingController(text: current.aliases.join(', '));
     final kindField = TextEditingController(text: current.kind);
-    final email = TextEditingController(
-      text: '${current.properties['email'] ?? ''}',
+    final details = TextEditingController(
+      text: metadataLines(current, ix.notes),
     );
     final saved = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Edit note metadata'),
+        title: const Text('Edit details'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               SelectableText('ID: ${current.id}'),
               _dialogField(title, label: 'Title'),
-              _dialogField(tagsText, label: 'Tags, comma-separated'),
-              _dialogField(aliases, label: 'Aliases, comma-separated'),
               _dialogField(
                 kindField,
                 label: 'Kind',
                 hint: 'note, project, person, place…',
               ),
-              _dialogField(
-                email,
-                label: 'Email',
-                keyboardType: TextInputType.emailAddress,
+              TextField(
+                key: const Key('metadata-details'),
+                controller: details,
+                minLines: 4,
+                maxLines: 12,
+                decoration: const InputDecoration(
+                  labelText: 'Details',
+                  helperText:
+                      'One per line, key:: value. alias::, tags:: and '
+                      'part of:: take comma lists.',
+                  helperMaxLines: 2,
+                ),
               ),
             ],
           ),
@@ -2110,24 +2115,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
     if (saved == true) {
       final kind = kindField.text.trim();
-      final properties = Map<String, Object?>.from(current.properties);
-      final emailText = email.text.trim();
-      if (emailText.isEmpty) {
-        properties.remove('email');
-      } else {
-        properties['email'] = emailText;
-      }
       final updated = replaceNoteHeader(
         _currentSource(),
-        NoteMetadataDraft(
-          id: current.id,
-          title: title.text.trim(),
-          kind: kind.isEmpty ? current.kind : kind,
-          project: current.project,
-          date: current.date,
-          tags: _csvValues(tagsText.text),
-          aliases: _csvValues(aliases.text),
-          properties: properties,
+        applyMetadataLines(
+          current,
+          details.text,
+          ix.notes,
+          title: title.text.trim().isEmpty ? null : title.text.trim(),
+          kind: kind.isEmpty ? null : kind,
         ),
       );
       _loadSource(updated);
@@ -6320,6 +6315,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
               onGithubChanged: (value) =>
                   _setNoteProperty(currentNote, 'github', value.trim()),
+              onEditDetails: _editCurrentMetadata,
               onFillInfo: () async {
                 try {
                   await workspace.requestFill(currentNote);
