@@ -1125,6 +1125,19 @@ class WorkspaceController extends ChangeNotifier {
     );
   }
 
+  /// Asks the enrich worker to draft [note] from public sources; the draft
+  /// comes back through Incoming ("Fill info").
+  Future<void> requestFill(NoteRef note) async {
+    final opened = vault;
+    if (opened == null) return;
+    final id = note.id.replaceAll(RegExp(r'[^\w.-]'), '_');
+    await opened.storage.createDirectory('_system/enrich/fill/requests');
+    await opened.storage.writeText(
+      '_system/enrich/fill/requests/$id.json',
+      '${jsonEncode({'note': note.path, 'requested_at': DateTime.now().toUtc().toIso8601String()})}\n',
+    );
+  }
+
   Future<void> configureCalendars(Map<String, dynamic> config) async {
     await _feedFlight;
     final opened = vault;

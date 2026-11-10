@@ -1,10 +1,12 @@
 import 'dart:convert';
 
 import 'package:tylog_core/tylog_core.dart';
+import 'package:tylog_core/values.dart';
 
 enum ReviewQueueType {
   mentions('Enrich mentions'),
   audio('Tasks and dates'),
+  fill('Fill info'),
   ocr('OCR rows'),
   bookings('OpenLabTwin bookings'),
   health('Vault health');
@@ -484,4 +486,106 @@ String clusterChangeSubtitle(
         '$label: ${snapshot![label]!.take(4).join(', ')}',
   ];
   return [...samples, 'Changes only how the graph groups tags'].join('\n');
+}
+
+/// A "Fill info" draft written by the enrich worker for one entity page.
+class FillDraft {
+  const FillDraft({
+    required this.item,
+    required this.note,
+    required this.title,
+    this.properties = const {},
+    this.sections = const {},
+    this.sources = const [],
+    this.status,
+  });
+
+  /// Decision item: draft id plus its generation time, so a later request for
+  /// the same page is a new item.
+  final String item;
+  final String note, title;
+  final Map<String, String> properties;
+  final Map<String, String> sections;
+  final List<String> sources;
+
+  /// `not_found` or `mismatch` when there is nothing to add.
+  final String? status;
+}
+
+Future<List<FillDraft>> loadFillDrafts(
+  VaultStorage storage,
+  Iterable<Decision> decisions,
+) async {
+  final decided = decisions
+      .where((d) => d.source == 'fill')
+      .map((d) => d.item)
+      .toSet();
+  final drafts = <FillDraft>[];
+  try {
+    for (final file in await storage.list(path: '_system/enrich/fill')) {
+      if (file.isDirectory || !file.path.endsWith('.json')) continue;
+      try {
+        final data = jsonDecode(await storage.readText(file.path)) as Map;
+        final note = data['note'];
+        if (note is! String || !note.endsWith('.typ')) continue;
+        final stem = file.path.split('/').last.replaceFirst('.json', '');
+        final item = '$stem@${data['generated_at']}';
+        if (decided.contains(item)) continue;
+        Map<String, String> strings(Object? value) => {
+          if (value is Map)
+            for (final entry in value.entries)
+              if (entry.value is String &&
+                  (entry.value as String).trim().isNotEmpty)
+                '${entry.key}': (entry.value as String).trim(),
+        };
+        drafts.add(
+          FillDraft(
+            item: item,
+            note: note,
+            title: data['title'] is String ? data['title'] as String : stem,
+            properties: strings(data['properties']),
+            sections: strings(data['sections']),
+            sources: [
+              for (final url in data['sources'] as List? ?? const [])
+                if (url is String && RegExp(r'^https?://\S+$').hasMatch(url))
+                  url,
+            ],
+            status: data['status'] is String ? data['status'] as String : null,
+          ),
+        );
+      } catch (_) {}
+    }
+  } catch (_) {}
+  return drafts;
+}
+
+/// Adds a draft to its page: header properties the page does not have yet
+/// (existing values are never overwritten), then each section not already a
+/// heading, then the sources.
+String applyFillDraft(String source, FillDraft draft) {
+  final existing = scanNote(draft.note, source).properties;
+  var updated = source;
+  for (final entry in draft.properties.entries) {
+    if (!existing.containsKey(entry.key)) {
+      updated = replaceNoteProperty(updated, entry.key, entry.value);
+    }
+  }
+  final buffer = StringBuffer(updated.trimRight());
+  bool has(String heading) => RegExp(
+    '^==\\s+${RegExp.escape(heading)}\\s*\$',
+    multiLine: true,
+  ).hasMatch(updated);
+  for (final entry in draft.sections.entries) {
+    if (has(entry.key)) continue;
+    buffer.write(
+      '\n\n== ${escapeMarkup(entry.key)}\n\n${escapeMarkup(entry.value)}',
+    );
+  }
+  if (draft.sources.isNotEmpty && !has('Источники')) {
+    buffer.write('\n\n== Источники\n');
+    for (final url in draft.sources) {
+      buffer.write('\n- #link(${typstString(url)})');
+    }
+  }
+  return '$buffer\n';
 }

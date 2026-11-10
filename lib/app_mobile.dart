@@ -6320,6 +6320,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ),
               onGithubChanged: (value) =>
                   _setNoteProperty(currentNote, 'github', value.trim()),
+              onFillInfo: () async {
+                try {
+                  await workspace.requestFill(currentNote);
+                  if (mounted) {
+                    showSnack(
+                      this.context,
+                      'Fill info requested. The draft appears in Incoming '
+                      'when the worker has run.',
+                    );
+                  }
+                } catch (error) {
+                  if (mounted) {
+                    showSnack(this.context, 'Could not request: $error');
+                  }
+                }
+              },
               relationships: EntityRelationships(
                 note: scanNote(currentNote.path, _currentSource()),
                 index: index,

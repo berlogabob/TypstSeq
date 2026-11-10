@@ -1,6 +1,37 @@
 part of '../app_mobile.dart';
 
 extension _IncomingFlow on _HomeScreenState {
+  /// Accept adds the draft to its page (missing properties, new sections and
+  /// sources); either way the decision goes to the ledger.
+  Future<void> _decideFill(FillDraft draft, bool accept) async {
+    final v = vault;
+    final device = vaultRegistry?.deviceId;
+    if (v == null || device == null) return;
+    if (accept &&
+        !await workspace.mutateNote(
+          draft.note,
+          (source) => applyFillDraft(source, draft),
+        )) {
+      if (mounted) showSnack(context, 'Could not update ${draft.title}');
+      return;
+    }
+    await _appendIncomingDecision(
+      v,
+      device,
+      Decision(
+        at: DateTime.now().toIso8601String(),
+        device: device,
+        item: draft.item,
+        source: 'fill',
+        action: accept ? 'accepted' : 'rejected',
+        target: draft.note,
+      ),
+    );
+    if (accept) {
+      unawaited(workspace.refreshIndex(updateStatus: false, always: true));
+    }
+  }
+
   Future<void> _decideAudioProposal(AudioProposal proposal, bool accept) async {
     final v = vault;
     final device = vaultRegistry?.deviceId;

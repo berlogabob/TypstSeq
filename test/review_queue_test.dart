@@ -26,6 +26,7 @@ void main() {
     expect(reviewQueueTypes.map((type) => type.label), [
       'Enrich mentions',
       'Tasks and dates',
+      'Fill info',
       'OCR rows',
       'OpenLabTwin bookings',
       'Vault health',
@@ -280,4 +281,79 @@ void main() {
       'ai: llm, agents, rag, ollama\nChanges only how the graph groups tags',
     );
   });
+
+  test(
+    'fill drafts load, hide once decided, and apply without overwriting',
+    () async {
+      final dir = await Directory.systemTemp.createTemp('fill-drafts');
+      addTearDown(() => deleteTempDir(dir));
+      final storage = _CountingStorage(dir);
+      await storage.writeText(
+        '_system/enrich/fill/castle.json',
+        jsonEncode({
+          'note': 'notes/castle.typ',
+          'title': 'Castle',
+          'generated_at': 't1',
+          'properties': {'type': 'castle', 'address': 'new address'},
+          'sections': {'Кратко': 'Замок #1 на холме [x].', 'История': ''},
+          'sources': [
+            'https://pt.wikipedia.org/wiki/Castelo_de_X',
+            'javascript:x',
+          ],
+        }),
+      );
+      await storage.writeText(
+        '_system/enrich/fill/requests/castle.json',
+        '{"note":"notes/castle.typ"}',
+      );
+      final drafts = await loadFillDrafts(storage, []);
+      final draft = drafts.single;
+      expect(draft.item, 'castle@t1');
+      expect(draft.sections.keys, ['Кратко']);
+      expect(draft.sources, ['https://pt.wikipedia.org/wiki/Castelo_de_X']);
+      expect(
+        await loadFillDrafts(storage, [
+          Decision(
+            at: 'n',
+            device: 'd',
+            item: 'castle@t1',
+            source: 'fill',
+            action: 'rejected',
+          ),
+        ]),
+        isEmpty,
+      );
+
+      const page =
+          '#import "/_system/tylog.typ" as tylog\n\n#show: tylog.note.with(\n  id: "castle",\n  title: "Castle",\n  kind: "place",\n  properties: (address: "old",),\n)\n\n= Castle\n\nMy own notes.\n';
+      final applied = applyFillDraft(page, draft);
+      final note = scanNote('notes/castle.typ', applied);
+      expect(note.properties['type'], 'castle');
+      expect(note.properties['address'], 'old');
+      expect(
+        applied,
+        contains('My own notes.\n\n== Кратко\n\nЗамок \\#1 на холме \\[x\\].'),
+      );
+      expect(
+        applied,
+        contains('#link("https://pt.wikipedia.org/wiki/Castelo_de_X")'),
+      );
+      expect(applyFillDraft(applied, draft), applied, reason: 'idempotent');
+      final vaultDir = await Directory.systemTemp.createTemp('fill-compile');
+      addTearDown(() => deleteTempDir(vaultDir));
+      await Directory('${vaultDir.path}/_system').create();
+      await File(
+        'typst/tylog/lib.typ',
+      ).copy('${vaultDir.path}/_system/tylog.typ');
+      await File('${vaultDir.path}/c.typ').writeAsString(applied);
+      final result = await Process.run('typst', [
+        'compile',
+        '--root',
+        vaultDir.path,
+        '${vaultDir.path}/c.typ',
+        '${vaultDir.path}/c.pdf',
+      ]);
+      expect(result.exitCode, 0, reason: result.stderr.toString());
+    },
+  );
 }

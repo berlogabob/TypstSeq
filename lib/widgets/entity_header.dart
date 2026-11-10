@@ -23,8 +23,11 @@ class EntityHeader extends StatefulWidget {
     this.onOpenTimeline,
     this.relationships,
     this.onGithubChanged,
+    this.onFillInfo,
   });
 
+  /// Requests a draft of this page from public sources (Incoming > Fill info).
+  final VoidCallback? onFillInfo;
   final ValueChanged<String>? onGithubChanged;
   final Widget? relationships;
   final VoidCallback? onChangeKindIcon;
@@ -49,6 +52,7 @@ class _EntityHeaderState extends State<EntityHeader> {
   VoidCallback? get onChangeKindIcon => widget.onChangeKindIcon;
   VoidCallback? get onOpenBoard => widget.onOpenBoard;
   VoidCallback? get onOpenTimeline => widget.onOpenTimeline;
+  VoidCallback? get onFillInfo => widget.onFillInfo;
   void Function(String url) get onOpenUrl => widget.onOpenUrl;
   Future<Uint8List?> Function(String path)? get imageResolver =>
       widget.imageResolver;
@@ -100,6 +104,13 @@ class _EntityHeaderState extends State<EntityHeader> {
                       onPressed: onOpenTimeline,
                       icon: const Icon(Icons.timeline),
                       label: const Text('Timeline'),
+                    ),
+                  if (onFillInfo != null)
+                    TextButton.icon(
+                      key: const Key('entity-fill-info'),
+                      onPressed: onFillInfo,
+                      icon: const Icon(Icons.auto_awesome_outlined),
+                      label: const Text('Fill info'),
                     ),
                   if (calendarUrl != null)
                     TextButton.icon(

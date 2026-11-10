@@ -1011,6 +1011,60 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   }, variant: desktop);
 
+  testWidgets('a Fill info draft is added to its page from Incoming', (
+    tester,
+  ) async {
+    final (home, storage) = await _mount(tester);
+    const path = 'notes/castle.typ';
+    const source =
+        '#import "/_system/tylog.typ" as tylog\n#show: tylog.note.with(id: "castle", title: "Castle", kind: "place")\n\n= Castle\n';
+    await tester.runAsync(() async {
+      await storage.writeText(path, source);
+      await storage.writeText(
+        '_system/enrich/fill/castle.json',
+        jsonEncode({
+          'note': path,
+          'title': 'Castle',
+          'generated_at': 't1',
+          'properties': {'type': 'castle'},
+          'sections': {'Кратко': 'Замок на холме.'},
+          'sources': ['https://pt.wikipedia.org/wiki/X'],
+        }),
+      );
+    });
+    final oldIndex = home.workspace.index as VaultIndex;
+    home.workspace.index = VaultIndex(
+      notesByPath: {
+        ...oldIndex.notesByPath,
+        path: _note('castle', path, 'Castle', 'place'),
+      },
+      backlinksByTarget: const {},
+    );
+    _waitForEnrichmentWorker = true;
+    Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
+    await _pump(tester);
+    await _openIncoming(tester);
+    expect(find.text('Info for Castle'), findsOneWidget);
+    await tester.ensureVisible(find.text('Add to page'));
+    await tester.tap(find.text('Add to page'));
+    String? saved;
+    for (var i = 0; i < 50; i++) {
+      await _pump(tester);
+      saved = await tester.runAsync(() => storage.readText(path));
+      if (saved?.contains('Кратко') ?? false) break;
+    }
+    expect(saved, contains('"type": "castle"'));
+    expect(saved, contains('== Кратко\n\nЗамок на холме.'));
+    expect(
+      await tester.runAsync(
+        () => storage.readText('_system/decisions/dev1.jsonl'),
+      ),
+      contains('"source":"fill"'),
+    );
+    expect(find.text('Info for Castle'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  }, variant: desktop);
+
   testWidgets('a note edited since extraction is left alone', (tester) async {
     final (home, storage) = await _mount(tester);
     expect(home.workspace.source, isNot(contains(autoEntitiesMarker)));

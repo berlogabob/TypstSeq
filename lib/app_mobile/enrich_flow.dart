@@ -679,6 +679,7 @@ extension _EnrichIncoming on _HomeScreenState {
     Object? loadError;
     final views = <String, _EnrichView>{};
     final decidedClusters = <String>{};
+    final decidedFills = <String>{};
     Future<Map<String, _EnrichView>> load({
       bool next = false,
       String? refreshPath,
@@ -741,6 +742,7 @@ extension _EnrichIncoming on _HomeScreenState {
         List<AudioProposal>,
         List<HealthFinding>,
         List<Map<String, dynamic>>,
+        List<FillDraft>,
       )
     >
     loadQueue({bool next = false, String? refreshPath}) async {
@@ -775,6 +777,7 @@ extension _EnrichIncoming on _HomeScreenState {
             <AudioProposal>[],
             <HealthFinding>[],
             proposalRows,
+            <FillDraft>[],
           );
         }
         final queue = await Future.wait<Object>([
@@ -792,6 +795,7 @@ extension _EnrichIncoming on _HomeScreenState {
             summary: _actionableSidecars,
           ),
           loadHealthFindings(v.storage),
+          loadFillDrafts(v.storage, decisions),
         ]);
         return (
           mentions,
@@ -799,6 +803,7 @@ extension _EnrichIncoming on _HomeScreenState {
           queue[1] as List<AudioProposal>,
           queue[2] as List<HealthFinding>,
           proposalRows,
+          queue[3] as List<FillDraft>,
         );
       } catch (error) {
         loadError = error;
@@ -808,6 +813,7 @@ extension _EnrichIncoming on _HomeScreenState {
           <AudioProposal>[],
           <HealthFinding>[],
           <Map<String, dynamic>>[],
+          <FillDraft>[],
         );
       }
     }
@@ -850,6 +856,7 @@ extension _EnrichIncoming on _HomeScreenState {
                       List<AudioProposal>,
                       List<HealthFinding>,
                       List<Map<String, dynamic>>,
+                      List<FillDraft>,
                     )
                   >(
                     future: future,
@@ -858,6 +865,9 @@ extension _EnrichIncoming on _HomeScreenState {
                       final rows = snapshot.data?.$2 ?? <OcrReviewRow>[];
                       final audio = snapshot.data?.$3 ?? <AudioProposal>[];
                       final health = snapshot.data?.$4 ?? <HealthFinding>[];
+                      final fills = (snapshot.data?.$6 ?? <FillDraft>[])
+                          .where((d) => !decidedFills.contains(d.item))
+                          .toList();
                       final clusters =
                           snapshot.data?.$5 ?? <Map<String, dynamic>>[];
                       final bookings = day == null
@@ -1021,6 +1031,7 @@ extension _EnrichIncoming on _HomeScreenState {
                           else if (views.isEmpty &&
                               rows.isEmpty &&
                               audio.isEmpty &&
+                              fills.isEmpty &&
                               health.isEmpty &&
                               bookings.isEmpty)
                             ListTile(
@@ -1205,6 +1216,59 @@ extension _EnrichIncoming on _HomeScreenState {
                                     future = loadQueue();
                                   }),
                                   child: const Text('Show older audio'),
+                                ),
+                            ],
+                            if (type == ReviewQueueType.fill &&
+                                fills.isNotEmpty) ...[
+                              ListTile(title: Text(type.label)),
+                              for (final draft in fills)
+                                ListTile(
+                                  key: ValueKey('fill-${draft.item}'),
+                                  title: Text(
+                                    draft.status == null
+                                        ? 'Info for ${draft.title}'
+                                        : 'Nothing reliable found for '
+                                              '${draft.title}',
+                                  ),
+                                  subtitle: Text(
+                                    draft.status != null
+                                        ? (draft.status == 'mismatch'
+                                              ? 'Sources were about something else'
+                                              : 'No public sources found')
+                                        : [
+                                            for (final entry
+                                                in draft.properties.entries)
+                                              '${entry.key}: ${entry.value}',
+                                            for (final entry
+                                                in draft.sections.entries)
+                                              '${entry.key}: ${entry.value}',
+                                          ].join('\n'),
+                                    maxLines: 6,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  trailing: Wrap(
+                                    children: [
+                                      if (draft.status == null)
+                                        TextButton(
+                                          onPressed: () => decide(() async {
+                                            await _decideFill(draft, true);
+                                            decidedFills.add(draft.item);
+                                          }),
+                                          child: const Text('Add to page'),
+                                        ),
+                                      TextButton(
+                                        onPressed: () => decide(() async {
+                                          await _decideFill(draft, false);
+                                          decidedFills.add(draft.item);
+                                        }),
+                                        child: Text(
+                                          draft.status == null
+                                              ? 'Reject'
+                                              : 'Dismiss',
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                             ],
                             if (type == ReviewQueueType.ocr &&
