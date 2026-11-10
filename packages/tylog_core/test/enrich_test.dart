@@ -736,6 +736,14 @@ void main() {
       }
     });
 
+    test('inline link never lands inside code like #tylog.task(', () {
+      // 2026-11-03: "tylog" in `#tylog.task(` became
+      // `##tylog.ref-note(...)[tylog].task(` and the day stopped compiling.
+      const source = '= d\n\n#tylog.task(\n  id: "1",\n  text: "x",\n)\n';
+      const mention = EnrichMention(surface: 'tylog', type: 'project', line: 3);
+      expect(linkMentionInline(source, mention, entity('t', 'tylog')), source);
+    });
+
     test('inline link edits only that mention and skips existing markup', () {
       const mention = EnrichMention(surface: 'André', type: 'person', line: 7);
       final out = linkMentionInline(header, mention, silva);

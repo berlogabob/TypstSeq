@@ -799,7 +799,11 @@ String linkMentionInline(String source, EnrichMention mention, NoteRef target) {
     final bounded =
         (hit == 0 || !word.hasMatch(line[hit - 1])) &&
         (end == line.length || !word.hasMatch(line[end]));
-    if (bounded && !RegExp(r'[/@]|://|www\.').hasMatch(token)) {
+    // A token starting with `#` is Typst code (`#tylog.task(`): a link there
+    // breaks the call and the whole note stops compiling.
+    if (bounded &&
+        !token.startsWith('#') &&
+        !RegExp(r'[/@]|://|www\.').hasMatch(token)) {
       at = hit;
       break;
     }
@@ -896,6 +900,7 @@ List<EnrichMarkerOffer> enrichMarkerOffers(
           if (!_carries(lines[line - 1], marker))
             if (enrichPlainLine(lines[line - 1]) case final text
                 when text.isNotEmpty &&
+                    !text.startsWith('#') &&
                     !memory.isRejected(text, enrichMarkerEntity(id)))
               EnrichMarkerOffer(marker, line, text),
   ];
