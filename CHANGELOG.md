@@ -5,6 +5,43 @@ their history is in the commit log and the GitHub release notes.
 
 ## Unreleased
 
+## 0.23.0+170
+
+### New
+
+- Entity kinds define their own fields in `_system/settings/kinds.json`
+  (`fields`); new built-in kind `equipment` (location, serial, status).
+- Logseq-style `key:: value` lines at the top of a page become aliases,
+  part of and properties (index v18, cheap re-derivation).
+- One details editor: "Edit details" (header pencil, More > metadata) edits
+  title, kind and `key:: value` lines; parents keep their page id.
+- Entity header is collapsed by default (title, kind, Part of / Contains,
+  Details); phone header actions are one icon row.
+- Fill info: entity pages ask the enrich worker for a draft from Wikipedia
+  (pt/en/ru) using the kind's template; drafts are reviewed in Incoming and
+  only add missing properties and new sections, with sources.
+- Screenshots with an explicit date become "Tasks and dates" in Incoming; a
+  dated item with a time becomes an event page in Calendar.
+- Event pages: "Add to Google Calendar" (prefilled link, no sign-in).
+- Kanban: + in TODO adds a task to the page (shown at once); an empty board
+  explains how tasks arrive. Boards drop the Tree view; the whiteboard has
+  "Add contained pages".
+- Incoming: cluster changes read as topics with sample tags; suggested tags
+  can be added, not only removed, and show whether they are applied.
+
+### Fixed
+
+- Page text stays visible when Linked references is open (it shrank to
+  nothing on phones).
+- Search keeps working after an index update (it was empty for minutes on a
+  phone while every note was re-read).
+- The inline linker never links inside Typst code (a `#tylog.task(` call was
+  broken on one day); marker suggestions skip code lines.
+- Adding or removing a tag keeps the day's other suggestions.
+- Duplicate merge accepts pages with labelled links and tasks, drops the
+  removed page's title heading and skips empty sections.
+- Board card previews no longer show the raw header.
+
 ## 0.22.0+169
 
 ### New
