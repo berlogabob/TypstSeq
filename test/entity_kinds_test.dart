@@ -10,6 +10,7 @@ void main() {
       'event',
       'project',
       'website',
+      'equipment',
     ]);
   });
 
@@ -32,6 +33,7 @@ void main() {
         'event',
         'project',
         'website',
+        'equipment',
         'castle',
         'club',
       ],
@@ -56,5 +58,36 @@ void main() {
 
   test('entityFieldsForKind for custom kind', () {
     expect(entityFieldsForKind('club'), <String>['link']);
+  });
+
+  test('entityFieldsForKind for equipment', () {
+    expect(entityFieldsForKind('equipment'), <String>[
+      'location',
+      'serial',
+      'status',
+    ]);
+  });
+
+  test('kind registry fields override the built-in fields', () {
+    final registry = {
+      'place': {
+        'icon': 'place',
+        'fields': ['type', ' Address ', 'period', 'type', 3, ''],
+      },
+      'boat': {'fields': <Object>[]},
+    };
+    expect(entityFieldsForKind('place', registry), <String>[
+      'type',
+      'address',
+      'period',
+    ]);
+    expect(entityFieldsForKind('boat', registry), <String>[]);
+    expect(entityFieldsForKind('person', registry), <String>['email', 'link']);
+  });
+
+  test('entityFieldLabel', () {
+    expect(entityFieldLabel('email'), 'Email (optional)');
+    expect(entityFieldLabel('link'), 'Link or map URL (optional)');
+    expect(entityFieldLabel('serial'), 'Serial (optional)');
   });
 }

@@ -4467,11 +4467,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final title = TextEditingController(text: initialName);
     final kindField = TextEditingController(text: initialKind);
     final aliases = TextEditingController();
-    final fieldControllers = <String, TextEditingController>{
-      'email': TextEditingController(),
-      'address': TextEditingController(),
-      'link': TextEditingController(),
-    };
+    final fieldControllers = <String, TextEditingController>{};
     final selectedIcons = <String, String>{};
     var kindListenerAttached = false;
     final save = await showDialog<bool>(
@@ -4493,7 +4489,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   .firstOrNull
                   ?.key ??
               'category';
-          final fields = entityFieldsForKind(chosenKind);
+          final fields = entityFieldsForKind(chosenKind, kindRegistry.value);
+          for (final field in fields) {
+            fieldControllers.putIfAbsent(field, TextEditingController.new);
+          }
           return AlertDialog(
             title: const Text('New entity'),
             scrollable: true,
@@ -4541,11 +4540,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                       child: _dialogField(
                         fieldControllers[field]!,
-                        label: switch (field) {
-                          'email' => 'Email (optional)',
-                          'address' => 'Address (optional)',
-                          _ => 'Link or map URL (optional)',
-                        },
+                        label: entityFieldLabel(field),
                         keyboardType: field == 'email'
                             ? TextInputType.emailAddress
                             : field == 'link'
@@ -4610,8 +4605,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         aliases: _csvValues(aliases.text),
         properties: {
           ...created.properties,
-          for (final field in entityFieldsForKind(entityKind))
-            if (fieldControllers[field]!.text.trim().isNotEmpty)
+          for (final field in entityFieldsForKind(
+            entityKind,
+            kindRegistry.value,
+          ))
+            if (fieldControllers[field]?.text.trim().isNotEmpty ?? false)
               field: fieldControllers[field]!.text.trim(),
         },
       ),

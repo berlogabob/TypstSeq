@@ -1293,6 +1293,35 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('kind registry fields drive the New entity dialog', (
+    tester,
+  ) async {
+    final home = await _mount(tester, _GatedStorage());
+    kindRegistry.value = {
+      'boat': {
+        'icon': 'category',
+        'label': 'Boat',
+        'fields': ['hull', 'port'],
+      },
+    };
+    addTearDown(() => kindRegistry.value = const {});
+    final creation = home.createEntityForTesting();
+    await tester.pumpAndSettle();
+    await tester.enterText(_entityField('Name'), 'Gaivota');
+    await tester.enterText(_entityKeyedField('entity-kind'), 'boat');
+    await tester.pump();
+    expect(find.byKey(const ValueKey('entity-field-link')), findsNothing);
+    await tester.enterText(_entityKeyedField('entity-field-hull'), 'wood');
+    await tester.enterText(_entityKeyedField('entity-field-port'), 'Tomar');
+    await tester.tap(find.widgetWithText(FilledButton, 'Create'));
+    await tester.pumpAndSettle();
+    final result = await creation;
+    expect(result?.kind, 'boat');
+    expect(result?.properties['hull'], 'wood');
+    expect(result?.properties['port'], 'Tomar');
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('entity creation accepts a new kind and shows person email', (
     tester,
   ) async {
