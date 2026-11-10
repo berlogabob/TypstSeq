@@ -615,6 +615,26 @@ void main() {
       );
     });
 
+    test('lines inside a multi-line call are never offered', () {
+      const source =
+          '- 09:00 купить хлеб\n'
+          '#tylog.task(\n'
+          '  id: "t1",\n'
+          '  text: "Send notes",\n'
+          ')\n'
+          '- 10:00 #tylog.ref-note("x")[X] позвонить\n';
+      final offers = enrichMarkerOffers(
+        EnrichMentions(
+          note: 'd',
+          contentSha: 'x',
+          markers: const [(1, 'fx'), (2, 'fx'), (4, 'fx'), (6, 'fx')],
+        ),
+        source,
+        EnrichMemory.build(markerIndex, const []),
+      );
+      expect(offers.map((o) => o.line), [1, 6]);
+    });
+
     test('a typed marker word becomes the link instead of doubling', () {
       const source = '- 23:08 Fixit: нет очереди\n- fixity of the theory';
       final marked = markLine(source, 1, fixit).split('\n');
@@ -746,8 +766,11 @@ void main() {
         ..createSync(recursive: true);
       addTearDown(() => dir.deleteSync(recursive: true));
       const mention = EnrichMention(surface: 'André', type: 'person', line: 7);
-      final source = linkMentionInline(header, mention, silva)
-          .replaceFirst('/_system/tylog.typ', '/typst/tylog/lib.typ');
+      final source = linkMentionInline(
+        header,
+        mention,
+        silva,
+      ).replaceFirst('/_system/tylog.typ', '/typst/tylog/lib.typ');
       final file = File('${dir.path}/day.typ')..writeAsStringSync(source);
       final result = Process.runSync('typst', [
         'compile',

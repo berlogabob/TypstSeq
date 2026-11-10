@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -772,8 +773,32 @@ class _EntityBoardState extends State<EntityBoard> {
         return '$source$separator${taskSnippet(id: id, text: text.trim())}\n';
       });
       if (!saved) throw StateError('Task could not be saved');
-      final next = await widget.refreshIndex();
-      if (mounted && next != null) index = next;
+      // Show the card now; a full index refresh took ~15 s on the P30.
+      final shown = index;
+      if (mounted) {
+        setState(() {
+          index = VaultIndex(
+            version: shown.version,
+            queryVersion: shown.queryVersion,
+            notesByPath: shown.notesByPath,
+            backlinksByTarget: shown.backlinksByTarget,
+            attachmentBacklinksByPath: shown.attachmentBacklinksByPath,
+            problems: shown.problems,
+            tasks: [
+              ...shown.tasks,
+              TaskRef(id: id, notePath: widget.entity.path, text: text.trim()),
+            ],
+            tasksByEntityPath: shown.tasksByEntityPath,
+            issues: shown.issues,
+            issueLines: shown.issueLines,
+          );
+        });
+      }
+      unawaited(
+        widget.refreshIndex().then((next) {
+          if (mounted && next != null) setState(() => index = next);
+        }),
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(

@@ -867,13 +867,32 @@ List<EnrichMarkerOffer> enrichMarkerOffers(
 ) {
   if (mentions.markers.isEmpty) return const [];
   final lines = source.split('\n');
+  // Lines inside a multi-line call (`#tylog.task(` ... `)`) are code: showing
+  // them reads as raw Typst, and filing one would put a link inside the call.
+  final code = <int>{};
+  var offset = 0;
+  final starts = <int>[];
+  for (final line in lines) {
+    starts.add(offset);
+    offset += line.length + 1;
+  }
+  for (final call in locateTypstCalls(source)) {
+    for (var i = 0; i < lines.length; i++) {
+      final lineEnd = starts[i] + lines[i].length;
+      if (starts[i] < call.end && lineEnd > call.start && call.end > lineEnd) {
+        code.add(i + 1);
+      } else if (starts[i] >= call.start && starts[i] < call.end) {
+        code.add(i + 1);
+      }
+    }
+  }
   return [
     for (final (line, id) in mentions.markers)
       // A marker with no page yet ("Купить") links by name, as the user does.
       if (memory.markerNotes[id] ??
               NoteRef(id: id, path: '', title: id, outgoingLinks: const [])
           case final marker)
-        if (line >= 1 && line <= lines.length)
+        if (line >= 1 && line <= lines.length && !code.contains(line))
           if (!_carries(lines[line - 1], marker))
             if (enrichPlainLine(lines[line - 1]) case final text
                 when text.isNotEmpty &&

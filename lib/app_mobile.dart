@@ -6389,12 +6389,26 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 }
               },
             ),
-          Expanded(child: content),
-          if (references != null)
-            if (keyboardUp || currentDaily != null)
-              const SizedBox.shrink()
-            else
-              references,
+          Expanded(
+            child: references == null || keyboardUp || currentDaily != null
+                ? content
+                // The references panel may take at most 40% of what is left
+                // under the header, so the page text always stays visible
+                // (on the P30 it used to squeeze the editor to nothing).
+                : LayoutBuilder(
+                    builder: (context, constraints) => Column(
+                      children: [
+                        Expanded(child: content),
+                        ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxHeight: constraints.maxHeight * 0.4,
+                          ),
+                          child: references,
+                        ),
+                      ],
+                    ),
+                  ),
+          ),
         ],
       );
     }

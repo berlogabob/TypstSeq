@@ -48,56 +48,72 @@ Future<void> _writeSearchJson(
 );
 
 void main() {
-  test('a derive-only index bump invalidates the search documents', () async {
-    // Documents are cached against a note's content hash, so a bump that
-    // changes tags without touching a byte of any note left search holding
-    // pre-fold spellings forever - silently disagreeing with the index it was
-    // built from. The file-format version cannot catch it.
-    final root = await Directory.systemTemp.createTemp('tylog_search_ver_');
-    addTearDown(() => root.delete(recursive: true));
-    final storage = LocalVaultStorage(root);
-    await storage.writeText('notes/a.typ', 'alpha beta');
-    final index = VaultIndex(
-      notesByPath: {
-        'notes/a.typ': const NoteRef(
-          id: 'a',
-          path: 'notes/a.typ',
-          title: 'Alpha',
-          outgoingLinks: [],
-        ),
-      },
-      backlinksByTarget: const {},
-    );
-    final built = await PkmsSearchIndex.buildStorage(storage, index);
-    await built.saveStorage(storage, '_index/search-index.json.gz');
+  test(
+    'a derive-only index bump refreshes metadata without re-reading notes',
+    () async {
+      // Documents are cached against a note's content hash, so a bump that
+      // changes tags without touching a byte of any note left search holding
+      // pre-fold spellings forever - silently disagreeing with the index it was
+      // built from. The file-format version cannot catch it.
+      final root = await Directory.systemTemp.createTemp('tylog_search_ver_');
+      addTearDown(() => root.delete(recursive: true));
+      final storage = LocalVaultStorage(root);
+      await storage.writeText('notes/a.typ', 'alpha beta');
+      VaultIndex indexWith(List<String> tags) => VaultIndex(
+        notesByPath: {
+          'notes/a.typ': NoteRef(
+            id: 'a',
+            path: 'notes/a.typ',
+            title: 'Alpha',
+            tags: tags,
+            contentHash: 'h1',
+            outgoingLinks: const [],
+          ),
+        },
+        backlinksByTarget: const {},
+      );
+      final index = indexWith(const ['Old-Spelling']);
+      final built = await PkmsSearchIndex.buildStorage(storage, index);
+      await built.saveStorage(storage, '_index/search-index.json.gz');
 
-    // Rewrite the stamp as an older derivation, as an upgrade would leave it.
-    final raw =
-        jsonDecode(
-              utf8.decode(
-                gzip.decode(
-                  await storage.readBytes('_index/search-index.json.gz'),
+      // Rewrite the stamp as an older derivation, as an upgrade would leave it.
+      final raw =
+          jsonDecode(
+                utf8.decode(
+                  gzip.decode(
+                    await storage.readBytes('_index/search-index.json.gz'),
+                  ),
                 ),
-              ),
-            )
-            as Map<String, Object?>;
-    expect(raw['indexVersion'], kVaultIndexVersion);
-    raw['indexVersion'] = kVaultIndexVersion - 1;
-    await storage.writeBytes(
-      '_index/search-index.json.gz',
-      gzip.encode(utf8.encode(jsonEncode(raw))),
-    );
+              )
+              as Map<String, Object?>;
+      expect(raw['indexVersion'], kVaultIndexVersion);
+      raw['indexVersion'] = kVaultIndexVersion - 1;
+      await storage.writeBytes(
+        '_index/search-index.json.gz',
+        gzip.encode(utf8.encode(jsonEncode(raw))),
+      );
 
-    final reloaded = await PkmsSearchIndex.loadStorage(
-      storage,
-      '_index/search-index.json.gz',
-    );
-    expect(
-      reloaded.search('alpha'),
-      isEmpty,
-      reason: 'documents from an older derivation must not be reused',
-    );
-  });
+      final reloaded = await PkmsSearchIndex.loadStorage(
+        storage,
+        '_index/search-index.json.gz',
+      );
+      expect(reloaded.derivedStale, isTrue);
+      // The note file is gone: a rebuild that re-read it would lose the
+      // document, so finding it proves the terms were reused.
+      await storage.delete('notes/a.typ');
+      final rebuilt = await PkmsSearchIndex.buildStorage(
+        storage,
+        indexWith(const ['new-spelling']),
+        previous: reloaded,
+      );
+      expect(rebuilt.derivedStale, isFalse);
+      expect(rebuilt.search('alpha').map((r) => r.path), ['notes/a.typ']);
+      expect(rebuilt.search('alpha', tag: 'new-spelling').map((r) => r.path), [
+        'notes/a.typ',
+      ], reason: 'tags come from the current index, not the stale file');
+      expect(rebuilt.search('alpha', tag: 'Old-Spelling'), isEmpty);
+    },
+  );
 
   test('packed save/load preserves 50 generated search results', () async {
     final root = await Directory.systemTemp.createTemp('tylog_search_packed_');

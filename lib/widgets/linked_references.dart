@@ -109,23 +109,27 @@ class _LinkedReferencesState extends State<LinkedReferences> {
             ),
           ),
           if (_expanded)
-            ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.sizeOf(context).height * 0.35,
-              ),
-              child: ListView.builder(
-                shrinkWrap: true,
-                padding: const EdgeInsets.only(bottom: kSpace8),
-                itemCount: widget.backlinks.length,
-                itemBuilder: (context, i) {
-                  final path = widget.backlinks.elementAt(i);
-                  return _Reference(
-                    title: widget.index?.notesByPath[path]?.title ?? path,
-                    kind: widget.index?.notesByPath[path]?.kind ?? 'note',
-                    excerpts: _excerptsFor(path),
-                    onOpen: () => widget.onOpenPath(path),
-                  );
-                },
+            // Flexible: inside a height-capped parent the list shrinks and
+            // scrolls instead of overflowing.
+            Flexible(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.35,
+                ),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.only(bottom: kSpace8),
+                  itemCount: widget.backlinks.length,
+                  itemBuilder: (context, i) {
+                    final path = widget.backlinks.elementAt(i);
+                    return _Reference(
+                      title: widget.index?.notesByPath[path]?.title ?? path,
+                      kind: widget.index?.notesByPath[path]?.kind ?? 'note',
+                      excerpts: _excerptsFor(path),
+                      onOpen: () => widget.onOpenPath(path),
+                    );
+                  },
+                ),
               ),
             ),
         ],

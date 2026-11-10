@@ -71,6 +71,24 @@ class _SearchDocument {
   final String? status;
   final String? snippet;
 
+  /// The same terms with metadata from the current index entry.
+  _SearchDocument withMetadata(NoteRef note) => _SearchDocument(
+    id: note.id,
+    path: path,
+    title: note.title,
+    kind: note.kind,
+    tags: note.tags,
+    aliases: note.aliases,
+    termIds: termIds,
+    termFrequencies: termFrequencies,
+    overflowTermFrequencies: overflowTermFrequencies,
+    fingerprint: fingerprint,
+    contentHash: contentHash,
+    fileKind: fileKind,
+    status: status,
+    snippet: snippet,
+  );
+
   int frequency(int term) {
     final overflow = overflowTermFrequencies?[term];
     if (overflow != null) return overflow;
@@ -160,6 +178,11 @@ class PkmsSearchIndex {
 
   final Map<String, _SearchDocument> _documents;
   List<String> _vocabulary;
+
+  /// Loaded from a file built by an older index derivation: terms are still
+  /// valid for the same note bytes, but title/kind/tags/aliases must be taken
+  /// from the current index before the documents are trusted.
+  bool derivedStale = false;
   late Uint32List _vocabularyByName;
   List<String> _documentPaths = const [];
   Uint32List _postingStarts = Uint32List(0);
@@ -291,7 +314,11 @@ class PkmsSearchIndex {
       // left every search document holding pre-fold spellings forever, and
       // tag-filtered search silently disagreed with the index it came from.
       // `version: 2` cannot catch that: it describes the envelope.
-      if (json['indexVersion'] != kVaultIndexVersion) return empty();
+      // A derive-only bump (tags/aliases rules changed, note bytes not) keeps
+      // the documents but marks them stale: the next build refreshes their
+      // metadata from the new index instead of re-reading every file (that
+      // re-read left Search empty for ~5 min on the P30 after an upgrade).
+      final stale = json['indexVersion'] != kVaultIndexVersion;
       final vocabulary = (json['vocabulary'] as List).cast<String>();
       final documents = <String, _SearchDocument>{};
       for (final value in (json['documents'] as List)) {
@@ -303,7 +330,7 @@ class PkmsSearchIndex {
         documents[fields[0] as String] = document;
         fields.fillRange(0, fields.length, null);
       }
-      return PkmsSearchIndex._(documents, vocabulary);
+      return PkmsSearchIndex._(documents, vocabulary)..derivedStale = stale;
     } on FormatException {
       rethrow;
     } catch (_) {
@@ -348,7 +375,9 @@ class PkmsSearchIndex {
               ? cached.contentHash == note.contentHash
               : cached.fingerprint == note.fingerprint);
       if (hit) {
-        documents[note.path] = cached;
+        documents[note.path] = previous!.derivedStale
+            ? cached.withMetadata(note)
+            : cached;
       } else {
         misses.add(note);
       }
@@ -405,7 +434,7 @@ class PkmsSearchIndex {
     // came from the cache they are provably identical to `previous`'s — and
     // rebuilding them meant re-tokenising 3,725 task docs on every rebuild only
     // to throw the result away at the identity check below.
-    if (previous != null && misses.isEmpty) {
+    if (previous != null && misses.isEmpty && !previous.derivedStale) {
       final previousNoteDocs = previous._documents.keys
           .where((key) => !_isDerivedKey(key))
           .length;
@@ -462,6 +491,7 @@ class PkmsSearchIndex {
     // posting sets in the constructor.
     if (previous != null &&
         misses.isEmpty &&
+        !previous.derivedStale &&
         documents.length == previous._documents.length &&
         documents.keys.every(previous._documents.containsKey)) {
       return previous;

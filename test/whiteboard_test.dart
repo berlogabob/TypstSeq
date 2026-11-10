@@ -567,7 +567,7 @@ Body
         ),
       ),
     );
-    await tester.tap(find.text('Board'));
+    await tester.tap(find.byKey(const Key('entity-board-button')));
     await tester.pump();
     final created = await pollIo(
       tester,
@@ -634,7 +634,7 @@ Body
           ),
         ),
       );
-      await tester.tap(find.text('Board'));
+      await tester.tap(find.byKey(const Key('entity-board-button')));
       await tester.pump();
       for (
         var i = 0;

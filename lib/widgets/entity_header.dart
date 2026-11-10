@@ -103,12 +103,40 @@ class _EntityHeaderState extends State<EntityHeader> {
             LayoutBuilder(
               builder: (context, constraints) {
                 final narrow = constraints.maxWidth < 600;
+                // Narrow (phone): one row of icons with tooltips; labelled
+                // buttons wrapped onto two lines on the P30.
+                Widget action(
+                  String key,
+                  IconData icon,
+                  String label,
+                  VoidCallback onPressed,
+                ) => narrow
+                    ? IconButton(
+                        key: Key(key),
+                        tooltip: label,
+                        onPressed: onPressed,
+                        icon: Icon(icon),
+                      )
+                    : TextButton.icon(
+                        key: Key(key),
+                        onPressed: onPressed,
+                        icon: Icon(icon),
+                        label: Text(label),
+                      );
                 final actions = <Widget>[
                   if (onOpenTimeline != null)
-                    TextButton.icon(
-                      onPressed: onOpenTimeline,
-                      icon: const Icon(Icons.timeline),
-                      label: const Text('Timeline'),
+                    action(
+                      'entity-timeline',
+                      Icons.timeline,
+                      'Timeline',
+                      onOpenTimeline!,
+                    ),
+                  if (onOpenBoard != null)
+                    action(
+                      'entity-board-button',
+                      Icons.view_kanban_outlined,
+                      'Board',
+                      onOpenBoard!,
                     ),
                   if (onEditDetails != null)
                     IconButton(
@@ -118,31 +146,18 @@ class _EntityHeaderState extends State<EntityHeader> {
                       icon: const Icon(Icons.edit_note),
                     ),
                   if (onFillInfo != null)
-                    TextButton.icon(
-                      key: const Key('entity-fill-info'),
-                      onPressed: onFillInfo,
-                      icon: const Icon(Icons.auto_awesome_outlined),
-                      label: const Text('Fill info'),
+                    action(
+                      'entity-fill-info',
+                      Icons.auto_awesome_outlined,
+                      'Fill info',
+                      onFillInfo!,
                     ),
                   if (calendarUrl != null)
-                    TextButton.icon(
-                      key: const Key('entity-google-calendar'),
-                      onPressed: () => onOpenUrl(calendarUrl),
-                      icon: const Icon(Icons.edit_calendar_outlined),
-                      label: const Text('Add to Google Calendar'),
-                    ),
-                  if (onOpenBoard != null)
-                    TextButton.icon(
-                      key: const Key('entity-board-button'),
-                      style: TextButton.styleFrom(
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: kSpace8,
-                        ),
-                      ),
-                      onPressed: onOpenBoard,
-                      icon: const Icon(Icons.view_kanban_outlined),
-                      label: const Text('Board'),
+                    action(
+                      'entity-google-calendar',
+                      Icons.edit_calendar_outlined,
+                      'Add to Google Calendar',
+                      () => onOpenUrl(calendarUrl),
                     ),
                 ];
                 return Column(

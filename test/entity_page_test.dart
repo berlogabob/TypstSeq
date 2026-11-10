@@ -43,14 +43,14 @@ void main() {
     final title = tester.widget<Text>(find.text('TyLog'));
     expect(title.maxLines, 1);
     expect(title.overflow, TextOverflow.ellipsis);
-    expect(find.text('Board'), findsOneWidget);
+    expect(find.byKey(const Key('entity-board-button')), findsOneWidget);
     expect(find.text('Tree'), findsNothing);
     expect(find.text('Whiteboard'), findsNothing);
     expect(
-      tester.getTopLeft(find.text('Board')).dy,
+      tester.getTopLeft(find.byKey(const Key('entity-board-button'))).dy,
       greaterThan(tester.getTopLeft(find.text('TyLog')).dy),
     );
-    await tester.tap(find.text('Board'));
+    await tester.tap(find.byKey(const Key('entity-board-button')));
     expect(opened, ['Board']);
     expect(tester.takeException(), isNull);
   });
@@ -89,7 +89,7 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.text('Add to Google Calendar'));
+    await tester.tap(find.byKey(const Key('entity-google-calendar')));
     expect(opened.single, startsWith('https://calendar.google.com/'));
     expect(opened.single, contains('20261112T203000'));
   });

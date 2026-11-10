@@ -3588,6 +3588,41 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
+  testWidgets('expanded linked references leave the page text visible on a phone', (
+    tester,
+  ) async {
+    final storage = _FailingStorage();
+    await storage.writeText(
+      'notes/a.typ',
+      '#show: tylog.note.with(id: "ada", title: "Ada", kind: "person", aliases: ("A",), properties: (email: "a@x.pt", role: "prof",))\n\nBody',
+    );
+    for (var i = 0; i < 12; i++) {
+      await storage.writeText(
+        'notes/r$i.typ',
+        '#import "/_system/tylog.typ" as tylog\n#show: tylog.note.with(id: "r$i", title: "Ref $i")\n\nmet #tylog.ref-note("ada")[Ada] today, a long line of text $i\n',
+      );
+    }
+    final (_, home) = await _mountTaskTimers(tester, existing: storage);
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    home.mode = 'normal';
+    home.primaryDestination = 0;
+    home.workspace.notifyListeners();
+    await tester.pumpAndSettle();
+    final linked = find.textContaining('Linked references');
+    expect(linked, findsOneWidget);
+    if (find.byIcon(Icons.chevron_right).evaluate().isNotEmpty) {
+      await tester.tap(linked);
+      await tester.pumpAndSettle();
+    }
+    final editor = find.byKey(const Key('rich-journal-editor'));
+    expect(tester.getSize(editor).height, greaterThanOrEqualTo(150));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('Magic menu exposes the complete command set', (tester) async {
     await tester.pumpWidget(const TyLogApp());
     await tester.pumpAndSettle();

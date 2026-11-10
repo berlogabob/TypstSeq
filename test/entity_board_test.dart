@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'dart:io';
@@ -311,6 +312,7 @@ void main() {
           },
           refreshIndex: () async {
             refreshed++;
+            await Completer<void>().future; // a slow refresh never finishes
             return index;
           },
         ),
@@ -341,6 +343,9 @@ void main() {
       await tester.pump();
     }
     expect(refreshed, 1);
+    // The card shows before the (slow) index refresh returns.
+    await tester.pump();
+    expect(find.widgetWithText(Card, 'Book the table'), findsOneWidget);
     expect(source, contains('= Trip\n#tylog.task('));
     expect(source, contains('text: "Book the table"'));
     await tester.runAsync(() async {
