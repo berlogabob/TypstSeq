@@ -200,9 +200,19 @@ extension _DuplicateMerge on WorkspaceController {
             NoteMetadataDraft.fromNote(metadata),
             {...metadata.partOf, ...remove.partOf}.toList(),
           );
-          if (body != null && body.trim().isNotEmpty) {
+          // The removed page's own `= Title` heading would repeat inside the
+          // merged section, and a page with nothing else left an empty one.
+          final content = body?.replaceFirst(
+            RegExp(
+              '^\\s*=[ \\t]+'
+              '(?:${[remove.title, escapeMarkup(remove.title), loser.split('/').last.replaceFirst(RegExp(r'\.typ$'), '')].map(RegExp.escape).join('|')})'
+              '[ \\t]*(?:\\n|\$)',
+            ),
+            '',
+          );
+          if (content != null && content.trim().isNotEmpty) {
             final mergedBody = _renameReferences(
-              body,
+              content.trimLeft(),
               targets,
               remove.title,
               keep.id,
@@ -214,7 +224,7 @@ extension _DuplicateMerge on WorkspaceController {
               );
             }
             updated =
-                '$updated\n\n== Merged from ${escapeMarkup(remove.title)}\n\n$mergedBody';
+                '${updated.trimRight()}\n\n== Merged from ${escapeMarkup(remove.title)}\n\n$mergedBody';
           }
         }
         if (updated != text) {
@@ -292,9 +302,7 @@ Future<void> _validateTypstBodyWithCli(String body) async {
   try {
     final helper = Directory('${root.path}/_system');
     await helper.create(recursive: true);
-    await File(
-      '${helper.path}/tylog.typ',
-    ).writeAsString(_mergeHelperStub);
+    await File('${helper.path}/tylog.typ').writeAsString(_mergeHelperStub);
     final source = File('${root.path}/body.typ');
     await source.writeAsString('#import "/_system/tylog.typ" as tylog\n$body');
     final result = await Process.run('typst', [

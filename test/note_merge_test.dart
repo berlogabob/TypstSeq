@@ -31,6 +31,53 @@ class _DelayedStorage extends LocalVaultStorage {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('merge drops the removed title heading and empty sections', () async {
+    final root = await Directory.systemTemp.createTemp('merge-heading-');
+    final storage = LocalVaultStorage(root);
+    final vault = Vault.withStorage(storage);
+    await vault.ensureCreated();
+    final workspace = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      reconcileTasks: (_) async {},
+    )..vault = vault;
+    addTearDown(() async {
+      workspace.dispose();
+      await deleteTempDir(root);
+    });
+    await storage.writeText(
+      'notes/a.typ',
+      replaceNoteHeader(
+        '= A\n\nKeep.\n',
+        const NoteMetadataDraft(id: 'a', title: 'A'),
+      ),
+    );
+    await storage.writeText(
+      'notes/b.typ',
+      replaceNoteHeader(
+        '= B\n\nFrom B.\n',
+        const NoteMetadataDraft(id: 'b', title: 'B'),
+      ),
+    );
+    await storage.writeText(
+      'notes/c.typ',
+      replaceNoteHeader(
+        '= c\n',
+        const NoteMetadataDraft(id: 'c', title: 'C page'),
+      ),
+    );
+    for (final lose in ['notes/b.typ', 'notes/c.typ']) {
+      workspace.index = await scanVaultStorage(storage);
+      await workspace.mergeDuplicate(
+        await workspace.previewDuplicateMerge('notes/a.typ', lose),
+      );
+    }
+    final result = await storage.readText('notes/a.typ');
+    expect(result, contains('Keep.\n\n== Merged from B\n\nFrom B.'));
+    expect(result, isNot(contains('\n= B')));
+    expect(result, isNot(contains('Merged from C page')));
+    expect(await storage.exists('notes/c.typ'), isFalse);
+  });
+
   test('merges a cross-folder body with labelled links and tasks', () async {
     final root = await Directory.systemTemp.createTemp('merge-links-');
     final storage = LocalVaultStorage(root);
