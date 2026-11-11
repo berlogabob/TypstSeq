@@ -289,7 +289,12 @@ fn extract_obsidian_metadata(
                                 &mut tags,
                                 values
                                     .into_iter()
-                                    .map(|tag| tag.trim_start_matches('#').to_owned())
+                                    .map(|tag| {
+                                        tag.trim_start_matches('#')
+                                            .replace(['[', ']'], "")
+                                            .trim()
+                                            .to_owned()
+                                    })
                                     .filter(|tag| !tag.is_empty())
                                     .collect(),
                             ),
@@ -366,7 +371,11 @@ fn parse_frontmatter(lines: &[&str]) -> Result<Vec<(String, Vec<String>)>, Strin
                 index + 2
             ));
         }
-        let value = value.trim();
+        let value = value
+            .trim()
+            .strip_prefix(':')
+            .unwrap_or(value)
+            .trim();
         if value.starts_with('[') {
             let Some(value) = value.strip_suffix(']') else {
                 return Err(format!(
@@ -1726,6 +1735,20 @@ mod tests {
         assert!(note.typst.contains("☐ waiting"));
         assert_eq!(note.referenced_assets, ["pic.png", "folder/other.jpg"]);
         assert_eq!(note.wikilink_targets, ["Real"]);
+    }
+
+    #[test]
+    fn parses_logseq_style_frontmatter_lines() {
+        let note = convert_vault_note(
+            SourceDialect::Obsidian,
+            "folder/Logseqish.md",
+            "---\ntitle:: \"01 — Intro\"\ntags:: [lecture, intro]\ncreated:: 2026-05-26\n---\nbody\n",
+        )
+        .unwrap();
+
+        assert_eq!(note.meta.title, "01 — Intro");
+        assert_eq!(note.meta.tags, ["lecture", "intro"]);
+        assert_eq!(note.meta.properties, [("created".into(), "2026-05-26".into())]);
     }
 
     #[test]

@@ -775,3 +775,13 @@ Before Friday (user): Studio stays on, logged in, Tailscale running.
 - [x] Voronoi did not show cluster names: an open cluster drew only its tags. Open top-level clusters now draw their name over the region (semi-transparent) and expose a "<name> cluster" semantics header. Ships in 0.23.1.
 - [ ] "Old screenshots not translated": all 2,613 screenshot notes have a Description; asked the user what is missing.
 - [x] Released 0.23.0+170 (tag v0.23.0+170, release run 42916122629 all jobs green; feat/entities-boards fast-forwarded to wave30). Mac: /Applications/TyLog.app replaced with the release zip (sha256 a8391e0b... verified, typst_flutter.framework present), old 0.22.0 kept in the session scratchpad. A24: still 0.22.0, user unplugged it before the APK was ready; install in place when reconnected.
+
+## Wave 31 (2026-11-11, user OK): cluster names + Obsidian-import repair; Ornith 35b implements, Claude checks
+Causes: 0.23.0 lacks the region-name fix; clusters named by `group.first` and `journal` (on every daily) anchors/names the 316-tag tech cluster; Obsidian import of `key:: value` frontmatter wrote `: ` residue (71 titles, 90 tag strings, 2 `[[]]` tags); no manual cluster rename.
+- [x] W31.1 Importer: `key:: value` frontmatter (strip extra `:`), test (vault_import.rs). Gate: cargo test -p tylog_import_core
+- [ ] W31.2 tool/repair_obsidian_headers.py (dry-run, --apply, backup) + test; apply to real vault; compile samples
+- [ ] W31.3 Cluster naming: skip structural tags (journal, daily, date-like, kinds); name = member with most notes (graph.dart)
+- [ ] W31.4 Manual cluster rename: _system/clusters/names.json, kept by cluster_step, Rename in Voronoi panel
+- [ ] W31.5 Full gate: analyze + flutter test + tylog_core tests; graphify update
+- [ ] W31.6 Mac visual check of Voronoi on real vault
+- [ ] W31.7 Release 0.23.1; Mac install; A24 when connected
