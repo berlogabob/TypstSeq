@@ -247,8 +247,11 @@ def main(argv: list[str] | None = None) -> int:
         for full in changed:
             with open(full, "r", encoding="utf-8") as handle:
                 original = handle.read()
-            with open(full, "w", encoding="utf-8") as handle:
+            # Atomic: a crash mid-write must not truncate a vault note.
+            temporary = full + ".tmp"
+            with open(temporary, "w", encoding="utf-8") as handle:
                 handle.write(repair(original))
+            os.replace(temporary, full)
 
     return 0
 

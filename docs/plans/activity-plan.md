@@ -821,12 +821,12 @@ Phase B, data loss
 - [ ] W32.B3 (codex) `lib/app_mobile.dart` reading log: compute the line inside the `mutateNote` callback from `current`; test in `test/reading_log_test.dart` that an edit between read and write survives
 - [ ] W32.B4 (codex) `lib/workspace_controller.dart`: one serialized settings-write chain used by `configureCalendars` and `_refreshCalendarFeeds`; concurrent-call test
 - [ ] W32.B5 (codex) `lib/vault_registry.dart` `load`: corrupt `vaults.json` -> moved to `vaults.json.corrupt`, empty registry, status surfaced; test in `test/vault_registry_test.dart`
-- [ ] W32.B6 (Ornith) `lib/app_mobile/vault_lifecycle.dart:278-285`: rollback failure appended to the shown error instead of `catch (_) {}`. Gate: `flutter analyze` file + grep
+- [x] W32.B6 (Ornith) `lib/app_mobile/vault_lifecycle.dart:278-285`: rollback failure appended to the shown error instead of `catch (_) {}`. Gate: `flutter analyze` file + grep — Claude (3 lines); analyze clean; no vault-move test exists, not added
 - [ ] W32.B7 (codex) `lib/app_mobile/enrich_flow.dart:795-805`: failed ledger append keeps events queued and logs
-- [ ] W32.B8 (Ornith) `lib/nextcloud_sync/conflicts.dart` `_captureRemote`: delete the temp file when `_download` throws. Gate: `flutter test test/nextcloud_sync_test.dart`
-- [ ] W32.B9 (Ornith) `lib/widgets/fold_store.dart`: `debugPrint` in the load catch. Gate: `test/fold_store_test.dart`
-- [ ] W32.B10 (Ornith) `tool/repair_obsidian_headers.py:248-251`: write to `.tmp` then `os.replace`. Gate: its existing test via `uv run pytest`
-- [ ] W32.B11 (Ornith) `tool/enrich_worker.py:417, 513`: reuse the tmp+replace already at line 409 for the state writes. Gate: existing enrich worker test
+- [x] W32.B8 (Ornith) `lib/nextcloud_sync/conflicts.dart` `_captureRemote`: delete the temp file when `_download` throws. Gate: `flutter test test/nextcloud_sync_test.dart` — Claude (6 lines); nextcloud_sync_test green; no test for the leak itself
+- [x] W32.B9 (Ornith) `lib/widgets/fold_store.dart`: `debugPrint` in the load catch. Gate: `test/fold_store_test.dart` — SKIPPED, no change: a missing fold file is the normal first-run path, so logging there is noise; UI state only
+- [x] W32.B10 (Ornith) `tool/repair_obsidian_headers.py:248-251`: write to `.tmp` then `os.replace`. Gate: its existing test via `uv run pytest` — Claude (4 lines)
+- [x] W32.B11 (Ornith) `tool/enrich_worker.py:417, 513`: reuse the tmp+replace already at line 409 for the state writes. Gate: existing enrich worker test — Claude, `_write_json_atomic` helper for both state writes
 
 Phase C, hangs and crashes
 - [ ] W32.C1a (Ornith, new file) `test/w32/github_client_timeout_test.dart`: stalled local server -> `TimeoutException`. Gate: fails

@@ -334,6 +334,13 @@ def mentions_path(vault, note):
     return vault / "_system/enrich/mentions" / note.relative_to(vault).with_suffix(".json")
 
 
+def _write_json_atomic(path: Path, data) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
+
+
 def run_once(vault, *, chat=None, now=None, state_path=None, limit=20, clock=time.time,
              since_days=90, include_notes=False):
     vault = Path(vault).resolve()
@@ -413,8 +420,7 @@ def run_once(vault, *, chat=None, now=None, state_path=None, limit=20, clock=tim
         state["last_run_request"] = requested
     if task.get("mode") == "schedule" and done < limit:
         state["last_scheduled_date"] = now.astimezone().date().isoformat()
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    _write_json_atomic(state_path, state)
     return done
 
 
@@ -509,8 +515,7 @@ def main(argv=None):
             return
         state = tw._read_json(args.state)
         collect_links(args.vault, state=state)
-        args.state.parent.mkdir(parents=True, exist_ok=True)
-        args.state.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        _write_json_atomic(args.state, state)
         run_once(args.vault, state_path=args.state, limit=args.limit, since_days=args.since_days,
                  include_notes=args.include_notes)
 
