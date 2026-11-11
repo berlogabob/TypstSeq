@@ -912,7 +912,7 @@ Phase D, CI and tooling (luna, one commit each)
 Phase E, cleanup
 - [x] W33.E1 (luna) remove the dead `catch_unwind` under `panic = "abort"`; QuickLook target stays (deleting it is a product decision, left listed) — driver, 0 min, removed catch_unwind and the unreachable status 2 in quicklook_ffi.rs; cargo test --lib 20 pass
 - [ ] W33.E2 (luna) merge the small duplicated helpers named in the audit, one pair per commit — BLOCKED: needs definition (the Wave 32 deferred list names no pair; the only audit hit, docs/audits/2026-10-08-rules-compliance.md:207 `validateVaultPath` vs a weaker duplicate, is not located)
-- [ ] W33.E3 (luna) `PLAN.md` / `CONTEXT.md` open-work lines refreshed from the activity plan
+- [x] W33.E3 (luna) `PLAN.md` / `CONTEXT.md` open-work lines refreshed from the activity plan — driver, 0 min, PLAN.md/CONTEXT.md now point to the activity-plan tracker; stale macOS-old-build line fixed; per-item phone verification statuses NOT re-checked (no device)
 - [ ] W33.E4 (luna) Windows launcher item from the deferred list — BLOCKED: needs definition (the deferred list says only `Windows launcher`, no concrete change)
 
 Phase F, mega-file split (terra, last, one part per step)

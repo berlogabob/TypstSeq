@@ -1,6 +1,6 @@
 # TyLog v5 implementation status
 
-Current version: see `pubspec.yaml`. Last reviewed: 2026-10-09.
+Current version: see `pubspec.yaml`. Last reviewed: 2026-11-11. Live work tracker: `docs/plans/activity-plan.md` (current wave at the bottom).
 
 ## Implemented
 
@@ -58,4 +58,4 @@ Earlier v5 verification: automated analysis, 66 tests, native macOS integration,
 - New unpublished local note heads coalesce within fixed 60-second windows; materialized/uploaded revisions and conflict bases remain immutable. Existing large histories are not shrunk, so their envelopes remain large.
 - EmbeddingGemma phone trial at 256 dimensions before switching models.
 - Deferred: image captions/figure, text wrap and anchors; task session-history view; converting imported checklists to tasks; quick-add date parsing.
-- `wip/incremental-index` is parked; the macOS app is still on an old build.
+- `wip/incremental-index` is parked. The macOS app was updated to 0.23.1+172 (2026-11-11).

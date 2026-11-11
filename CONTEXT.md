@@ -12,6 +12,8 @@ headerless daily repair keeps existing text.
 
 ## Open work
 
+The live tracker is `docs/plans/activity-plan.md` (Wave 33 at the bottom: article link relinking, silent-failure fixes, CI pinning, `app_mobile.dart` split). The items below predate it and are kept until verified on a phone.
+
 - Phone verification of 0.11.6–0.12.0: sync loss fixes, mention lookup, image blocks, crop, task typing with a phone keyboard, and headerless-daily repair.
 - Android autocomplete jumping/revert remains undiagnosed. Suspects: a late IME full-text update or a post-sync reload.
 - A headerless daily went three hours without syncing on the A24; cause unknown.
