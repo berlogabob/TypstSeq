@@ -94,7 +94,9 @@ Future<VaultStorageInspection> inspectVaultStorage(VaultStorage storage) async {
         entryCount: entries.length,
       );
     }
-  } on FormatException {}
+  } on FormatException {
+    // Malformed settings: reported as incompatible below.
+  }
   return VaultStorageInspection(
     VaultStorageKind.incompatibleVault,
     entryCount: entries.length,
