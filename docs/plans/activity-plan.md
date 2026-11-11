@@ -804,7 +804,7 @@ Rules for Ornith steps: one function or one test per step, time box 15 min (PI_T
 
 ## Wave 32 (2026-11-11, user OK): code audit fixes in Ornith-sized steps
 Audit 2026-11-11 (code only; 2 Sonnet + 1 Haiku agents, read-only; 80 findings). Order: W31.4a-W31.6c first; W31.7 (release 0.23.1) runs at W32.C10, because 4 high data-loss findings are open. Status: `tool/wave_status.sh 32`. Metrics: `tool/w32_metrics.sh` (baseline at A3, again at Z2).
-Rules: Ornith edits only files <= 600 lines, one function per step; larger files -> codex; one-line chores -> Claude. Test (`a`, NEW file) and fix (`b`) are separate runs; Claude confirms the `a` test fails before `b`. Time box 10 min (PI_TIMEOUT=600). Watchdog: pi log idle > 180 s, or diff touches another file, or test count drops -> kill, checkout that file, rewrite the prompt once; second failure -> codex/Claude, noted on the line. Edit steps: PI_TOOLS=read,edit,ls,grep; new-file steps: read,write,ls,grep. Prompt: "In <file>, function <name> only: <change>. Do not touch any other file or function. Done when <gate> passes." After each step: read diff, run gate, tick with minutes + hash, commit `W32.<id> <what> (Ornith 35b)`. No push or device install until the wave ends. Heavy gates run alone.
+Rules: Ornith edits only files <= 600 lines, one function per step; larger files -> codex; one-line chores -> Claude. Test (`a`, NEW file under test/w32/; `audit/` is gitignored) and fix (`b`) are separate runs; Claude confirms the `a` test fails before `b`. Time box 10 min (PI_TIMEOUT=600). Watchdog: pi log idle > 180 s, or diff touches another file, or test count drops -> kill, checkout that file, rewrite the prompt once; second failure -> codex/Claude, noted on the line. Edit steps: PI_TOOLS=read,edit,ls,grep; new-file steps: read,write,ls,grep. Prompt: "In <file>, function <name> only: <change>. Do not touch any other file or function. Done when <gate> passes." After each step: read diff, run gate, tick with minutes + hash, commit `W32.<id> <what> (Ornith 35b)`. No push or device install until the wave ends. Heavy gates run alone.
 Targets: catch (_) {} 40 -> <= 33; HttpClient() without connectionTimeout 3 files -> 0; typst process timeout 0 -> 1; FFI-path unwrap sites 5 -> 0; dead symbols 2 -> 0; CI suites 3 -> 5; `git add -A` in Makefile 1 -> 0; tracked junk 4 -> 0; analyze 0 -> 0; test declarations N -> N+12, 0 failing; Ornith first-try rate and median minutes recorded at Z2.
 Baseline (A3, 2026-11-11): swallowed_catch 40, http_no_timeout_files 4 (4th = lib/github/github_auth.dart, added to C1b), typst_proc_timeout 0, ffi_unwrap_sites 5, dead_symbols 2, ci_suites 3, make_git_add_all 1, tracked_junk 10, test_declarations 2255. Full `flutter test` at W31.5c: 2159 pass, 10 skipped; tylog_core 571 pass.
 
@@ -814,10 +814,10 @@ Phase A, setup (Claude)
 - [x] W32.A3 Baseline: run metrics + `flutter test` count, write the numbers into the Wave 32 header
 
 Phase B, data loss
-- [ ] W32.B1a (Ornith, new file) `test/audit/ai_settings_write_test.dart`: storage whose `readText` throws -> `writeAiSettings` throws, file bytes unchanged. Gate: test fails
-- [ ] W32.B1b (Ornith) `lib/ai/ai_settings.dart` `writeAiSettings`: `catch (_) {}` -> `on FormatException {}` so IO errors propagate. Gate: B1a + `test/ai_settings_test.dart` pass
-- [ ] W32.B2a (Ornith, new file) `test/audit/audio_policy_write_test.dart`: same case for `writeAudioPolicy`. Gate: test fails
-- [ ] W32.B2b (Ornith) `lib/audio/processing_policy.dart` `writeAudioPolicy`: same change. Gate: B2a + `test/processing_policy_test.dart` pass
+- [x] W32.B1a (Ornith, new file) `test/w32/ai_settings_write_test.dart`: storage whose `readText` throws -> `writeAiSettings` throws, file bytes unchanged. Gate: test fails — Ornith ~2 min, first try; red before fix
+- [x] W32.B1b (Ornith) `lib/ai/ai_settings.dart` `writeAiSettings`: `catch (_) {}` -> `on FormatException {}` so IO errors propagate. Gate: B1a + `test/ai_settings_test.dart` pass — Claude (one-line change, cheaper than a run); green
+- [x] W32.B2a (Ornith, new file) `test/w32/audio_policy_write_test.dart`: same case for `writeAudioPolicy`. Gate: test fails — Claude, derived from B1a with sed; red before fix
+- [x] W32.B2b (Ornith) `lib/audio/processing_policy.dart` `writeAudioPolicy`: same change. Gate: B2a + `test/processing_policy_test.dart` pass — Claude, same change; 30 tests green across audit + ai_settings + processing_policy
 - [ ] W32.B3 (codex) `lib/app_mobile.dart` reading log: compute the line inside the `mutateNote` callback from `current`; test in `test/reading_log_test.dart` that an edit between read and write survives
 - [ ] W32.B4 (codex) `lib/workspace_controller.dart`: one serialized settings-write chain used by `configureCalendars` and `_refreshCalendarFeeds`; concurrent-call test
 - [ ] W32.B5 (codex) `lib/vault_registry.dart` `load`: corrupt `vaults.json` -> moved to `vaults.json.corrupt`, empty registry, status surfaced; test in `test/vault_registry_test.dart`
@@ -829,17 +829,17 @@ Phase B, data loss
 - [ ] W32.B11 (Ornith) `tool/enrich_worker.py:417, 513`: reuse the tmp+replace already at line 409 for the state writes. Gate: existing enrich worker test
 
 Phase C, hangs and crashes
-- [ ] W32.C1a (Ornith, new file) `test/audit/github_client_timeout_test.dart`: stalled local server -> `TimeoutException`. Gate: fails
+- [ ] W32.C1a (Ornith, new file) `test/w32/github_client_timeout_test.dart`: stalled local server -> `TimeoutException`. Gate: fails
 - [ ] W32.C1b (Ornith) `lib/github/github_client.dart` + `lib/github/github_auth.dart:32` (second run): `connectionTimeout` + `.timeout` on `close()` and body. Gate: C1a + `test/github/` pass
-- [ ] W32.C2a (Ornith, new file) `test/audit/login_flow_timeout_test.dart`: hanging poll endpoint -> `TimeoutException`. Gate: fails
+- [ ] W32.C2a (Ornith, new file) `test/w32/login_flow_timeout_test.dart`: hanging poll endpoint -> `TimeoutException`. Gate: fails
 - [ ] W32.C2b (Ornith) `lib/nextcloud_sync/login_flow.dart`: `connectionTimeout` + 20 s timeout per poll request. Gate: C2a + `test/login_flow_test.dart`
-- [ ] W32.C3a (Ornith, new file) `test/audit/article_image_fetch_test.dart`: never-ending and oversize responses fail. Gate: fails
+- [ ] W32.C3a (Ornith, new file) `test/w32/article_image_fetch_test.dart`: never-ending and oversize responses fail. Gate: fails
 - [ ] W32.C3b (Ornith) `lib/markdown_article_import.dart` `_fetchBytes`: timeouts + 20 MB cap. Gate: C3a + `test/markdown_article_import_test.dart`
 - [ ] W32.C4 (Ornith) `lib/workspace_note_merge.dart:308-315`: 30 s timeout on the `typst` process, kill on timeout. Gate: `test/note_merge_test.dart` + grep
 - [ ] W32.C5 (Ornith) `lib/widgets/settings/calendars_page.dart` `_add`, `_edit`: `if (!mounted) return;` after each await. Gate: analyze file
 - [ ] W32.C6 (Ornith) `lib/widgets/settings/extensions_page.dart` `_addGitHub`: dispose the 3 controllers. Gate: `test/extensions_page_test.dart`
 - [ ] W32.C7 (Ornith) `lib/github/mount_fetcher.dart` `_extract`: async `create`/`writeAsBytes`. Gate: grep `Sync(` = 0 + `test/github/` pass
-- [ ] W32.C8a (Ornith, new file) `test/audit/api_keys_chmod_test.dart`: failing chmod runner -> nothing written. Gate: fails
+- [ ] W32.C8a (Ornith, new file) `test/w32/api_keys_chmod_test.dart`: failing chmod runner -> nothing written. Gate: fails
 - [ ] W32.C8b (Ornith) `lib/ai/api_keys.dart`: check exit code, skip chmod on Windows. Gate: C8a + `test/api_keys_mirror_test.dart`
 - [ ] W32.C9a (Ornith, new file) `packages/tylog_core/test/vault_settings_io_test.dart`: throwing storage -> exception, not `incompatibleVault`. Gate: fails
 - [ ] W32.C9b (Ornith) `packages/tylog_core/lib/src/vault.dart:88-97`: catch `FormatException` only. Gate: `cd packages/tylog_core && dart test`
@@ -866,8 +866,8 @@ Phase F, dead code and missing tests (Ornith, one file each)
 - [ ] W32.F2 delete `sameIndexedContent` (`packages/tylog_core/lib/src/index_donor.dart:109`). Gate: grep 0 + `dart test`
 - [ ] W32.F3 new `packages/tylog_core/test/header_repair_tags_test.dart` for `updateNoteTags` (output must compile with Typst, not only re-parse)
 - [ ] W32.F4 new `packages/tylog_core/test/header_repair_import_test.dart` for `withTylogImport` (same rule)
-- [ ] W32.F5 new `test/audit/updater_script_test.dart`: update-script generators with paths containing spaces
-- [ ] W32.F6 new `test/audit/window_controller_test.dart` for `lib/rich_editor/window_controller.dart`
+- [ ] W32.F5 new `test/w32/updater_script_test.dart`: update-script generators with paths containing spaces
+- [ ] W32.F6 new `test/w32/window_controller_test.dart` for `lib/rich_editor/window_controller.dart`
 - [ ] W32.F7 `docs/tylog-ecosystem.md:98-102`: CLI command list regenerated from `_usage` in `packages/tylog_core/bin/tylog.dart`
 
 Phase G, editor performance (codex, measured)

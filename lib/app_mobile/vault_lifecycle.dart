@@ -280,7 +280,11 @@ extension _VaultLifecycle on _HomeScreenState {
           workspace.entry?.storageKind != previous.storageKind) {
         try {
           await _openVault(previous);
-        } catch (_) {}
+        } catch (rollbackError) {
+          failure =
+              '$error; reopening the previous vault also failed: '
+              '$rollbackError';
+        }
       }
     } finally {
       workspace.resumeAfterVaultCopy();

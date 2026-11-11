@@ -115,7 +115,10 @@ Future<void> writeAudioPolicy(VaultStorage storage, AudioPolicy policy) async {
       final data = jsonDecode(await storage.readText(path));
       if (data is Map) all = data.cast<String, Object?>();
     }
-  } catch (_) {}
+  } on FormatException {
+    // Corrupt JSON is replaced; an IO error must propagate, or a transient
+    // read failure would rewrite the file from {} and drop the other keys.
+  }
   all['schema'] = 1;
   all['audio'] = policy.toJson();
   await storage.createDirectory('_system/settings');

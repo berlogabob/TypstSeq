@@ -332,7 +332,10 @@ Future<void> writeAiSettings(VaultStorage storage, AiSettings settings) async {
       final data = jsonDecode(await storage.readText(path));
       if (data is Map) all = data.cast<String, Object?>();
     }
-  } catch (_) {}
+  } on FormatException {
+    // Corrupt JSON is replaced; an IO error must propagate, or a transient
+    // read failure would rewrite the file from {} and drop the other keys.
+  }
   final tasks = all['tasks'];
   Map<String, Object?> mergeServerTask(String name, AiServerTask task) {
     final existing = tasks is Map ? tasks[name] : null;

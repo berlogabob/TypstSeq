@@ -60,7 +60,14 @@ extension _SyncConflicts on NextcloudSync {
       await file.writeAsBytes(bytes, flush: true);
       return (file: file, etag: remoteFile?.etag);
     }
-    final result = await _download(path, file);
+    final _DownloadResult result;
+    try {
+      result = await _download(path, file);
+    } catch (_) {
+      // Do not leave a remote note copy behind in the OS temp directory.
+      if (await file.exists()) await file.delete();
+      rethrow;
+    }
     if (remoteFile?.sha256 != null &&
         await _sha256(file) != remoteFile!.sha256) {
       await file.delete();
