@@ -788,8 +788,8 @@ Rules for Ornith steps: one function or one test per step, time box 15 min (PI_T
 - [x] W31.4d VoronoiView: clusterNames param + _name(label) helper used at the 5 label spots. Gate: voronoi_view_test — Ornith ~4 min, all 5 spots right, 1 stray `}` broke the compile; Claude removed it; 6/6 tests
 - [x] W31.4e test: clusterNames {'tech-software': 'Tech & AI'} shows "Tech & AI" — Ornith ~2 min, first try, new file test/voronoi_cluster_names_test.dart
 - [x] W31.4f VoronoiView panel: Rename button (top-level cluster only) + dialog -> onRenameCluster — Ornith ~3 min, first try, 7/7 tests
-- [ ] W31.4g test: dialog Save calls onRenameCluster with label + text
-- [ ] W31.4h app_mobile: pass workspace.clusterNames + workspace.renameCluster. Gate: flutter analyze
+- [x] W31.4g test: dialog Save calls onRenameCluster with label + text — Ornith ~3 min; test needed an `async` on the callback and left 2 stray probe files (removed). The test then caught a real bug in 4f: controller disposed right after pop threw during the dialog exit animation; Claude switched the dialog to TextFormField(initialValue). 8/8 tests
+- [x] W31.4h app_mobile: pass workspace.clusterNames + workspace.renameCluster. Gate: flutter analyze — Claude, 2 lines
 - [ ] W31.5a tylog_core: dart test (Claude)
 - [ ] W31.5b flutter analyze (Claude)
 - [ ] W31.5c flutter test, full (Claude)

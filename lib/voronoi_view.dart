@@ -369,15 +369,18 @@ class _VoronoiViewState extends State<VoronoiView>
 
   /// Prompts for a new display name for a cluster and persists it.
   Future<void> _renameCluster(String label) async {
-    final controller = TextEditingController(text: _name(label));
+    // No controller: disposing one right after pop throws during the
+    // dialog's exit animation.
+    var text = _name(label);
     final result = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Rename cluster'),
-        content: TextField(
+        content: TextFormField(
           key: const Key('voronoi-rename-field'),
-          controller: controller,
+          initialValue: text,
           autofocus: true,
+          onChanged: (value) => text = value,
         ),
         actions: [
           TextButton(
@@ -386,13 +389,12 @@ class _VoronoiViewState extends State<VoronoiView>
           ),
           FilledButton(
             key: const Key('voronoi-rename-save'),
-            onPressed: () => Navigator.of(context).pop(controller.text),
+            onPressed: () => Navigator.of(context).pop(text),
             child: const Text('Save'),
           ),
         ],
       ),
     );
-    controller.dispose();
     if (result != null) {
       await widget.onRenameCluster?.call(label, result);
     }

@@ -5857,6 +5857,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         index: index!,
         communities: communities,
         indexRevision: workspace.indexRevision,
+        clusterNames: workspace.clusterNames,
+        onRenameCluster: workspace.renameCluster,
         initialSelectedPath: _graphSelectedPath,
         onSelectionChanged: (path) => setState(() => _graphSelectedPath = path),
         onOpenPath: (path) => unawaited(_openPath(path)),
