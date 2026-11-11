@@ -781,7 +781,103 @@ Causes: 0.23.0 lacks the region-name fix; clusters named by `group.first` and `j
 - [x] W31.1 Importer: `key:: value` frontmatter (strip extra `:`), test (vault_import.rs). Gate: cargo test -p tylog_import_core
 - [x] W31.2 tool/repair_obsidian_headers.py (dry-run, --apply, backup) + test; apply to real vault; compile samples — 94 notes repaired, all compile; backup ~/Documents/tylog-backups/vault-typ-backup-obsidian-2026-11-11.tgz
 - [x] W31.3 Cluster naming: skip structural tags (journal, daily, date-like, kinds); name = member with most notes (graph.dart)
-- [ ] W31.4 Manual cluster rename: _system/clusters/names.json, kept by cluster_step, Rename in Voronoi panel
-- [ ] W31.5 Full gate: analyze + flutter test + tylog_core tests; graphify update
-- [ ] W31.6 Mac visual check of Voronoi on real vault
-- [ ] W31.7 Release 0.23.1; Mac install; A24 when connected
+Rules for Ornith steps: one function or one test per step, time box 15 min (PI_TIMEOUT=900), Claude checks the diff + gate after each step. Watchdog: pi log silent > 5 min or diff touches other files -> kill, rollback that file, rewrite the prompt once; second failure -> Claude fixes.
+- [x] W31.4a workspace_controller: clusterNames field + getter + reset (Ornith run A)
+- [x] W31.4b workspace_controller: reloadClusterSnapshot also reads _system/clusters/names.json (run A)
+- [x] W31.4c workspace_controller: renameCluster(label, name) writes names.json (run A). Gate: flutter analyze file — run A killed at reboot left 1 analyze error (Vault? arg) and wrote names.json without the schema wrapper the reader needs (rename lost on restart); Claude fixed both, round-trip test test/cluster_names_test.dart
+- [ ] W31.4d VoronoiView: clusterNames param + _name(label) helper used at the 5 label spots. Gate: voronoi_view_test
+- [ ] W31.4e test: clusterNames {'tech-software': 'Tech & AI'} shows "Tech & AI"
+- [ ] W31.4f VoronoiView panel: Rename button (top-level cluster only) + dialog -> onRenameCluster
+- [ ] W31.4g test: dialog Save calls onRenameCluster with label + text
+- [ ] W31.4h app_mobile: pass workspace.clusterNames + workspace.renameCluster. Gate: flutter analyze
+- [ ] W31.5a tylog_core: dart test (Claude)
+- [ ] W31.5b flutter analyze (Claude)
+- [ ] W31.5c flutter test, full (Claude)
+- [ ] W31.5d graphify update . ; commit
+- [ ] W31.6a release build on Mac against real vault (Claude, /verify)
+- [ ] W31.6b screenshot Voronoi: names on regions, no journal cluster, no ": " labels
+- [ ] W31.6c rename one cluster in the app; names.json written; name survives restart
+- [ ] W31.7a version bump 0.23.1, CHANGELOG; commit
+- [ ] W31.7b tag + push; CI green
+- [ ] W31.7c Mac install from release zip (sha256)
+- [ ] W31.7d A24 install in place when connected (firstInstallTime unchanged)
+
+## Wave 32 (2026-11-11, user OK): code audit fixes in Ornith-sized steps
+Audit 2026-11-11 (code only; 2 Sonnet + 1 Haiku agents, read-only; 80 findings). Order: W31.4a-W31.6c first; W31.7 (release 0.23.1) runs at W32.C10, because 4 high data-loss findings are open. Status: `tool/wave_status.sh 32`. Metrics: `tool/w32_metrics.sh` (baseline at A3, again at Z2).
+Rules: Ornith edits only files <= 600 lines, one function per step; larger files -> codex; one-line chores -> Claude. Test (`a`, NEW file) and fix (`b`) are separate runs; Claude confirms the `a` test fails before `b`. Time box 10 min (PI_TIMEOUT=600). Watchdog: pi log idle > 180 s, or diff touches another file, or test count drops -> kill, checkout that file, rewrite the prompt once; second failure -> codex/Claude, noted on the line. Edit steps: PI_TOOLS=read,edit,ls,grep; new-file steps: read,write,ls,grep. Prompt: "In <file>, function <name> only: <change>. Do not touch any other file or function. Done when <gate> passes." After each step: read diff, run gate, tick with minutes + hash, commit `W32.<id> <what> (Ornith 35b)`. No push or device install until the wave ends. Heavy gates run alone.
+Targets: catch (_) {} 40 -> <= 33; HttpClient() without connectionTimeout 3 files -> 0; typst process timeout 0 -> 1; FFI-path unwrap sites 5 -> 0; dead symbols 2 -> 0; CI suites 3 -> 5; `git add -A` in Makefile 1 -> 0; tracked junk 4 -> 0; analyze 0 -> 0; test declarations N -> N+12, 0 failing; Ornith first-try rate and median minutes recorded at Z2.
+Baseline (A3, 2026-11-11): swallowed_catch 40, http_no_timeout_files 4 (4th = lib/github/github_auth.dart, added to C1b), typst_proc_timeout 0, ffi_unwrap_sites 5, dead_symbols 2, ci_suites 3, make_git_add_all 1, tracked_junk 10, test_declarations 2255. Full `flutter test` count comes from W31.5c.
+
+Phase A, setup (Claude)
+- [x] W32.A1 `tool/wave_status.sh <wave>`: generalise `memory/w31status.sh.txt` (wave number as argument, stall threshold 180 s); 10-minute status via CronCreate
+- [x] W32.A2 `tool/w32_metrics.sh`: the greps behind the table above
+- [x] W32.A3 Baseline: run metrics + `flutter test` count, write the numbers into the Wave 32 header
+
+Phase B, data loss
+- [ ] W32.B1a (Ornith, new file) `test/audit/ai_settings_write_test.dart`: storage whose `readText` throws -> `writeAiSettings` throws, file bytes unchanged. Gate: test fails
+- [ ] W32.B1b (Ornith) `lib/ai/ai_settings.dart` `writeAiSettings`: `catch (_) {}` -> `on FormatException {}` so IO errors propagate. Gate: B1a + `test/ai_settings_test.dart` pass
+- [ ] W32.B2a (Ornith, new file) `test/audit/audio_policy_write_test.dart`: same case for `writeAudioPolicy`. Gate: test fails
+- [ ] W32.B2b (Ornith) `lib/audio/processing_policy.dart` `writeAudioPolicy`: same change. Gate: B2a + `test/processing_policy_test.dart` pass
+- [ ] W32.B3 (codex) `lib/app_mobile.dart` reading log: compute the line inside the `mutateNote` callback from `current`; test in `test/reading_log_test.dart` that an edit between read and write survives
+- [ ] W32.B4 (codex) `lib/workspace_controller.dart`: one serialized settings-write chain used by `configureCalendars` and `_refreshCalendarFeeds`; concurrent-call test
+- [ ] W32.B5 (codex) `lib/vault_registry.dart` `load`: corrupt `vaults.json` -> moved to `vaults.json.corrupt`, empty registry, status surfaced; test in `test/vault_registry_test.dart`
+- [ ] W32.B6 (Ornith) `lib/app_mobile/vault_lifecycle.dart:278-285`: rollback failure appended to the shown error instead of `catch (_) {}`. Gate: `flutter analyze` file + grep
+- [ ] W32.B7 (codex) `lib/app_mobile/enrich_flow.dart:795-805`: failed ledger append keeps events queued and logs
+- [ ] W32.B8 (Ornith) `lib/nextcloud_sync/conflicts.dart` `_captureRemote`: delete the temp file when `_download` throws. Gate: `flutter test test/nextcloud_sync_test.dart`
+- [ ] W32.B9 (Ornith) `lib/widgets/fold_store.dart`: `debugPrint` in the load catch. Gate: `test/fold_store_test.dart`
+- [ ] W32.B10 (Ornith) `tool/repair_obsidian_headers.py:248-251`: write to `.tmp` then `os.replace`. Gate: its existing test via `uv run pytest`
+- [ ] W32.B11 (Ornith) `tool/enrich_worker.py:417, 513`: reuse the tmp+replace already at line 409 for the state writes. Gate: existing enrich worker test
+
+Phase C, hangs and crashes
+- [ ] W32.C1a (Ornith, new file) `test/audit/github_client_timeout_test.dart`: stalled local server -> `TimeoutException`. Gate: fails
+- [ ] W32.C1b (Ornith) `lib/github/github_client.dart` + `lib/github/github_auth.dart:32` (second run): `connectionTimeout` + `.timeout` on `close()` and body. Gate: C1a + `test/github/` pass
+- [ ] W32.C2a (Ornith, new file) `test/audit/login_flow_timeout_test.dart`: hanging poll endpoint -> `TimeoutException`. Gate: fails
+- [ ] W32.C2b (Ornith) `lib/nextcloud_sync/login_flow.dart`: `connectionTimeout` + 20 s timeout per poll request. Gate: C2a + `test/login_flow_test.dart`
+- [ ] W32.C3a (Ornith, new file) `test/audit/article_image_fetch_test.dart`: never-ending and oversize responses fail. Gate: fails
+- [ ] W32.C3b (Ornith) `lib/markdown_article_import.dart` `_fetchBytes`: timeouts + 20 MB cap. Gate: C3a + `test/markdown_article_import_test.dart`
+- [ ] W32.C4 (Ornith) `lib/workspace_note_merge.dart:308-315`: 30 s timeout on the `typst` process, kill on timeout. Gate: `test/note_merge_test.dart` + grep
+- [ ] W32.C5 (Ornith) `lib/widgets/settings/calendars_page.dart` `_add`, `_edit`: `if (!mounted) return;` after each await. Gate: analyze file
+- [ ] W32.C6 (Ornith) `lib/widgets/settings/extensions_page.dart` `_addGitHub`: dispose the 3 controllers. Gate: `test/extensions_page_test.dart`
+- [ ] W32.C7 (Ornith) `lib/github/mount_fetcher.dart` `_extract`: async `create`/`writeAsBytes`. Gate: grep `Sync(` = 0 + `test/github/` pass
+- [ ] W32.C8a (Ornith, new file) `test/audit/api_keys_chmod_test.dart`: failing chmod runner -> nothing written. Gate: fails
+- [ ] W32.C8b (Ornith) `lib/ai/api_keys.dart`: check exit code, skip chmod on Windows. Gate: C8a + `test/api_keys_mirror_test.dart`
+- [ ] W32.C9a (Ornith, new file) `packages/tylog_core/test/vault_settings_io_test.dart`: throwing storage -> exception, not `incompatibleVault`. Gate: fails
+- [ ] W32.C9b (Ornith) `packages/tylog_core/lib/src/vault.dart:88-97`: catch `FormatException` only. Gate: `cd packages/tylog_core && dart test`
+- [ ] W32.C10 (Claude) full gates, then W31.7 release 0.23.1
+
+Phase D, Rust and native
+- [ ] W32.D1 (codex) `typst.rs:431, 437, 528` and `p2p_folder.rs:300, 503`: five `unwrap()` -> error or fallback. Gate: `cargo test --manifest-path packages/typst_flutter/rust/Cargo.toml --lib`
+- [ ] W32.D2 (Ornith) `SyncForegroundService.kt`: `onTimeout(startId, fgsType)` -> `stopSelf()`
+- [ ] W32.D3 (Ornith) `VaultSyncWorker.kt:73`: rethrow `CancellationException`, `Log.w` the Throwable
+- [ ] W32.D4 (codex) `SafBridge.kt:243-248` `acquireSync`: answer `result` when disposed
+- [ ] W32.D5 (Ornith) `ios/Runner/AppDelegate.swift`: `as?` guard, log the submit error
+- [ ] W32.D6 (Claude) Kotlin compile: `./gradlew :app:assembleProfile -PtylogProfileSuffix=.profiletest` (no install)
+
+Phase E, CI and chores (Claude, one commit each)
+- [ ] W32.E1 Makefile: `git add -A` -> `git add pubspec.yaml CHANGELOG.md`; `test-core` also runs the `typst_flutter` cargo tests; `ci.yml` same
+- [ ] W32.E2 `ci.yml`: Python tool tests via `uv run --with pytest pytest tool -q` (after they pass locally)
+- [ ] W32.E3 `release.yml`: fail fast on empty signing secrets
+- [ ] W32.E4 `flutter drive` in `Makefile:109` and `scripts/p21_android.sh:15`: refuse unless the package is `.profiletest` (AGENTS.md forbids it otherwise)
+- [ ] W32.E5 `git rm --cached` `android/build/reports/...` and `tool/audio_plan/logs/`; ignore both; delete `.read_test`; drop the stale TODO in `build.gradle.kts:28`, the unused import in `lib/main.dart:14`, the wrong path in the QuickLook bridging header
+- [ ] W32.E6 README "Linux compile-tested in CI" -> "on release tags"
+
+Phase F, dead code and missing tests (Ornith, one file each)
+- [ ] W32.F1 delete `parseLabCalendar` (`lib/calendar_feeds.dart:200`). Gate: grep 0 + analyze
+- [ ] W32.F2 delete `sameIndexedContent` (`packages/tylog_core/lib/src/index_donor.dart:109`). Gate: grep 0 + `dart test`
+- [ ] W32.F3 new `packages/tylog_core/test/header_repair_tags_test.dart` for `updateNoteTags` (output must compile with Typst, not only re-parse)
+- [ ] W32.F4 new `packages/tylog_core/test/header_repair_import_test.dart` for `withTylogImport` (same rule)
+- [ ] W32.F5 new `test/audit/updater_script_test.dart`: update-script generators with paths containing spaces
+- [ ] W32.F6 new `test/audit/window_controller_test.dart` for `lib/rich_editor/window_controller.dart`
+- [ ] W32.F7 `docs/tylog-ecosystem.md:98-102`: CLI command list regenerated from `_usage` in `packages/tylog_core/bin/tylog.dart`
+
+Phase G, editor performance (codex, measured)
+- [ ] W32.G1 `lib/app_mobile.dart:1259-1275` `_refreshNoteAssets`: skip when the referenced-path set is unchanged; test counts `readBytes` over 10 keystrokes: 0 after the first
+- [ ] W32.G2 `lib/app_mobile.dart:987-1023` `_workspaceChanged`: cheap comparison first; timing bound on a 200k-char note
+
+Phase Z, close (Claude)
+- [ ] W32.Z1 `make test-core`, `flutter analyze`, full `flutter test`
+- [ ] W32.Z2 `tool/w32_metrics.sh` again; before/after table and Ornith first-try rate + median minutes into the tracker
+- [ ] W32.Z3 `graphify update .`; commit; refresh stale `PLAN.md` / `CONTEXT.md` open-work lines
+
+Deferred (not in this wave):
+mega-file splits (`app_mobile.dart` 7141 lines, `_HomeScreenState.build` about 1500; own wave, codex, split recipe); orphaned `macos/TypstQuickLook` plus the dead `catch_unwind` under `panic = "abort"` (keep or delete is your call); updater digest from the same release as the zip; `SafBridge.read` whole-file read (needs a size measurement first); `VaultSyncWorker` on `Dispatchers.Main`; untracking `graphify-out/GRAPH_REPORT.md`; Gradle version catalog; CI action SHA pinning and concurrency; `set -euo pipefail` in bench scripts; absolute paths in launchd plists; Windows launcher; small duplicated helpers; test files for the import, audio and module flows.
