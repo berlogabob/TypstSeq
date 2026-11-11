@@ -5,7 +5,7 @@
 # retried ONCE with codex. A task only lands (one commit) when its verify
 # command passes and nothing outside its allow list changed. Every attempt
 # appends one row to docs/plans/audio-plan-results.jsonl. Resumable.
-set -u
+set -uo pipefail  # no -e: loops record failures and keep going
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 PLAN="$REPO/tool/audio_plan"
 WT="${AUDIO_WT:-$REPO/../TypstSeq-audio}"

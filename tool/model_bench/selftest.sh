@@ -3,7 +3,7 @@
 #   null control      - untouched baseline must FAIL the hidden check
 #   reference control - the known-good answer from git history must PASS
 # plus one sloppy control: a same-value edit with one changed number must FAIL.
-set -u
+set -uo pipefail  # no -e: loops record failures and keep going
 BASE=9dbfa0f
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"; BENCH="$REPO/tool/model_bench"
 WT="${BENCH_WORKTREE:-$REPO/../TypstSeq-bench}"

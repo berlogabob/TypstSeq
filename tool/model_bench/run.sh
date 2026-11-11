@@ -1,6 +1,6 @@
 #!/bin/bash
 # usage: run.sh <provider> <model> [reps=3] [task ...]
-set -u
+set -uo pipefail  # no -e: loops record failures and keep going
 BASE=9dbfa0f
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 BENCH="$REPO/tool/model_bench"

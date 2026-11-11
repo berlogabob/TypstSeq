@@ -1,5 +1,6 @@
 #!/bin/bash
 # Bug-fix task only, both 35B builds, Studio context 64k (matches pi's contextWindow).
+set -uo pipefail
 cd "$(dirname "$0")"
 export BENCH_LABEL=@64k BENCH_CTX=65536
 ./run.sh studio 'ollama/hf.co/pfeifferj/Ornith-1.5-35B-A3B-GSQ-RCO-GGUF:Ornith-1.5-35B-A3B-GSQ-RCO-3.5bit.gguf' 3 t4_bug_fix
