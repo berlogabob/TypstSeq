@@ -62,6 +62,24 @@ class ArticleJob {
   final String? title;
 }
 
+Set<String> vanishedJobPaths(List<ArticleJob> before, List<ArticleJob> after) {
+  final remaining = after.map((job) => job.path).toSet();
+  return before.map((job) => job.path).toSet().difference(remaining);
+}
+
+String? doneJobOrigin(String jobJsonText) {
+  try {
+    final data = jsonDecode(jobJsonText);
+    if (data is Map && data['status'] == 'done') {
+      final origin = data['origin'];
+      if (origin is String && origin.isNotEmpty) return origin;
+    }
+  } catch (_) {
+    return null;
+  }
+  return null;
+}
+
 Future<List<ArticleJob>> loadArticleJobs(VaultStorage storage) async {
   const directory = '_system/jobs/articles';
   if (!await storage.exists(directory)) return const [];

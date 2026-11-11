@@ -116,6 +116,39 @@ void main() {
     expect(await home.relinkArticlesForTesting(), 0);
     await tester.pumpWidget(const SizedBox());
   }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
+
+  testWidgets('a finished job relinks its origin today after refresh', (
+    tester,
+  ) async {
+    final (home, storage) = await _mount(tester);
+    final String today = await home.workspace.vault.todayNote();
+    await storage.writeText(today, _source);
+    home.workspace.replaceNote(today, _source);
+    home.sourceController.text = _source;
+    home.richController.loadSource(_source);
+    const url = 'https://github.com/VERT-sh/VERT';
+    await storage.writeText(
+      _job(url),
+      jsonEncode({'url': url, 'status': 'queued', 'origin': today}),
+    );
+    await home.refreshArticleJobsForTesting();
+    await storage.writeText(
+      _job(url),
+      jsonEncode({
+        'url': url,
+        'status': 'done',
+        'origin': today,
+        'note_path': 'articles/vert.typ',
+      }),
+    );
+    await home.refreshArticleJobsForTesting();
+    await tester.pumpAndSettle();
+    expect(
+      home.workspace.source,
+      contains('+ #tylog.ref-note("vert")[VERT file converter]\n'),
+    );
+    await tester.pumpWidget(const SizedBox());
+  }, variant: TargetPlatformVariant.only(TargetPlatform.macOS));
 }
 
 class _MemoryStorage extends VaultStorage {

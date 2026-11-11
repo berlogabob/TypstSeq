@@ -632,7 +632,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (mounted &&
           identical(vault, currentVault) &&
           generation == _articleJobsGeneration) {
+        final previousJobs = _articleJobs;
         setState(() => _articleJobs = jobs);
+        unawaited(_relinkFinishedArticles(currentVault, previousJobs, jobs));
       }
     } catch (error) {
       if (mounted) showSnack(context, 'Could not read article jobs: $error');
@@ -4453,6 +4455,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @visibleForTesting
   Future<int> relinkArticlesForTesting() => _relinkArticles(vault!);
+
+  @visibleForTesting
+  Future<void> refreshArticleJobsForTesting() => _refreshArticleJobs();
 
   Future<NoteRef?> _createEntity({
     String? initialName,

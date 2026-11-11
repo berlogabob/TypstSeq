@@ -11,6 +11,29 @@ final _notArticles = RegExp(
 /// Links typed in the journal become articles (through the existing article
 /// pipeline), and each bare link then becomes a link to its article.
 extension _ArticleLinksFlow on _HomeScreenState {
+  Future<void> _relinkFinishedArticles(
+    Vault v,
+    List<ArticleJob> before,
+    List<ArticleJob> after,
+  ) async {
+    final origins = <String>{};
+    for (final path in vanishedJobPaths(before, after)) {
+      try {
+        final origin = doneJobOrigin(await v.storage.readText(path));
+        if (origin != null) origins.add(origin);
+      } catch (_) {
+        continue;
+      }
+    }
+    for (final origin in origins) {
+      try {
+        await _relinkArticles(v, only: origin);
+      } catch (error) {
+        debugPrint('Could not relink finished articles: $error');
+      }
+    }
+  }
+
   /// Magic > Save links as articles: the bare links in the selection (in the
   /// whole note when nothing is selected) are queued for the article worker;
   /// links whose article is already done are replaced at once.
