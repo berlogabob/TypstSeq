@@ -260,7 +260,7 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
     final repo = TextEditingController();
     final ref = TextEditingController();
     final subdir = TextEditingController();
-    final result = await showDialog<List<String>>(
+    final route = DialogRoute<List<String>>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Add GitHub repo'),
@@ -298,6 +298,15 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
           ),
         ],
       ),
+    );
+    final result = await Navigator.of(context).push(route);
+    // Dispose only after the exit transition: the fields are still painted.
+    unawaited(
+      route.completed.whenComplete(() {
+        repo.dispose();
+        ref.dispose();
+        subdir.dispose();
+      }),
     );
     if (result == null) return;
     await _run(() async {
