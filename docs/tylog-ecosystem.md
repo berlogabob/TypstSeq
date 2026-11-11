@@ -96,11 +96,22 @@ The first CLI is intentionally repository-local. Run it from the core package:
 
 ```sh
 cd packages/tylog_core
-dart run bin/tylog.dart init [vault]
-dart run bin/tylog.dart index [vault] [--force]
-dart run bin/tylog.dart doctor [vault]
+dart run bin/tylog.dart mcp <vault>
+dart run bin/tylog.dart init [vault=.]
+dart run bin/tylog.dart import-contacts --vault <dir> --file <contacts.vcf|contacts.csv> [--write]
+dart run bin/tylog.dart index [vault=.] [--force]
+dart run bin/tylog.dart cluster <vault>
+dart run bin/tylog.dart doctor [vault=.]
+dart run bin/tylog.dart vault-health <vault>
+dart run bin/tylog.dart dedupe <vault> [--apply]
+dart run bin/tylog.dart migrate-mentions <vault> [--apply]
 dart run bin/tylog.dart export <file.typ> [output.pdf]
+dart run bin/tylog.dart pack-validate <file.tylogpack>
+dart run bin/tylog.dart eval-links --vault <dir> --gold <file.jsonl>
+dart run bin/tylog.dart eval-links --vault <dir> --sample N --out <file.jsonl>
 ```
+
+`bin/tylog.dart --help` prints the authoritative list (`_usage`).
 
 - `init` creates a generation-5 vault and installs its managed Typst files.
 - `index` writes `_index/index.json` and `_index/search-index.json.gz`.
