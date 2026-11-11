@@ -4459,6 +4459,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<int> relinkArticlesForTesting() => _relinkArticles(vault!);
 
   @visibleForTesting
+  Future<void> refreshNoteAssetsForTesting(String source, {bool force = false}) => _refreshNoteAssets(source, force: force);
+
+  @visibleForTesting
   Future<void> refreshArticleJobsForTesting() => _refreshArticleJobs();
 
   Future<NoteRef?> _createEntity({
