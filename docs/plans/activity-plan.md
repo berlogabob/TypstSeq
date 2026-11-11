@@ -859,7 +859,7 @@ Phase E, CI and chores (Claude, one commit each)
 - [x] W32.E3 `release.yml`: fail fast on empty signing secrets — Sonnet, 2 min; loop fails with ::error:: on any empty signing secret; YAML parses; CI not run
 - [x] W32.E4 `flutter drive` in `Makefile:109` and `scripts/p21_android.sh:15`: refuse unless the package is `.profiletest` (AGENTS.md forbids it otherwise) — Sonnet, 2 min; Makefile verify-real-vault now passes -PtylogProfileSuffix=.profiletest (comment updated); scripts/p21_android.sh already passes it, no change; not run (device)
 - [x] W32.E5 `git rm --cached` `android/build/reports/...` and `tool/audio_plan/logs/`; ignore both; delete `.read_test`; drop the stale TODO in `build.gradle.kts:28`, the unused import in `lib/main.dart:14`, the wrong path in the QuickLook bridging header — Sonnet, 4 min; git rm --cached android/build + tool/audio_plan/logs (10 files), both ignored; .read_test deleted; build.gradle.kts TODO dropped; bridging header path fixed (rust/src/quicklook_ffi.rs); lib/main.dart:14 import NOT removed: it is deliberate (ignore: unused_import, keeps vaultServiceMain reachable)
-- [ ] W32.E6 README "Linux compile-tested in CI" -> "on release tags"
+- [x] W32.E6 README "Linux compile-tested in CI" -> "on release tags" — Sonnet, 1 min; README line 66 reworded
 
 Phase F, dead code and missing tests (Ornith, one file each)
 - [ ] W32.F1 delete `parseLabCalendar` (`lib/calendar_feeds.dart:200`). Gate: grep 0 + analyze
