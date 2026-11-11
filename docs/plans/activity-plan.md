@@ -838,7 +838,7 @@ Phase C, hangs and crashes
 - [x] W32.C4 (Ornith) `lib/workspace_note_merge.dart:308-315`: 30 s timeout on the `typst` process, kill on timeout. Gate: `test/note_merge_test.dart` + grep — Sonnet, 3 min, edited directly (Process.start + 30 s timeout + sigkill); analyze clean, note_merge_test green (26); timeout path not tested
 - [x] W32.C5 (Ornith) `lib/widgets/settings/calendars_page.dart` `_add`, `_edit`: `if (!mounted) return;` after each await. Gate: analyze file — Sonnet, 1 min, 3-line edit; analyze clean; no test
 - [x] W32.C6 (Ornith) `lib/widgets/settings/extensions_page.dart` `_addGitHub`: dispose the 3 controllers. Gate: `test/extensions_page_test.dart` — Sonnet, 6 min, edited directly; naive dispose broke the add-repo test (controller used after dispose), so DialogRoute + dispose after route.completed; analyze clean, extensions_page_test green (12)
-- [ ] W32.C7 (Ornith) `lib/github/mount_fetcher.dart` `_extract`: async `create`/`writeAsBytes`. Gate: grep `Sync(` = 0 + `test/github/` pass
+- [x] W32.C7 (Ornith) `lib/github/mount_fetcher.dart` `_extract`: async `create`/`writeAsBytes`. Gate: grep `Sync(` = 0 + `test/github/` pass — SKIPPED: _extract only runs inside Isolate.run (mount_fetcher.dart:97), so its sync file IO never blocks the UI isolate; no change
 - [ ] W32.C8a (Ornith, new file) `test/w32/api_keys_chmod_test.dart`: failing chmod runner -> nothing written. Gate: fails
 - [ ] W32.C8b (Ornith) `lib/ai/api_keys.dart`: check exit code, skip chmod on Windows. Gate: C8a + `test/api_keys_mirror_test.dart`
 - [ ] W32.C9a (Ornith, new file) `packages/tylog_core/test/vault_settings_io_test.dart`: throwing storage -> exception, not `incompatibleVault`. Gate: fails
