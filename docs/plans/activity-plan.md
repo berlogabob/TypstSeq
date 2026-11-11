@@ -850,7 +850,7 @@ Phase D, Rust and native
 - [x] W32.D2 (Ornith) `SyncForegroundService.kt`: `onTimeout(startId, fgsType)` -> `stopSelf()` — Sonnet, 1 min, 4-line override (compileSdk 36); NOT COMPILED (D6 covers it); gate grep onTimeout = 1
 - [x] W32.D3 (Ornith) `VaultSyncWorker.kt:73`: rethrow `CancellationException`, `Log.w` the Throwable — Sonnet, 2 min; rethrows CancellationException, Log.w on Throwable, 2 imports; NOT COMPILED (D6 covers it); gate grep Log.w = 1
 - [ ] W32.D4 (codex) `SafBridge.kt:243-248` `acquireSync`: answer `result` when disposed
-- [ ] W32.D5 (Ornith) `ios/Runner/AppDelegate.swift`: `as?` guard, log the submit error
+- [x] W32.D5 (Ornith) `ios/Runner/AppDelegate.swift`: `as?` guard, log the submit error — Sonnet, 1 min; as? guard completes the task, submit error logged with NSLog; NOT COMPILED (no iOS gate)
 - [ ] W32.D6 (Claude) Kotlin compile: `./gradlew :app:assembleProfile -PtylogProfileSuffix=.profiletest` (no install)
 
 Phase E, CI and chores (Claude, one commit each)

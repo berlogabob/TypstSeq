@@ -14,7 +14,11 @@ import UIKit
     BGTaskScheduler.shared.register(
       forTaskWithIdentifier: Self.vaultSyncTaskId, using: nil
     ) { task in
-      self.runVaultSync(task as! BGProcessingTask)
+      guard let processing = task as? BGProcessingTask else {
+        task.setTaskCompleted(success: false)
+        return
+      }
+      self.runVaultSync(processing)
     }
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
@@ -32,7 +36,11 @@ import UIKit
     let request = BGProcessingTaskRequest(identifier: Self.vaultSyncTaskId)
     request.requiresNetworkConnectivity = true
     // Submitting again while one is pending just replaces it.
-    try? BGTaskScheduler.shared.submit(request)
+    do {
+      try BGTaskScheduler.shared.submit(request)
+    } catch {
+      NSLog("TyLog: could not schedule vault sync: \(error)")
+    }
   }
 
   // Opportunistic catch-up, not a service: iOS runs this when it chooses
