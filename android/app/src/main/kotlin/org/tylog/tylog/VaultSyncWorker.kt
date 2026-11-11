@@ -1,6 +1,7 @@
 package org.tylog.tylog
 
 import android.content.Context
+import android.util.Log
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -14,6 +15,7 @@ import io.flutter.FlutterInjector
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.dart.DartExecutor
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
@@ -70,7 +72,10 @@ class VaultSyncWorker(
             if (success) Result.success() else Result.retry()
         } catch (_: TimeoutCancellationException) {
             Result.retry()
-        } catch (_: Throwable) {
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            Log.w("TyLog", "Background sync failed", e)
             Result.retry()
         } finally {
             bridge.dispose()
