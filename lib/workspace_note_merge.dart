@@ -305,16 +305,25 @@ Future<void> _validateTypstBodyWithCli(String body) async {
     await File('${helper.path}/tylog.typ').writeAsString(_mergeHelperStub);
     final source = File('${root.path}/body.typ');
     await source.writeAsString('#import "/_system/tylog.typ" as tylog\n$body');
-    final result = await Process.run('typst', [
+    final process = await Process.start('typst', [
       'compile',
       '--root',
       root.path,
       source.path,
       '${root.path}/body.pdf',
     ]);
-    if (result.exitCode != 0) {
+    final stderrText = process.stderr.transform(utf8.decoder).join();
+    unawaited(process.stdout.drain<void>());
+    final int exitCode;
+    try {
+      exitCode = await process.exitCode.timeout(const Duration(seconds: 30));
+    } on TimeoutException {
+      process.kill(ProcessSignal.sigkill);
+      throw StateError('Typst validation timed out after 30 s.');
+    }
+    if (exitCode != 0) {
       throw StateError(
-        'The body is not valid standalone Typst: ${result.stderr}',
+        'The body is not valid standalone Typst: ${await stderrText}',
       );
     }
   } finally {
