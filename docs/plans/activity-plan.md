@@ -780,7 +780,7 @@ Before Friday (user): Studio stays on, logged in, Tailscale running.
 Causes: 0.23.0 lacks the region-name fix; clusters named by `group.first` and `journal` (on every daily) anchors/names the 316-tag tech cluster; Obsidian import of `key:: value` frontmatter wrote `: ` residue (71 titles, 90 tag strings, 2 `[[]]` tags); no manual cluster rename.
 - [x] W31.1 Importer: `key:: value` frontmatter (strip extra `:`), test (vault_import.rs). Gate: cargo test -p tylog_import_core
 - [x] W31.2 tool/repair_obsidian_headers.py (dry-run, --apply, backup) + test; apply to real vault; compile samples — 94 notes repaired, all compile; backup ~/Documents/tylog-backups/vault-typ-backup-obsidian-2026-11-11.tgz
-- [ ] W31.3 Cluster naming: skip structural tags (journal, daily, date-like, kinds); name = member with most notes (graph.dart)
+- [x] W31.3 Cluster naming: skip structural tags (journal, daily, date-like, kinds); name = member with most notes (graph.dart)
 - [ ] W31.4 Manual cluster rename: _system/clusters/names.json, kept by cluster_step, Rename in Voronoi panel
 - [ ] W31.5 Full gate: analyze + flutter test + tylog_core tests; graphify update
 - [ ] W31.6 Mac visual check of Voronoi on real vault

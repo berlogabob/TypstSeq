@@ -203,6 +203,13 @@ NoteGraph buildConceptMap(
   return NoteGraph(nodes: nodes, edges: edges);
 }
 
+/// Structural tags that sit on many notes but say nothing about topic
+/// ('journal' on every daily, 'inbox' as a holding pen, plus any digit-only
+/// tag like a bare year '2025'): excluded alongside kind aliases so they can't
+/// become the highest-degree hub in every graph mode.
+final _structuralTags = {'journal', 'daily', 'inbox'};
+final _digitOnlyTagPattern = RegExp(r'^\d+$');
+
 /// Maps each tag to the set of note paths carrying it — one cheap pass, shared
 /// by the concept map and community detection.
 /// ponytail: plain helper, not a memoized field — `VaultIndex` is a const model
@@ -212,7 +219,9 @@ Map<String, Set<String>> tagToNotes(VaultIndex index) {
   // filter chips, not concepts: on a real vault `article` sits on thousands
   // of notes and would be the highest-degree hub in every graph mode and
   // swallow community detection. Excluded here so the concept map, Louvain
-  // communities, and the Voronoi treemap all skip them in one place.
+  // communities, and the Voronoi treemap all skip them in one place. Structural
+  // tags ('journal' on every daily, 'inbox', digit-only years) are likewise
+  // skipped: on a real vault they sit on many notes but say nothing about topic.
   final kindTags = {
     for (final note in index.notesByPath.values)
       if (note.kind != 'note') normalizeTag(note.kind),
@@ -220,7 +229,11 @@ Map<String, Set<String>> tagToNotes(VaultIndex index) {
   final byTag = <String, Set<String>>{};
   for (final note in index.notesByPath.values) {
     for (final tag in note.tags) {
-      if (kindTags.contains(tag)) continue;
+      if (kindTags.contains(tag) ||
+          _structuralTags.contains(tag) ||
+          _digitOnlyTagPattern.hasMatch(tag)) {
+        continue;
+      }
       byTag.putIfAbsent(tag, () => {}).add(note.path);
     }
   }

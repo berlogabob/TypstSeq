@@ -40,10 +40,12 @@ Future<ClusterStepResult> runClusterStep(
   }
   final match = matchClusters(previous, next);
   final decisions = await _clusterChangeDecisions(storage);
-  final clusters = <String, Set<String>>{
-    for (final entry in next.entries)
-      match.stableLabel[entry.key] ?? entry.key: entry.value,
-  };
+  final liveTags = {for (final s in next.values) ...s};
+  final clusters = <String, Set<String>>{};
+  for (final entry in next.entries) {
+    final label = match.stableLabel[entry.key] ?? entry.key;
+    clusters[(liveTags.contains(label) ? label : entry.key)] = entry.value;
+  }
   for (final change in match.changes) {
     if (!const {'rename', 'merge', 'split'}.contains(change.kind)) continue;
     final id = _clusterChangeId(change);
@@ -57,11 +59,18 @@ Future<ClusterStepResult> runClusterStep(
       }
     } else {
       for (final label in change.to) {
-        clusters.remove(match.stableLabel[label] ?? label);
+        final stable = match.stableLabel[label] ?? label;
+        // A stable label whose tag no longer exists in any cluster (e.g. it was
+        // dropped from clustering) must not resurrect, and its live cluster
+        // must be kept rather than reverted away.
+        if (!liveTags.contains(stable)) continue;
+        clusters.remove(stable);
         clusters.remove(label);
       }
       for (final label in change.from) {
-        if (previous.containsKey(label)) clusters[label] = previous[label]!;
+        if (previous.containsKey(label) && liveTags.contains(label)) {
+          clusters[label] = previous[label]!;
+        }
       }
     }
   }

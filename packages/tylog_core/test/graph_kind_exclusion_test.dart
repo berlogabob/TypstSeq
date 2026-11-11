@@ -35,4 +35,39 @@ void main() {
   test('kind-alias tags do not feed tagToNotes', () {
     expect(tagToNotes(index()).keys, isNot(contains('article')));
   });
+
+  test('structural tags are excluded from communities', () {
+    // Default `computeCommunities` requires a tag on >= kConceptMapMinNotes (5)
+    // notes to promote; five notes each carrying the structural tags 'journal'
+    // and '2026' plus the topic tags 'ai' and 'llm'.
+    VaultIndex structuralIndex() => VaultIndex(
+      notesByPath: {
+        for (var i = 0; i < 5; i++)
+          'notes/n$i.typ': NoteRef(
+            id: 'n$i',
+            path: 'notes/n$i.typ',
+            title: 'N$i',
+            kind: 'note',
+            tags: const ['journal', '2026', 'ai', 'llm'],
+            outgoingLinks: const [],
+          ),
+      },
+      backlinksByTarget: const {},
+      tasks: const [],
+    );
+
+    final communities = computeCommunities(structuralIndex());
+    expect(
+      communities.tagToCluster.keys,
+      isNot(contains('journal')),
+      reason: 'a structural tag on every note is not a community',
+    );
+    expect(
+      communities.tagToCluster.keys,
+      isNot(contains('2026')),
+      reason: 'a digit-only tag on every note is not a community',
+    );
+    expect(communities.tagToCluster.keys, contains('ai'));
+    expect(communities.tagToCluster.keys, contains('llm'));
+  });
 }

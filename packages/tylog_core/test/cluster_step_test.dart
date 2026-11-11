@@ -103,4 +103,35 @@ void main() {
       isEmpty,
     );
   });
+
+  test('drops a previous label for a tag no longer in any cluster', () async {
+    final root = await Directory.systemTemp.createTemp('tylog_cluster_step_');
+    addTearDown(() => root.delete(recursive: true));
+    final storage = LocalVaultStorage(root);
+    await storage.writeText(
+      '_system/clusters/snapshot.json',
+      jsonEncode({
+        'schema': 1,
+        'generated_at': '2026-01-01T00:00:00Z',
+        'clusters': {
+          'journal': ['journal', 'ai', 'llm'],
+        },
+      }),
+    );
+    await runClusterStep(
+      storage,
+      _index(renamed: false),
+      now: DateTime.utc(2026, 1, 2),
+    );
+    final snapshot =
+        jsonDecode(await storage.readText('_system/clusters/snapshot.json'))
+            as Map;
+    expect((snapshot['clusters'] as Map).containsKey('journal'), isFalse);
+    expect(
+      (snapshot['clusters'] as Map).values.any(
+        (members) => members.contains('ai') && members.contains('llm'),
+      ),
+      isTrue,
+    );
+  });
 }
