@@ -926,6 +926,6 @@ Phase F, mega-file split (terra, last, one part per step)
 - [x] W33.F8 reading prefs/progress, recents, article delete/rate -> lib/app_mobile/reading_flow.dart — driver (mechanical move by script), 0 min, app_mobile.dart 4772 -> 3823 lines; analyze 0 issues + targeted tests green
 
 Phase Z, close (main session)
-- [ ] W33.Z1 `flutter analyze`, full `flutter test`, `make test-core` (each alone)
-- [ ] W33.Z2 `tool/w32_metrics.sh`; numbers into the tracker
-- [ ] W33.Z3 `graphify update .`; commit; memory `wave31-handoff` updated
+- [ ] W33.Z1 `flutter analyze`, full `flutter test`, `make test-core` (each alone) — left for main session
+- [ ] W33.Z2 `tool/w32_metrics.sh`; numbers into the tracker — left for main session
+- [ ] W33.Z3 `graphify update .`; commit; memory `wave31-handoff` updated — left for main session
