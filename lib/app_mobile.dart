@@ -1011,26 +1011,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final changed =
           incoming.prefix != current.prefix ||
           incoming.visibleText != current.visibleText ||
-          !listEquals(
-            incoming.blocks
-                .expand((b) => b.parts)
-                .expand(
-                  (p) => p.text
-                      .split('')
-                      .where((c) => c != '\n')
-                      .map((c) => (c, p.style, p.source)),
-                )
-                .toList(),
-            current.blocks
-                .expand((b) => b.parts)
-                .expand(
-                  (p) => p.text
-                      .split('')
-                      .where((c) => c != '\n')
-                      .map((c) => (c, p.style, p.source)),
-                )
-                .toList(),
-          ) ||
+          !sameStyledText(incoming, current) ||
           !listEquals(
             locateTypstCalls(
               workspace.source,

@@ -389,10 +389,13 @@ class _VoronoiViewState extends State<VoronoiView>
     final result = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Rename cluster'),
+        title: Text('Rename top-level cluster "${_name(label)}"'),
         content: TextFormField(
           key: const Key('voronoi-rename-field'),
           initialValue: text,
+          decoration: const InputDecoration(
+            helperText: 'Leave empty to restore the automatic name',
+          ),
           autofocus: true,
           onChanged: (value) => text = value,
         ),

@@ -1506,3 +1506,48 @@ bool magicActionMatches(MagicAction action, String query) {
   ];
   return terms.any((term) => term.toLowerCase().contains(query.toLowerCase()));
 }
+
+/// Whether [a] and [b] hold the same characters with the same inline style and
+/// source, ignoring newlines. One linear pass with no per-character allocation:
+/// it runs on every save/sync round-trip of the open note, where building two
+/// per-character lists stalled the UI on long notes.
+bool sameStyledText(TyLogDocument a, TyLogDocument b) {
+  final pa = [for (final block in a.blocks) ...block.parts];
+  final pb = [for (final block in b.blocks) ...block.parts];
+  var ia = 0, ja = 0, ib = 0, jb = 0;
+  while (true) {
+    while (ia < pa.length) {
+      final text = pa[ia].text;
+      if (ja >= text.length) {
+        ia++;
+        ja = 0;
+      } else if (text.codeUnitAt(ja) == 0x0A) {
+        ja++;
+      } else {
+        break;
+      }
+    }
+    while (ib < pb.length) {
+      final text = pb[ib].text;
+      if (jb >= text.length) {
+        ib++;
+        jb = 0;
+      } else if (text.codeUnitAt(jb) == 0x0A) {
+        jb++;
+      } else {
+        break;
+      }
+    }
+    if (ia == pa.length || ib == pb.length) {
+      return ia == pa.length && ib == pb.length;
+    }
+    final x = pa[ia], y = pb[ib];
+    if (x.text.codeUnitAt(ja) != y.text.codeUnitAt(jb) ||
+        x.style != y.style ||
+        x.source != y.source) {
+      return false;
+    }
+    ja++;
+    jb++;
+  }
+}
