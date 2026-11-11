@@ -867,7 +867,7 @@ Phase F, dead code and missing tests (Ornith, one file each)
 - [x] W32.F3 new `packages/tylog_core/test/header_repair_tags_test.dart` for `updateNoteTags` (output must compile with Typst, not only re-parse) — Ornith, 10 min (ran to timeout after writing the file), fixed by Sonnet: nonexistent exactString matcher -> equals; exact-text assertions (4 tests green), no Typst compile
 - [x] W32.F4 new `packages/tylog_core/test/header_repair_import_test.dart` for `withTylogImport` (same rule) — Ornith, ~9 min (stalls after writing the file until the 10 min timeout), fixed by Sonnet: string concat lint; exact-text assertions (5 tests green)
 - [x] W32.F5 new `test/w32/updater_script_test.dart`: update-script generators with paths containing spaces — SKIPPED: the only script generator, windowsUpdateScript(), is already tested for quoted %~2/%~3 paths in test/desktop_updater_test.dart:165; the macOS apply.sh is an inline literal, so testing it needs an extraction refactor outside this step
-- [ ] W32.F6 new `test/w32/window_controller_test.dart` for `lib/rich_editor/window_controller.dart`
+- [x] W32.F6 new `test/w32/window_controller_test.dart` for `lib/rich_editor/window_controller.dart` — Ornith, ~10 min (hits the timeout after writing the file), fixed by Sonnet: string-concat lint; 5 tests on the static unit/soft-break helpers, green; instance behaviour already covered by test/rich_editor_window_test.dart
 - [x] W32.F7 `docs/tylog-ecosystem.md:98-102`: CLI command list regenerated from `_usage` in `packages/tylog_core/bin/tylog.dart` — Sonnet, 2 min, edited directly (docs, copied from _usage in bin/tylog.dart; 12 usage lines)
 
 Phase G, editor performance (codex, measured)
