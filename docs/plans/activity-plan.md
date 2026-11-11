@@ -834,7 +834,7 @@ Phase C, hangs and crashes
 - [x] W32.C2a (Ornith, new file) `test/w32/login_flow_timeout_test.dart`: hanging poll endpoint -> `TimeoutException`. Gate: fails — Ornith, ~3 min, first try; red before fix by compile (no requestTimeout param)
 - [x] W32.C2b (Ornith) `lib/nextcloud_sync/login_flow.dart`: `connectionTimeout` + 20 s timeout per poll request. Gate: C2a + `test/login_flow_test.dart` — Sonnet, 3 min, edited directly; analyze clean, C2a + login_flow_test green
 - [x] W32.C3a (Ornith, new file) `test/w32/article_image_fetch_test.dart`: never-ending and oversize responses fail. Gate: fails — Ornith, ~4 min, fixed by Sonnet: malformed closing, import path, unused import; red before fix by compile (no params)
-- [ ] W32.C3b (Ornith) `lib/markdown_article_import.dart` `_fetchBytes`: timeouts + 20 MB cap. Gate: C3a + `test/markdown_article_import_test.dart`
+- [x] W32.C3b (Ornith) `lib/markdown_article_import.dart` `_fetchBytes`: timeouts + 20 MB cap. Gate: C3a + `test/markdown_article_import_test.dart` — Sonnet, 4 min, edited directly; analyze clean, C3a + markdown_article_import_test green (13)
 - [ ] W32.C4 (Ornith) `lib/workspace_note_merge.dart:308-315`: 30 s timeout on the `typst` process, kill on timeout. Gate: `test/note_merge_test.dart` + grep
 - [ ] W32.C5 (Ornith) `lib/widgets/settings/calendars_page.dart` `_add`, `_edit`: `if (!mounted) return;` after each await. Gate: analyze file
 - [ ] W32.C6 (Ornith) `lib/widgets/settings/extensions_page.dart` `_addGitHub`: dispose the 3 controllers. Gate: `test/extensions_page_test.dart`

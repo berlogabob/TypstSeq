@@ -187,12 +187,14 @@ downloadArticleImages({
   required String articleId,
   required VaultStorage storage,
   HttpClient? client,
+  Duration fetchTimeout = const Duration(seconds: 20),
+  int maxImageBytes = 20 * 1024 * 1024,
 }) async {
   final matches = _imageLinkPattern.allMatches(typst).toList();
   if (matches.isEmpty) {
     return (typst: typst, diagnostics: const <MarkdownArticleDiagnostic>[]);
   }
-  final http = client ?? HttpClient();
+  final http = client ?? (HttpClient()..connectionTimeout = fetchTimeout);
   final diagnostics = <MarkdownArticleDiagnostic>[];
   final out = StringBuffer();
   var cursor = 0;
@@ -203,7 +205,12 @@ downloadArticleImages({
       cursor = match.end;
       final url = _unescapeTypstString(match.group(1)!);
       try {
-        final (bytes, contentType) = await _fetchBytes(http, url);
+        final (bytes, contentType) = await _fetchBytes(
+          http,
+          url,
+          fetchTimeout,
+          maxImageBytes,
+        );
         index++;
         final relative =
             'assets/articles/$articleId/$index.${_imageExtension(url, contentType)}';
@@ -233,14 +240,26 @@ final _imageLinkPattern = RegExp(
 String _unescapeTypstString(String value) =>
     value.replaceAllMapped(RegExp(r'\\(.)'), (match) => match.group(1)!);
 
-Future<(Uint8List, String?)> _fetchBytes(HttpClient client, String url) async {
-  final request = await client.getUrl(Uri.parse(url));
-  final response = await request.close();
+Future<(Uint8List, String?)> _fetchBytes(
+  HttpClient client,
+  String url,
+  Duration timeout,
+  int maxBytes,
+) async {
+  final request = await client.getUrl(Uri.parse(url)).timeout(timeout);
+  final response = await request.close().timeout(timeout);
   if (response.statusCode != 200) {
     throw HttpException('HTTP ${response.statusCode}');
   }
+  if (response.contentLength > maxBytes) {
+    response.listen(null).cancel();
+    throw const HttpException('Image too large');
+  }
   final builder = BytesBuilder(copy: false);
-  await for (final chunk in response) {
+  await for (final chunk in response.timeout(timeout)) {
+    if (builder.length + chunk.length > maxBytes) {
+      throw const HttpException('Image too large');
+    }
     builder.add(chunk);
   }
   final bytes = builder.takeBytes();
