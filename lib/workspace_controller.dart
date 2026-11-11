@@ -468,6 +468,10 @@ class WorkspaceController extends ChangeNotifier {
   /// Cluster label -> member tags from `_system/clusters/snapshot.json`.
   Map<String, List<String>>? get clusterSnapshot => _clusterSnapshot;
 
+  /// Cluster label -> user-chosen display name from `_system/clusters/names.json`.
+  Map<String, String> get clusterNames => _clusterNames;
+  Map<String, String> _clusterNames = const {};
+
   bool _owns(Vault opened, int generation) =>
       !_disposed && identical(vault, opened) && _vaultGeneration == generation;
 
@@ -689,6 +693,7 @@ class WorkspaceController extends ChangeNotifier {
     _vaultGeneration++;
     _autoClusterStarted = false;
     _clusterSnapshot = null;
+    _clusterNames = const {};
     _mountFetcher = null;
     _feedFlight = null;
     _eventCreates.clear();
@@ -3616,7 +3621,58 @@ class WorkspaceController extends ChangeNotifier {
     } catch (_) {
       snapshot = null; // Malformed snapshot: fall back to computing.
     }
-    if (identical(vault, opened)) _clusterSnapshot = snapshot;
+    final names = opened == null
+        ? const <String, String>{}
+        : await _readClusterNames(opened);
+    if (identical(vault, opened)) {
+      _clusterSnapshot = snapshot;
+      _clusterNames = names;
+    }
+  }
+
+  /// Re-reads `_system/clusters/names.json` (schema {"schema": 1, "names": ...})
+  /// into memory. Kept alongside [reloadClusterSnapshot] so a user rename stays
+  /// in sync with the snapshot. Malformed or unreadable data falls back to {}.
+  Future<Map<String, String>> _readClusterNames(Vault opened) async {
+    try {
+      if (!await opened.storage.exists('_system/clusters/names.json')) {
+        return const {};
+      }
+      final json = jsonDecode(await opened.storage.readText(
+        '_system/clusters/names.json',
+      )) as Map;
+      final raw = json['names'];
+      if (json['schema'] == 1 && raw is Map) {
+        return {
+          for (final e in raw.entries)
+            if (e.key is String && e.value is String)
+              e.key as String: e.value as String,
+        };
+      }
+    } catch (_) {}
+    return const {};
+  }
+
+  /// Sets or removes a user-chosen display name for [label]. A trimmed empty
+  /// name removes the entry; otherwise it sets it. Persists the whole map back
+  /// to `_system/clusters/names.json` and notifies listeners.
+  Future<void> renameCluster(String label, String name) async {
+    final opened = vault;
+    if (opened == null) return;
+    final trimmed = name.trim();
+    final next = <String, String>{..._clusterNames};
+    if (trimmed.isEmpty) {
+      next.remove(label);
+    } else {
+      next[label] = trimmed;
+    }
+    await opened.storage.createDirectory('_system/clusters');
+    await opened.storage.writeText(
+      '_system/clusters/names.json',
+      '${JsonEncoder.withIndent('  ').convert({'schema': 1, 'names': next})}\n',
+    );
+    _clusterNames = next;
+    notifyListeners();
   }
 
   void _startAutoCluster(VaultIndex current) {
