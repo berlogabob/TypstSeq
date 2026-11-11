@@ -26,6 +26,7 @@ class VoronoiView extends StatefulWidget {
     this.onOpenNotes,
     this.initialSelectedPath,
     this.onSelectionChanged,
+    this.clusterNames = const {},
   });
 
   final VaultIndex index;
@@ -36,6 +37,9 @@ class VoronoiView extends StatefulWidget {
   final ValueChanged<List<String>>? onOpenNotes;
   final String? initialSelectedPath;
   final ValueChanged<String?>? onSelectionChanged;
+
+  /// cluster label -> user-chosen display name.
+  final Map<String, String> clusterNames;
 
   /// Cache key: cells are retessellated only when this changes (or the
   /// viewport size does).
@@ -355,6 +359,9 @@ class _VoronoiViewState extends State<VoronoiView>
     }
   }
 
+  String _name(String label) =>
+      widget.clusterNames[label] ?? prettyGraphLabel(label);
+
   void _select(String? path) {
     if (_selectedPath == path) return;
     setState(() => _selectedPath = path);
@@ -422,6 +429,7 @@ class _VoronoiViewState extends State<VoronoiView>
                     viewport: viewport,
                     transform: _transform,
                     selectedPath: _selectedPath,
+                    clusterNames: widget.clusterNames,
                     onActivate: (cell) => _selectCell(cell, viewport),
                   ),
                 ),
@@ -460,7 +468,7 @@ class _VoronoiViewState extends State<VoronoiView>
                       ),
                       subtitle: Text(
                         widget.index.notesByPath.containsKey(selected.id)
-                            ? 'In cluster ${selected.parent >= 0 ? cells[selected.parent].label : selected.label}'
+                            ? 'In cluster ${selected.parent >= 0 ? _name(cells[selected.parent].label) : selected.label}'
                             : '${selected.count} notes',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -491,6 +499,7 @@ class _VoronoiPainter extends CustomPainter {
     required this.transform,
     required this.selectedPath,
     required this.onActivate,
+    required this.clusterNames,
   }) : super(repaint: transform);
 
   final List<_Cell> cells;
@@ -503,6 +512,7 @@ class _VoronoiPainter extends CustomPainter {
   /// per-cell reveal test, constant-size labels, and culling.
   final TransformationController transform;
   final String? selectedPath;
+  final Map<String, String> clusterNames;
 
   /// What tapping (or activating via a screen reader) a cell does. The state
   /// handles selection and overflow cells; the painter only reports the cell.
@@ -520,6 +530,8 @@ class _VoronoiPainter extends CustomPainter {
       (viewport.height - ty) / scale,
     ).inflate(40);
   }
+
+  String _name(String label) => clusterNames[label] ?? prettyGraphLabel(label);
 
   Color _fillFor(_Cell cell, int siblingIndex) {
     final base = colorForSlot(cell.colorSlot, rootCount, colorScheme);
@@ -600,7 +612,7 @@ class _VoronoiPainter extends CustomPainter {
       );
       if (spec == null) continue;
       final hasCount = cell.children.isNotEmpty;
-      final name = hasCount ? prettyGraphLabel(cell.label) : cell.label;
+      final name = hasCount ? _name(cell.label) : cell.label;
       final nameSize = spec.fontSize / scale;
       final tp = TextPainter(
         text: TextSpan(
@@ -659,7 +671,7 @@ class _VoronoiPainter extends CustomPainter {
           .clamp(14.0, 34.0);
       final tp = TextPainter(
         text: TextSpan(
-          text: prettyGraphLabel(cell.label),
+          text: _name(cell.label),
           style: TextStyle(
             color: colorScheme.onSurface.withValues(alpha: 0.55),
             fontSize: fontSize / scale,
@@ -706,7 +718,7 @@ class _VoronoiPainter extends CustomPainter {
             CustomPainterSemantics(
               rect: cell.bbox,
               properties: SemanticsProperties(
-                label: '${prettyGraphLabel(cell.label)} cluster',
+                label: '${_name(cell.label)} cluster',
                 textDirection: TextDirection.ltr,
                 header: true,
               ),
@@ -720,7 +732,7 @@ class _VoronoiPainter extends CustomPainter {
       }
       final hasChildren = cell.children.isNotEmpty;
       final label = hasChildren
-          ? '${prettyGraphLabel(cell.label)}, ${cell.count} notes'
+          ? '${_name(cell.label)}, ${cell.count} notes'
           : cell.label;
       result.add(
         CustomPainterSemantics(
@@ -743,7 +755,9 @@ class _VoronoiPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _VoronoiPainter oldDelegate) =>
-      oldDelegate.cells != cells || oldDelegate.colorScheme != colorScheme;
+      oldDelegate.cells != cells ||
+      oldDelegate.colorScheme != colorScheme ||
+      oldDelegate.clusterNames != clusterNames;
 
   @override
   bool shouldRebuildSemantics(covariant _VoronoiPainter oldDelegate) =>

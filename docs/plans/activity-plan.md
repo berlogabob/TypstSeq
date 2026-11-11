@@ -785,7 +785,7 @@ Rules for Ornith steps: one function or one test per step, time box 15 min (PI_T
 - [x] W31.4a workspace_controller: clusterNames field + getter + reset (Ornith run A)
 - [x] W31.4b workspace_controller: reloadClusterSnapshot also reads _system/clusters/names.json (run A)
 - [x] W31.4c workspace_controller: renameCluster(label, name) writes names.json (run A). Gate: flutter analyze file — run A killed at reboot left 1 analyze error (Vault? arg) and wrote names.json without the schema wrapper the reader needs (rename lost on restart); Claude fixed both, round-trip test test/cluster_names_test.dart
-- [ ] W31.4d VoronoiView: clusterNames param + _name(label) helper used at the 5 label spots. Gate: voronoi_view_test
+- [x] W31.4d VoronoiView: clusterNames param + _name(label) helper used at the 5 label spots. Gate: voronoi_view_test — Ornith ~4 min, all 5 spots right, 1 stray `}` broke the compile; Claude removed it; 6/6 tests
 - [ ] W31.4e test: clusterNames {'tech-software': 'Tech & AI'} shows "Tech & AI"
 - [ ] W31.4f VoronoiView panel: Rename button (top-level cluster only) + dialog -> onRenameCluster
 - [ ] W31.4g test: dialog Save calls onRenameCluster with label + text
