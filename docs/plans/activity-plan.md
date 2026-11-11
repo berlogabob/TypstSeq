@@ -829,7 +829,7 @@ Phase B, data loss
 - [x] W32.B11 (Ornith) `tool/enrich_worker.py:417, 513`: reuse the tmp+replace already at line 409 for the state writes. Gate: existing enrich worker test — Claude, `_write_json_atomic` helper for both state writes
 
 Phase C, hangs and crashes
-- [ ] W32.C1a (Ornith, new file) `test/w32/github_client_timeout_test.dart`: stalled local server -> `TimeoutException`. Gate: fails
+- [x] W32.C1a (Ornith, new file) `test/w32/github_client_timeout_test.dart`: stalled local server -> `TimeoutException`. Gate: fails — Ornith, ~3 min, fixed by Sonnet: stray imports; red before fix (compile: no timeout setter)
 - [ ] W32.C1b (Ornith) `lib/github/github_client.dart` + `lib/github/github_auth.dart:32` (second run): `connectionTimeout` + `.timeout` on `close()` and body. Gate: C1a + `test/github/` pass
 - [ ] W32.C2a (Ornith, new file) `test/w32/login_flow_timeout_test.dart`: hanging poll endpoint -> `TimeoutException`. Gate: fails
 - [ ] W32.C2b (Ornith) `lib/nextcloud_sync/login_flow.dart`: `connectionTimeout` + 20 s timeout per poll request. Gate: C2a + `test/login_flow_test.dart`
