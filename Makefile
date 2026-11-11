@@ -27,6 +27,7 @@ setup-native:
 test-core:
 	@cd packages/tylog_core && dart test
 	@cargo test --manifest-path packages/tylog_import_core/Cargo.toml
+	@cargo test --manifest-path packages/typst_flutter/rust/Cargo.toml --lib
 
 test-typst:
 	@typst compile --root typst/tylog typst/tylog/examples/basic.typ /tmp/tylog-example.pdf
@@ -131,7 +132,7 @@ release:
 	if git rev-parse "$$TAG" >/dev/null 2>&1 || git ls-remote --exit-code --tags origin "$$TAG" >/dev/null 2>&1; then \
 		echo "Tag $$TAG already exists. Run again to bump."; exit 1; \
 	fi; \
-	git add -A; \
+	git add pubspec.yaml CHANGELOG.md; \
 	git commit -m "Release $$NEW_VERSION" || echo "No changes to commit"; \
 	git tag -a "$$TAG" -m "Release $$NEW_VERSION"; \
 	git push origin HEAD:$(BRANCH); \

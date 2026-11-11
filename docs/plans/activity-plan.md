@@ -854,7 +854,7 @@ Phase D, Rust and native
 - [ ] W32.D6 (Claude) Kotlin compile: `./gradlew :app:assembleProfile -PtylogProfileSuffix=.profiletest` (no install)
 
 Phase E, CI and chores (Claude, one commit each)
-- [ ] W32.E1 Makefile: `git add -A` -> `git add pubspec.yaml CHANGELOG.md`; `test-core` also runs the `typst_flutter` cargo tests; `ci.yml` same
+- [x] W32.E1 Makefile: `git add -A` -> `git add pubspec.yaml CHANGELOG.md`; `test-core` also runs the `typst_flutter` cargo tests; `ci.yml` same — Sonnet, 3 min; Makefile git add limited to pubspec.yaml CHANGELOG.md, test-core runs typst_flutter cargo test --lib (ci.yml calls make test-core, so CI gets it; cache path + key extended); not run (heavy)
 - [ ] W32.E2 `ci.yml`: Python tool tests via `uv run --with pytest pytest tool -q` (after they pass locally)
 - [ ] W32.E3 `release.yml`: fail fast on empty signing secrets
 - [ ] W32.E4 `flutter drive` in `Makefile:109` and `scripts/p21_android.sh:15`: refuse unless the package is `.profiletest` (AGENTS.md forbids it otherwise)
