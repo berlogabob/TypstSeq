@@ -27,6 +27,7 @@ class VoronoiView extends StatefulWidget {
     this.initialSelectedPath,
     this.onSelectionChanged,
     this.clusterNames = const {},
+    this.onRenameCluster,
   });
 
   final VaultIndex index;
@@ -40,6 +41,10 @@ class VoronoiView extends StatefulWidget {
 
   /// cluster label -> user-chosen display name.
   final Map<String, String> clusterNames;
+
+  /// Called to persist a cluster rename (new label, new name). Null when
+  /// renaming is disabled.
+  final Future<void> Function(String label, String name)? onRenameCluster;
 
   /// Cache key: cells are retessellated only when this changes (or the
   /// viewport size does).
@@ -362,6 +367,37 @@ class _VoronoiViewState extends State<VoronoiView>
   String _name(String label) =>
       widget.clusterNames[label] ?? prettyGraphLabel(label);
 
+  /// Prompts for a new display name for a cluster and persists it.
+  Future<void> _renameCluster(String label) async {
+    final controller = TextEditingController(text: _name(label));
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rename cluster'),
+        content: TextField(
+          key: const Key('voronoi-rename-field'),
+          controller: controller,
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const Key('voronoi-rename-save'),
+            onPressed: () => Navigator.of(context).pop(controller.text),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (result != null) {
+      await widget.onRenameCluster?.call(label, result);
+    }
+  }
+
   void _select(String? path) {
     if (_selectedPath == path) return;
     setState(() => _selectedPath = path);
@@ -463,7 +499,7 @@ class _VoronoiViewState extends State<VoronoiView>
                       leading: const Icon(Icons.description_outlined),
                       title: Text(
                         widget.index.notesByPath[selected.id]?.title ??
-                            selected.label,
+                            _name(selected.label),
                         maxLines: 1,
                       ),
                       subtitle: Text(
@@ -473,11 +509,27 @@ class _VoronoiViewState extends State<VoronoiView>
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      trailing: FilledButton.tonalIcon(
-                        key: const Key('voronoi-open'),
-                        onPressed: () => widget.onOpenPath(selected.id),
-                        icon: const Icon(Icons.open_in_new),
-                        label: const Text('Open'),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (widget.onRenameCluster != null &&
+                              selected.parent < 0 &&
+                              !widget.index.notesByPath.containsKey(
+                                selected.id,
+                              ))
+                            IconButton(
+                              key: const Key('voronoi-rename'),
+                              tooltip: 'Rename cluster',
+                              icon: const Icon(Icons.edit_outlined),
+                              onPressed: () => _renameCluster(selected.label),
+                            ),
+                          FilledButton.tonalIcon(
+                            key: const Key('voronoi-open'),
+                            onPressed: () => widget.onOpenPath(selected.id),
+                            icon: const Icon(Icons.open_in_new),
+                            label: const Text('Open'),
+                          ),
+                        ],
                       ),
                     ),
                   ),
