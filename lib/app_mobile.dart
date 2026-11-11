@@ -34,6 +34,7 @@ import 'bibliography.dart';
 import 'controlled_editor.dart';
 import 'editor_autocomplete.dart' show MentionQueryCache;
 import 'entity_kinds.dart';
+import 'enrich_ledger_retry.dart';
 import 'metadata_lines.dart';
 import 'graph.dart';
 import 'knowledge_screen.dart';
@@ -792,6 +793,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _enrichBusy = false;
   final _enrichShown = <(Vault, String, String, String)>{};
   Future<void> _enrichLedgerWrite = Future.value();
+  final _enrichRetry = EnrichLedgerRetry();
   DateTime? _articleRelinkAt;
 
   // setState is @protected; this shim lets the flow extensions in

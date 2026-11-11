@@ -894,7 +894,7 @@ Phase A, article links (user-visible)
 Phase B, silent failures
 - [x] W33.B1 (terra) show `VaultRegistry.loadWarning` in the vault picker / startup (snackbar or banner); widget test — gpt-6.1-terra + driver, 50 min, showLoadWarning helper (snack.dart) called after VaultRegistry.load; test is helper-level (full HomeScreen _open hangs in flutter test)
 - [x] W33.B2 (luna) 2 more swallowed catches narrowed or logged (metric 35 to 33); pick sites where an IO error is hidden — driver, 0 min, VaultRegistry.forget: 2 silent catches now log to stderr; metric 35->33 (done by driver, small)
-- [ ] W33.B3 (terra) `lib/app_mobile/enrich_flow.dart`: failed feedback append keeps the events and retries on the next append; test
+- [x] W33.B3 (terra) `lib/app_mobile/enrich_flow.dart`: failed feedback append keeps the events and retries on the next append; test — gpt-6.1-terra + driver, 2 min, EnrichLedgerRetry keeps unwritten events per ledger (cap 500); retried on next append
 - [ ] W33.B4 (luna) missing tests from Wave 32: B8 (temp file removed on failed conflict download), C4 (typst process timeout), G1 (asset reload skipped when paths unchanged), one file each under `test/w32/`
 
 Phase C, safety

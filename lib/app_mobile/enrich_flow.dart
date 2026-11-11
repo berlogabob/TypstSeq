@@ -470,13 +470,14 @@ extension _EnrichFlow on _HomeScreenState {
     return _enrichLedgerWrite = _enrichLedgerWrite.then((_) async {
       try {
         final ledger = '$directory/$device.jsonl';
-        await v.storage.createDirectory(directory);
-        for (final event in events) {
+        final error = await _enrichRetry.append(ledger, events, (event) async {
+          await v.storage.createDirectory(directory);
           await v.storage.appendBytes(
             ledger,
             utf8.encode('${jsonEncode(event)}\n'),
           );
-        }
+        });
+        if (error != null) throw error;
       } catch (error) {
         debugPrint('Could not save enrichment feedback: $error');
         if (mounted && vault == v) {
