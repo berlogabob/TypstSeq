@@ -102,12 +102,13 @@ verify-android:
 	fi
 	@cd android && JAVA_HOME="$(GRADLE_JAVA_HOME)" ./gradlew :app:connectedDebugAndroidTest
 
-# The real-vault SAF measurement. Needs a profile build (release-signed, so it
-# installs over the release app and keeps the persisted SAF grant) and a device
-# whose active vault is android-tree; the test fails loudly otherwise.
+# The real-vault SAF measurement. Needs a profile build and a device whose
+# active vault is android-tree; the test fails loudly otherwise. Always the
+# isolated org.tylog.tylog.profiletest package (AGENTS.md): flutter drive
+# uninstalls the app it runs, so it must never target org.tylog.tylog.
 verify-real-vault:
 	@if [ -z "$(ANDROID_DEVICE)" ]; then echo "No Android device attached (adb devices)."; exit 1; fi
-	@flutter drive --profile --driver=test_driver/integration_test.dart \
+	@flutter drive --profile -PtylogProfileSuffix=.profiletest --driver=test_driver/integration_test.dart \
 		--target=integration_test/vault_worker_real_vault_test.dart -d $(ANDROID_DEVICE)
 
 build-android:
