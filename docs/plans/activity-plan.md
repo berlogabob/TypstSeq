@@ -841,7 +841,7 @@ Phase C, hangs and crashes
 - [x] W32.C7 (Ornith) `lib/github/mount_fetcher.dart` `_extract`: async `create`/`writeAsBytes`. Gate: grep `Sync(` = 0 + `test/github/` pass — SKIPPED: _extract only runs inside Isolate.run (mount_fetcher.dart:97), so its sync file IO never blocks the UI isolate; no change
 - [x] W32.C8a (Ornith, new file) `test/w32/api_keys_chmod_test.dart`: failing chmod runner -> nothing written. Gate: fails — Ornith, ~4 min, fixed by Sonnet: unused import, const ProcessResult; red before fix by compile (no runProcess param)
 - [x] W32.C8b (Ornith) `lib/ai/api_keys.dart`: check exit code, skip chmod on Windows. Gate: C8a + `test/api_keys_mirror_test.dart` — Sonnet, 2 min, edited directly; injectable runProcess, exit code checked, temp deleted, chmod skipped on Windows; analyze clean, C8a + api_keys_mirror_test green
-- [ ] W32.C9a (Ornith, new file) `packages/tylog_core/test/vault_settings_io_test.dart`: throwing storage -> exception, not `incompatibleVault`. Gate: fails
+- [x] W32.C9a (Ornith, new file) `packages/tylog_core/test/vault_settings_io_test.dart`: throwing storage -> exception, not `incompatibleVault`. Gate: fails — Ornith, ~4 min, first try (stray .tmp removed); red before fix (IO error swallowed)
 - [ ] W32.C9b (Ornith) `packages/tylog_core/lib/src/vault.dart:88-97`: catch `FormatException` only. Gate: `cd packages/tylog_core && dart test`
 - [ ] W32.C10 (Claude) full gates, then W31.7 release 0.23.1
 
