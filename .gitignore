@@ -107,3 +107,4 @@ android/app/*.jks
 # Generated reports and delegate logs
 /android/build/
 /tool/audio_plan/logs/
+.codex-runs/

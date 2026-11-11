@@ -17,5 +17,13 @@ if [ -n "$pid" ]; then
 else
   echo "Ornith: idle"
 fi
+cpid=$(pgrep -f "codex exec" | head -1)
+if [ -n "$cpid" ]; then
+  clog=$(ls -t .codex-runs/*.log 2>/dev/null | head -1)
+  cidle=$(( $(date +%s) - $(stat -f %m "${clog:-.}") ))
+  echo "Codex: running $(ps -o etime= -p "$cpid" | tr -d ' '), log idle ${cidle}s$([ "$cidle" -gt 300 ] && echo '  STALLED?')"
+else
+  echo "Codex: idle"
+fi
 git status --short -- tool packages lib test android ios | head -6
 git log --oneline -2 | cut -c1-80

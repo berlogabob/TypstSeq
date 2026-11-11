@@ -881,3 +881,44 @@ Phase Z, close (Claude)
 
 Deferred (not in this wave):
 refresh of stale `PLAN.md` / `CONTEXT.md` open-work lines; enrich feedback retry queue (B7 only surfaces the failure); `loadWarning` from a corrupt vaults.json is not shown in the UI (B5); tests for the conflict temp-file cleanup (B8), the typst timeout (C4) and the asset-reload decision (G1); 2 more swallowed catches to reach the target; mega-file splits (`app_mobile.dart` 7141 lines, `_HomeScreenState.build` about 1500; own wave, codex, split recipe); orphaned `macos/TypstQuickLook` plus the dead `catch_unwind` under `panic = "abort"` (keep or delete is your call); updater digest from the same release as the zip; `SafBridge.read` whole-file read (needs a size measurement first); `VaultSyncWorker` on `Dispatchers.Main`; untracking `graphify-out/GRAPH_REPORT.md`; Gradle version catalog; CI action SHA pinning and concurrency; `set -euo pipefail` in bench scripts; absolute paths in launchd plists; Windows launcher; small duplicated helpers; test files for the import, audio and module flows.
+
+## Wave 33 (2026-11-11): article link fix + deferred audit list
+Driver: Sonnet agent; executor codex (gpt-6-luna small, gpt-6.1-terra complex), fallback Ornith. No release, no push, no device install. Codex logs in .codex-runs/. F1 repeats as F2, F3... one part file per step.
+
+Phase A, article links (user-visible)
+- [ ] W33.A1 (luna) `packages/tylog_core/lib/src/article_links.dart` `linkArticle`: empty title falls back to the URL host; test in `packages/tylog_core/test/`
+- [ ] W33.A2 (terra) `lib/app_mobile/article_links_flow.dart`: when `_refreshArticleJobs` sees a job turn `done`, call `_relinkArticles(v, only: job.origin)` for that origin on every platform, today included (write already goes through `mutateNote`); the periodic desktop relink stays as is. Test: job file flips to done, bare link in today's note becomes `#tylog.ref-note(...)`, a concurrent edit to the note survives
+- [ ] W33.A3 (terra) `~/Nextcloud/scripts/article-pipeline` (separate repo, `uv`): YouTube title empty; find the title source, fall back to oEmbed/page `<title>`, never write `title: ""`. Gate: its pytest plus a fixture for a `youtube.com/watch` URL. Committed in that repo
+- [ ] W33.A4 (main session, asks first) the 2 existing untitled articles in the real vault: retitle through the guarded write path
+
+Phase B, silent failures
+- [ ] W33.B1 (terra) show `VaultRegistry.loadWarning` in the vault picker / startup (snackbar or banner); widget test
+- [ ] W33.B2 (luna) 2 more swallowed catches narrowed or logged (metric 35 to 33); pick sites where an IO error is hidden
+- [ ] W33.B3 (terra) `lib/app_mobile/enrich_flow.dart`: failed feedback append keeps the events and retries on the next append; test
+- [ ] W33.B4 (luna) missing tests from Wave 32: B8 (temp file removed on failed conflict download), C4 (typst process timeout), G1 (asset reload skipped when paths unchanged), one file each under `test/w32/`
+
+Phase C, safety
+- [ ] W33.C1 (terra) updater: verify the downloaded zip against the digest published in the same release before install; test with a wrong digest
+- [ ] W33.C2 (luna, then terra) `SafBridge.read`: log the largest file sizes read on the P30 `.profiletest` build first (main session, device); then a size cap with a clear error
+- [ ] W33.C3 (luna) `VaultSyncWorker`: move off `Dispatchers.Main`; gate = Kotlin compile with Android Studio `jbr`
+
+Phase D, CI and tooling (luna, one commit each)
+- [ ] W33.D1 pin GitHub Actions to commit SHAs in `ci.yml` and `release.yml`, add `concurrency`
+- [ ] W33.D2 `set -euo pipefail` in the bench scripts
+- [ ] W33.D3 launchd plists: no absolute user paths (template + install script)
+- [ ] W33.D4 untrack `graphify-out/GRAPH_REPORT.md`, ignore it
+- [ ] W33.D5 Gradle version catalog; gate = `./gradlew :app:assembleProfile -PtylogProfileSuffix=.profiletest` (main session, alone)
+
+Phase E, cleanup
+- [ ] W33.E1 (luna) remove the dead `catch_unwind` under `panic = "abort"`; QuickLook target stays (deleting it is a product decision, left listed)
+- [ ] W33.E2 (luna) merge the small duplicated helpers named in the audit, one pair per commit
+- [ ] W33.E3 (luna) `PLAN.md` / `CONTEXT.md` open-work lines refreshed from the activity plan
+- [ ] W33.E4 (luna) Windows launcher item from the deferred list
+
+Phase F, mega-file split (terra, last, one part per step)
+- [ ] W33.F1..Fn `lib/app_mobile.dart` (about 7100 lines): move one cohesive group per step into a `part` file under `lib/app_mobile/` using the recipe in memory `tylog-megafile-split-recipe` (part files + private extensions, public API unchanged, no behaviour change). Gate per step: `flutter analyze` 0 issues + the affected test files. Stop when the file is under 4000 lines or a step fails twice
+
+Phase Z, close (main session)
+- [ ] W33.Z1 `flutter analyze`, full `flutter test`, `make test-core` (each alone)
+- [ ] W33.Z2 `tool/w32_metrics.sh`; numbers into the tracker
+- [ ] W33.Z3 `graphify update .`; commit; memory `wave31-handoff` updated
