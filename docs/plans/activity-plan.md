@@ -923,6 +923,7 @@ Phase F, mega-file split (terra, last, one part per step)
 - [x] W33.F5 Magic actions, pickers, entity creation -> lib/app_mobile/magic_flow.dart — driver (mechanical move by script), 0 min, app_mobile.dart 5843 -> 5175 lines; analyze 0 issues + targeted tests green
 - [x] W33.F6 PDF/graph share, citations, attachments, report, Magic menu -> lib/app_mobile/share_flow.dart — driver (mechanical move by script), 0 min, app_mobile.dart 5157 -> 4772 lines; analyze 0 issues + targeted tests green
 - [x] W33.F7 protected blocks, link creation, note/day navigation, page creation, metadata -> lib/app_mobile/navigation_flow.dart — driver (mechanical move by script), 1 min, app_mobile.dart 4772 -> 4025 lines; analyze 0 issues + targeted tests green
+- [x] W33.F8 reading prefs/progress, recents, article delete/rate -> lib/app_mobile/reading_flow.dart — driver (mechanical move by script), 0 min, app_mobile.dart 4772 -> 3823 lines; analyze 0 issues + targeted tests green
 
 Phase Z, close (main session)
 - [ ] W33.Z1 `flutter analyze`, full `flutter test`, `make test-core` (each alone)
