@@ -795,8 +795,8 @@ Rules for Ornith steps: one function or one test per step, time box 15 min (PI_T
 - [x] W31.5c flutter test, full (Claude) — 2159 pass, 10 skipped, 2 min 3 s
 - [x] W31.5d graphify update . ; commit
 - [x] W31.6a release build on Mac against real vault (Claude, /verify) — W31.6a-c batched with the W32 phase B+C visual check (one build, one pass over the UI), before W32.C10 — release build launched, window shows real vault (Today view, index 10110 notes) 2026-11-11
-- [ ] W31.6b screenshot Voronoi: names on regions, no journal cluster, no ": " labels — NOT VERIFIED: after f25c0413 the map renders (0 Null check/EXCEPTION in log) but a top-level region is named "Journal" (large, with Russian-tag subregions); no region named daily/inbox/year or ": " label seen
-- [ ] W31.6c rename one cluster in the app; names.json written; name survives restart — NOT VERIFIED: pencil panel only shows for a selected childless root cell (voronoi_view.dart:489-524) and tapping any root cluster zooms in instead, so no rename control was reachable; names.json absent
+- [x] W31.6b screenshot Voronoi: names on regions, no journal cluster, no ": " labels — 2026-11-11 release build: 52-cluster map, no journal/daily/inbox/year region, no ": " label in overview or zoomed Music concert (0 Null check/EXCEPTION)
+- [x] W31.6c rename one cluster in the app; names.json written; name survives restart — 2026-11-11: note-selected pencil renamed "Music concert" to "W31 rename test"; names.json {"schema":1,"names":{"music-concert":...}}; survived restart; cleared back to "Music concert", names.json names={}
 - [ ] W31.7a version bump 0.23.1, CHANGELOG; commit
 - [ ] W31.7b tag + push; CI green
 - [ ] W31.7c Mac install from release zip (sha256)
