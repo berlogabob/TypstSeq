@@ -42,5 +42,7 @@ jobs:
       - run: TYLOG_SKIP_SOURCE_BUILD=1 ./tool/setup_typst_native.sh
       - run: make test-typst
       - run: make test-core
+      - uses: astral-sh/setup-uv@v5
+      - run: uv run --with pytest pytest tool -q
       - run: flutter analyze
       - run: flutter test
