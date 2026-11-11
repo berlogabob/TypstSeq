@@ -903,7 +903,7 @@ Phase C, safety
 - [ ] W33.C3 (luna) `VaultSyncWorker`: move off `Dispatchers.Main`; gate = Kotlin compile with Android Studio `jbr` — BLOCKED: doWork only suspends on Main (delay, done.await); the blocking parts are `ensureInitializationComplete` and the `FlutterEngine` constructor/`executeDartEntrypoint`, which Flutter requires on the platform (main) thread, so moving off Dispatchers.Main would break the engine; no safe change
 
 Phase D, CI and tooling (luna, one commit each)
-- [ ] W33.D1 pin GitHub Actions to commit SHAs in `ci.yml` and `release.yml`, add `concurrency`
+- [x] W33.D1 pin GitHub Actions to commit SHAs in `ci.yml` and `release.yml`, add `concurrency` — driver, 0 min, 10 actions pinned to SHAs resolved via gh api (tag comment kept); concurrency added (ci cancels superseded, release does not); done by driver, mechanical
 - [ ] W33.D2 `set -euo pipefail` in the bench scripts
 - [ ] W33.D3 launchd plists: no absolute user paths (template + install script)
 - [ ] W33.D4 untrack `graphify-out/GRAPH_REPORT.md`, ignore it
