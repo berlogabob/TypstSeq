@@ -94,7 +94,7 @@ Future<VaultStorageInspection> inspectVaultStorage(VaultStorage storage) async {
         entryCount: entries.length,
       );
     }
-  } catch (_) {}
+  } on FormatException {}
   return VaultStorageInspection(
     VaultStorageKind.incompatibleVault,
     entryCount: entries.length,
