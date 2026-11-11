@@ -886,7 +886,7 @@ refresh of stale `PLAN.md` / `CONTEXT.md` open-work lines; enrich feedback retry
 Driver: Sonnet agent; executor codex (gpt-6-luna small, gpt-6.1-terra complex), fallback Ornith. No release, no push, no device install. Codex logs in .codex-runs/. F1 repeats as F2, F3... one part file per step.
 
 Phase A, article links (user-visible)
-- [ ] W33.A1 (luna) `packages/tylog_core/lib/src/article_links.dart` `linkArticle`: empty title falls back to the URL host; test in `packages/tylog_core/test/`
+- [x] W33.A1 (luna) `packages/tylog_core/lib/src/article_links.dart` `linkArticle`: empty title falls back to the URL host; test in `packages/tylog_core/test/` — gpt-6-luna, 0 min, blank title falls back to URL host
 - [ ] W33.A2 (terra) `lib/app_mobile/article_links_flow.dart`: when `_refreshArticleJobs` sees a job turn `done`, call `_relinkArticles(v, only: job.origin)` for that origin on every platform, today included (write already goes through `mutateNote`); the periodic desktop relink stays as is. Test: job file flips to done, bare link in today's note becomes `#tylog.ref-note(...)`, a concurrent edit to the note survives
 - [ ] W33.A3 (terra) `~/Nextcloud/scripts/article-pipeline` (separate repo, `uv`): YouTube title empty; find the title source, fall back to oEmbed/page `<title>`, never write `title: ""`. Gate: its pytest plus a fixture for a `youtube.com/watch` URL. Committed in that repo
 - [ ] W33.A4 (main session, asks first) the 2 existing untitled articles in the real vault: retitle through the guarded write path

@@ -42,6 +42,22 @@ void main() {
     expect(linkArticle(day, 'https://nowhere.example/', article), day);
   });
 
+  test('uses the URL host when the article title is blank', () {
+    const url = 'https://www.youtube.com/watch?v=abc';
+    const source = '+ $url\n';
+    final blankTitle = NoteRef(
+      id: 'youtube',
+      path: 'articles/youtube.typ',
+      title: '  ',
+      outgoingLinks: const [],
+    );
+
+    expect(
+      linkArticle(source, url, blankTitle),
+      '+ #tylog.ref-note("youtube")[youtube.com]\n',
+    );
+  });
+
   test('the result compiles', () {
     if (Process.runSync('which', ['typst']).exitCode != 0) {
       markTestSkipped('typst not on PATH');

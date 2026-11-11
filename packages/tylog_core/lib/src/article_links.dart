@@ -49,9 +49,14 @@ List<BareLink> bareLinks(String source) {
 String linkArticle(String source, String url, NoteRef article) {
   final hits = bareLinks(source).where((link) => link.url == url).toList();
   if (hits.isEmpty) return source;
+  var title = article.title;
+  if (title.trim().isEmpty) {
+    final host = Uri.tryParse(url)?.host.replaceFirst(RegExp(r'^www\.'), '');
+    title = host == null || host.isEmpty ? url : host;
+  }
   final replacement =
       '#tylog.ref-note(${typstString(article.id)})'
-      '[${escapeMarkup(article.title)}]';
+      '[${escapeMarkup(title)}]';
   var out = source;
   for (final link in hits.reversed) {
     out = out.replaceRange(link.start, link.end, replacement);
