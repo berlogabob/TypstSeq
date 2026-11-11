@@ -17,14 +17,17 @@ class LoginFlowStart {
 }
 
 Future<LoginFlowStart> startLoginFlow(Uri server, {HttpClient? client}) async {
-  final HttpClient httpClient = client ?? HttpClient();
+  final HttpClient httpClient =
+      client ?? (HttpClient()..connectionTimeout = const Duration(seconds: 20));
   try {
     final Uri uri = Uri.parse('${server.toString()}/index.php/login/v2');
     final HttpClientRequest request = await httpClient.postUrl(uri);
     request.headers.set('User-Agent', 'TyLog');
     request.headers.set('Content-Type', 'application/json');
 
-    final HttpClientResponse response = await request.close();
+    final HttpClientResponse response = await request.close().timeout(
+      const Duration(seconds: 20),
+    );
 
     if (response.statusCode != 200) {
       await response.drain<void>();
@@ -61,19 +64,23 @@ Future<LoginFlowResult> pollLoginFlow(
   HttpClient? client,
   Duration interval = const Duration(seconds: 2),
   Duration timeout = const Duration(minutes: 5),
+  Duration requestTimeout = const Duration(seconds: 20),
 }) async {
-  final HttpClient httpClient = client ?? HttpClient();
+  final HttpClient httpClient =
+      client ?? (HttpClient()..connectionTimeout = requestTimeout);
   final Stopwatch stopwatch = Stopwatch()..start();
 
   try {
     while (stopwatch.elapsed < timeout) {
-      final HttpClientRequest request = await httpClient.postUrl(
-        start.pollEndpoint,
-      );
+      final HttpClientRequest request = await httpClient
+          .postUrl(start.pollEndpoint)
+          .timeout(requestTimeout);
       request.headers.set('Content-Type', 'application/x-www-form-urlencoded');
       request.write('token=${Uri.encodeComponent(start.token)}');
 
-      final HttpClientResponse response = await request.close();
+      final HttpClientResponse response = await request.close().timeout(
+        requestTimeout,
+      );
 
       if (response.statusCode == 404) {
         // Not yet approved, wait and retry
@@ -84,7 +91,8 @@ Future<LoginFlowResult> pollLoginFlow(
         // Success
         final String responseString = await response
             .transform(utf8.decoder)
-            .join('');
+            .join('')
+            .timeout(requestTimeout);
         final Map<String, dynamic> jsonResponse = json.decode(responseString);
 
         if (!jsonResponse.containsKey('server') ||

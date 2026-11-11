@@ -832,7 +832,7 @@ Phase C, hangs and crashes
 - [x] W32.C1a (Ornith, new file) `test/w32/github_client_timeout_test.dart`: stalled local server -> `TimeoutException`. Gate: fails — Ornith, ~3 min, fixed by Sonnet: stray imports; red before fix (compile: no timeout setter)
 - [x] W32.C1b (Ornith) `lib/github/github_client.dart` + `lib/github/github_auth.dart:32` (second run): `connectionTimeout` + `.timeout` on `close()` and body. Gate: C1a + `test/github/` pass — Sonnet, 3 min, edited directly (multi-site, cheaper than a prompt); analyze clean, C1a + test/github green; github_auth timeouts not separately tested
 - [x] W32.C2a (Ornith, new file) `test/w32/login_flow_timeout_test.dart`: hanging poll endpoint -> `TimeoutException`. Gate: fails — Ornith, ~3 min, first try; red before fix by compile (no requestTimeout param)
-- [ ] W32.C2b (Ornith) `lib/nextcloud_sync/login_flow.dart`: `connectionTimeout` + 20 s timeout per poll request. Gate: C2a + `test/login_flow_test.dart`
+- [x] W32.C2b (Ornith) `lib/nextcloud_sync/login_flow.dart`: `connectionTimeout` + 20 s timeout per poll request. Gate: C2a + `test/login_flow_test.dart` — Sonnet, 3 min, edited directly; analyze clean, C2a + login_flow_test green
 - [ ] W32.C3a (Ornith, new file) `test/w32/article_image_fetch_test.dart`: never-ending and oversize responses fail. Gate: fails
 - [ ] W32.C3b (Ornith) `lib/markdown_article_import.dart` `_fetchBytes`: timeouts + 20 MB cap. Gate: C3a + `test/markdown_article_import_test.dart`
 - [ ] W32.C4 (Ornith) `lib/workspace_note_merge.dart:308-315`: 30 s timeout on the `typst` process, kill on timeout. Gate: `test/note_merge_test.dart` + grep
