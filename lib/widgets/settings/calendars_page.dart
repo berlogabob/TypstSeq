@@ -78,6 +78,7 @@ class _CalendarsPageState extends State<CalendarsPage> {
         context: context,
         builder: (_) => const _IadeCalendarDialog(),
       );
+      if (!mounted) return;
       if (choices != null) {
         setState(() => feeds.addAll(choices));
       }
@@ -87,6 +88,7 @@ class _CalendarsPageState extends State<CalendarsPage> {
       context: context,
       builder: (_) => _CalendarEditor(preset: kind),
     );
+    if (!mounted) return;
     if (feed != null) setState(() => feeds.add(feed));
   }
 
@@ -95,6 +97,7 @@ class _CalendarsPageState extends State<CalendarsPage> {
       context: context,
       builder: (_) => _CalendarEditor(feed: feeds[index]),
     );
+    if (!mounted) return;
     if (feed != null) setState(() => feeds[index] = feed);
   }
 
