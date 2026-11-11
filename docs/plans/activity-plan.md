@@ -872,7 +872,7 @@ Phase F, dead code and missing tests (Ornith, one file each)
 
 Phase G, editor performance (codex, measured)
 - [x] W32.G1 `lib/app_mobile.dart:1259-1275` `_refreshNoteAssets`: skip when the referenced-path set is unchanged; test counts `readBytes` over 10 keystrokes: 0 after the first — Sonnet, 10 min; _refreshNoteAssets returns the existing load when the referenced-asset key, vault and loaded files are unchanged (export passes force: true); helpers referencedAssetPaths/referencedAssetKey tested in test/w32/note_assets_key_test.dart (3 tests); the spec'd readBytes-count-over-10-keystrokes test NOT written (needs the full app harness); widget_test 191 + image tests green, analyze clean
-- [ ] W32.G2 `lib/app_mobile.dart:987-1023` `_workspaceChanged`: cheap comparison first; timing bound on a 200k-char note
+- [ ] W32.G2 `lib/app_mobile.dart:987-1023` `_workspaceChanged`: cheap comparison first; timing bound on a 200k-char note — LEFT OPEN (Sonnet): the expensive per-character comparison runs only when workspace.source differs from the editor text (save/sync round-trip), not per keystroke; changing it needs a timing measurement on a 200k-char note first and risks the live-editor-state guard, so no edit
 
 Phase Z, close (Claude)
 - [ ] W32.Z1 `make test-core`, `flutter analyze`, full `flutter test`
