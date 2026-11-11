@@ -8,7 +8,7 @@ p2p=packages/typst_flutter/rust/src/api/p2p_folder.rs
 
 echo "swallowed_catch        $(grep -rF 'catch (_) {}' lib packages/*/lib --include='*.dart' | n)   (target <= 33)"
 echo "http_no_timeout_files  $(grep -rl 'HttpClient()' lib --include='*.dart' | xargs grep -L connectionTimeout | n)   (target 0)"
-echo "typst_proc_timeout     $(grep -A10 "Process.run(" lib/workspace_note_merge.dart | grep -c '\.timeout')   (target >= 1)"
+echo "typst_proc_timeout     $(grep -A6 "Process.start(" lib/workspace_note_merge.dart | grep -c "timeout")   (target >= 1)"
 u=$(( $(grep -c 'requested_files.lock().unwrap()' $ts) \
     + $(grep -A2 'duration_since(' $ts | grep -c 'unwrap()') \
     + $(grep -A2 'join_next()' $p2p | grep -c 'unwrap()') ))
