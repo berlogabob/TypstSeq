@@ -906,7 +906,7 @@ Phase D, CI and tooling (luna, one commit each)
 - [x] W33.D1 pin GitHub Actions to commit SHAs in `ci.yml` and `release.yml`, add `concurrency` — driver, 0 min, 10 actions pinned to SHAs resolved via gh api (tag comment kept); concurrency added (ci cancels superseded, release does not); done by driver, mechanical
 - [x] W33.D2 `set -euo pipefail` in the bench scripts — driver, 0 min, set -uo pipefail in 6 bench scripts; -e deliberately omitted (loops record failures and continue)
 - [x] W33.D3 launchd plists: no absolute user paths (template + install script) — driver, 0 min, plists -> .plist.template with @HOME@/@REPO@ + tool/launchd/install.sh (renders only, does not load; real LaunchAgents untouched)
-- [ ] W33.D4 untrack `graphify-out/GRAPH_REPORT.md`, ignore it
+- [x] W33.D4 untrack `graphify-out/GRAPH_REPORT.md`, ignore it — driver, 0 min, git rm --cached + .gitignore; file stays on disk
 - [ ] W33.D5 Gradle version catalog; gate = `./gradlew :app:assembleProfile -PtylogProfileSuffix=.profiletest` (main session, alone) — left for main session
 
 Phase E, cleanup
