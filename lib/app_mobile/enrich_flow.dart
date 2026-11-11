@@ -477,7 +477,16 @@ extension _EnrichFlow on _HomeScreenState {
             utf8.encode('${jsonEncode(event)}\n'),
           );
         }
-      } catch (_) {}
+      } catch (error) {
+        debugPrint('Could not save enrichment feedback: $error');
+        if (mounted && vault == v) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Could not save enrichment feedback: $error'),
+            ),
+          );
+        }
+      }
     });
   }
 

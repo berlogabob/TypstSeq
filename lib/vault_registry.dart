@@ -177,10 +177,12 @@ class VaultRegistry {
     this.screenshotsTime = '03:00',
     this.screenshotsFolder,
     this.shelfPrefs = const {},
+    this.loadWarning,
     String? deviceId,
   }) : deviceId = deviceId ?? newDeviceId();
 
   final File file;
+  final String? loadWarning;
   final List<VaultEntry> entries;
   String activeId;
   bool onboardingComplete;
@@ -219,6 +221,23 @@ class VaultRegistry {
   static Future<VaultRegistry> load() async {
     final documents = await getApplicationDocumentsDirectory();
     final file = File('${documents.path}/vaults.json');
+    try {
+      return await _load(file, documents);
+    } catch (error) {
+      if (error is! FormatException && error is! TypeError) rethrow;
+      await file.rename('${file.path}.corrupt');
+      return VaultRegistry(
+        file,
+        [],
+        '',
+        onboardingComplete: false,
+        loadWarning:
+            'Could not read vaults.json; saved as vaults.json.corrupt: $error',
+      );
+    }
+  }
+
+  static Future<VaultRegistry> _load(File file, Directory documents) async {
     var readingFontScale = 1.0;
     var readingNightMode = false;
     var themeMode = 'system';

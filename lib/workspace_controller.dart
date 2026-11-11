@@ -297,6 +297,7 @@ class WorkspaceController extends ChangeNotifier {
   Map<String, dynamic> calendarSettings = {};
   Timer? _feedTimer;
   Future<void>? _feedFlight;
+  Future<void> _settingsWriteTail = Future<void>.value();
   final Map<String, Future<String>> _eventCreates = {};
   final TaskScheduler taskScheduler;
   final bool Function() isComposing;
@@ -1147,17 +1148,34 @@ class WorkspaceController extends ChangeNotifier {
     await _feedFlight;
     final opened = vault;
     if (opened == null) return;
-    final settings =
-        jsonDecode(await opened.storage.readText(Vault.settingsPath))
-            as Map<String, dynamic>;
-    final previous = settings['calendars'] as Map?;
     // The list syncs with the vault; downloaded bodies stay on this device.
-    await _writeSharedCalendars(opened, config['feeds'] as List? ?? const []);
-    settings['calendars'] = {
-      if (previous?['cache'] != null) 'cache': previous!['cache'],
-    };
-    await opened.storage.writeText(Vault.settingsPath, jsonEncode(settings));
+    await _writeSettings(opened, (settings) async {
+      final previous = settings['calendars'] as Map?;
+      await _writeSharedCalendars(opened, config['feeds'] as List? ?? const []);
+      settings['calendars'] = {
+        if (previous?['cache'] != null) 'cache': previous!['cache'],
+      };
+    });
     await refreshCalendarFeeds(force: true);
+  }
+
+  Future<void> _writeSettings(
+    Vault opened,
+    FutureOr<void> Function(Map<String, dynamic>) transform,
+  ) {
+    final generation = _vaultGeneration;
+    final operation = _settingsWriteTail.then((_) async {
+      if (!_owns(opened, generation)) return;
+      final settings =
+          jsonDecode(await opened.storage.readText(Vault.settingsPath))
+              as Map<String, dynamic>;
+      if (!_owns(opened, generation)) return;
+      await transform(settings);
+      if (!_owns(opened, generation)) return;
+      await opened.storage.writeText(Vault.settingsPath, jsonEncode(settings));
+    });
+    _settingsWriteTail = operation.then<void>((_) {}, onError: (_, _) {});
+    return operation;
   }
 
   Future<void> reloadKindRegistry() async {
@@ -1458,12 +1476,12 @@ class WorkspaceController extends ChangeNotifier {
       }
       if (!_owns(opened, generation)) return;
       config['cache'] = previous;
-      final latest =
-          jsonDecode(await opened.storage.readText(Vault.settingsPath))
-              as Map<String, dynamic>;
-      if (!_owns(opened, generation)) return;
-      latest['calendars'] = config;
-      await opened.storage.writeText(Vault.settingsPath, jsonEncode(latest));
+      await _writeSettings(opened, (settings) {
+        settings['calendars'] = {
+          ...?settings['calendars'] as Map?,
+          'cache': previous,
+        };
+      });
       if (!_owns(opened, generation)) return;
       feedEvents = events;
       calendarSettings = config;
@@ -3638,9 +3656,11 @@ class WorkspaceController extends ChangeNotifier {
       if (!await opened.storage.exists('_system/clusters/names.json')) {
         return const {};
       }
-      final json = jsonDecode(await opened.storage.readText(
-        '_system/clusters/names.json',
-      )) as Map;
+      final json =
+          jsonDecode(
+                await opened.storage.readText('_system/clusters/names.json'),
+              )
+              as Map;
       final raw = json['names'];
       if (json['schema'] == 1 && raw is Map) {
         return {

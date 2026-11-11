@@ -447,6 +447,44 @@ void main() {
     expect(await file.readAsString(), contains('"onboardingComplete":true'));
   });
 
+  for (final contents in [
+    'garbage',
+    '[]',
+    '{"vaults":{}}',
+    '{"readingNightMode":true,"vaults":[{"id":7}]}',
+  ]) {
+    test('corrupt registry is quarantined: $contents', () async {
+      final base = await Directory.systemTemp.createTemp('tylog_corrupt_');
+      addTearDown(() => deleteTempDir(base));
+      const pathProvider = MethodChannel('plugins.flutter.io/path_provider');
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            pathProvider,
+            (call) async => call.method == 'getApplicationDocumentsDirectory'
+                ? base.path
+                : null,
+          );
+      addTearDown(
+        () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(pathProvider, null),
+      );
+      final file = File('${base.path}/vaults.json');
+      final corrupt = File('${file.path}.corrupt');
+      await corrupt.writeAsString('older corrupt registry');
+      await file.writeAsString(contents);
+
+      final registry = await VaultRegistry.load();
+
+      expect(registry.entries, isEmpty);
+      expect(registry.loadWarning, isNotNull);
+      expect(registry.readingNightMode, isFalse);
+      expect(registry.readingFontScale, 1);
+      expect(await corrupt.exists(), isTrue);
+      expect(await corrupt.readAsString(), contents);
+      expect(await file.exists(), isFalse);
+    });
+  }
+
   test('reading preferences use legacy defaults and survive reload', () async {
     final base = await Directory.systemTemp.createTemp('tylog_reading_prefs_');
     addTearDown(() => deleteTempDir(base));
