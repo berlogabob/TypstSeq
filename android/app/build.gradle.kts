@@ -98,8 +98,8 @@ android {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
-    implementation("androidx.work:work-runtime-ktx:2.9.1")
-    implementation("androidx.annotation:annotation:1.8.2")
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.annotation)
     // SafBridge.writeAtomic is the one path that can lose a note, and nothing
     // in the Dart suite can exercise it: the "SAF" fake there is an empty
     // LocalVaultStorage subclass, so it uses POSIX rename and overwrites

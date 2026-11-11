@@ -924,8 +924,14 @@ class SafBridge(
         MediaScannerConnection.scanFile(context, arrayOf("$base/$relative"), null, null)
     }
 
+    // Vault files reach ~200 MB (audio); a fixed cap would break reads that work today,
+    // so only the out-of-memory case is turned into a clear error instead of a crash.
     private fun read(uri: Uri): ByteArray =
-        resolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Could not read document")
+        try {
+            resolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Could not read document")
+        } catch (e: OutOfMemoryError) {
+            error("File is too large to read into memory")
+        }
 
     private fun append(tree: Uri, path: String, bytes: ByteArray) {
         val safe = safePath(path)
