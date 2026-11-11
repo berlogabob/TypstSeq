@@ -920,6 +920,7 @@ Phase F, mega-file split (terra, last, one part per step)
 - [x] W33.F2 sync settings/dashboard/conflicts -> lib/app_mobile/sync_flow.dart — driver (mechanical move by script), 1 min, app_mobile.dart 7150 -> 6723 lines; analyze 0 issues + targeted tests green
 - [x] W33.F3 knowledge/problems screens and repairs -> lib/app_mobile/knowledge_flow.dart — driver (mechanical move by script), 0 min, app_mobile.dart 6723 -> 6320 lines; analyze 0 issues + targeted tests green
 - [x] W33.F4 settings sheet, Typst help, attachments/citations -> lib/app_mobile/settings_flow.dart — driver (mechanical move by script), 0 min, app_mobile.dart 6304 -> 5843 lines; analyze 0 issues + targeted tests green
+- [x] W33.F5 Magic actions, pickers, entity creation -> lib/app_mobile/magic_flow.dart — driver (mechanical move by script), 0 min, app_mobile.dart 5843 -> 5175 lines; analyze 0 issues + targeted tests green
 
 Phase Z, close (main session)
 - [ ] W33.Z1 `flutter analyze`, full `flutter test`, `make test-core` (each alone)
