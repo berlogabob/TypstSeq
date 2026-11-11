@@ -6,7 +6,6 @@
 //! and declare just these symbols in a bridging header.
 
 use std::ffi::{c_char, CStr, CString};
-use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr;
 use std::slice;
 
@@ -46,12 +45,9 @@ pub unsafe extern "C" fn typst_ql_compile_pdf(
         *out_error = ptr::null_mut();
     }
 
-    let result = catch_unwind(AssertUnwindSafe(|| unsafe {
-        compile_pdf(markup_utf8, files, files_len)
-    }));
-
-    match result {
-        Ok(Ok(pdf)) => {
+    // Release builds use `panic = "abort"`, so a panic never unwinds to here.
+    match unsafe { compile_pdf(markup_utf8, files, files_len) } {
+        Ok(pdf) => {
             let mut pdf = pdf.into_boxed_slice();
             unsafe {
                 *out_pdf_len = pdf.len();
@@ -60,17 +56,11 @@ pub unsafe extern "C" fn typst_ql_compile_pdf(
             std::mem::forget(pdf);
             0
         }
-        Ok(Err(message)) => {
+        Err(message) => {
             unsafe {
                 *out_error = string_to_c(message);
             }
             1
-        }
-        Err(_) => {
-            unsafe {
-                *out_error = string_to_c("Internal Typst compiler error (panic).".to_string());
-            }
-            2
         }
     }
 }

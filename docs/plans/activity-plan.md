@@ -910,7 +910,7 @@ Phase D, CI and tooling (luna, one commit each)
 - [ ] W33.D5 Gradle version catalog; gate = `./gradlew :app:assembleProfile -PtylogProfileSuffix=.profiletest` (main session, alone) — left for main session
 
 Phase E, cleanup
-- [ ] W33.E1 (luna) remove the dead `catch_unwind` under `panic = "abort"`; QuickLook target stays (deleting it is a product decision, left listed)
+- [x] W33.E1 (luna) remove the dead `catch_unwind` under `panic = "abort"`; QuickLook target stays (deleting it is a product decision, left listed) — driver, 0 min, removed catch_unwind and the unreachable status 2 in quicklook_ffi.rs; cargo test --lib 20 pass
 - [ ] W33.E2 (luna) merge the small duplicated helpers named in the audit, one pair per commit
 - [ ] W33.E3 (luna) `PLAN.md` / `CONTEXT.md` open-work lines refreshed from the activity plan
 - [ ] W33.E4 (luna) Windows launcher item from the deferred list
