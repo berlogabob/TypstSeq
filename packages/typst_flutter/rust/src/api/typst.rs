@@ -428,15 +428,23 @@ impl SimpleWorld {
     fn record_file_request(&self, id: FileId) -> String {
         let key = self.vfs_key(id);
         if id != self.source.id() {
-            self.requested_files.lock().unwrap().insert(key.clone());
+            self.requested_files
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(key.clone());
         }
         key
     }
 
     fn take_requested_files(&self) -> Vec<String> {
-        std::mem::take(&mut *self.requested_files.lock().unwrap())
-            .into_iter()
-            .collect()
+        std::mem::take(
+            &mut *self
+                .requested_files
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()),
+        )
+        .into_iter()
+        .collect()
     }
 
     fn set_sys_time(&mut self, sys_time: Option<i64>) {
@@ -525,8 +533,8 @@ impl typst::World for SimpleWorld {
             // Fallback to current system time if none provided
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs() as i64
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0)
         });
 
         // Offset is given as a Duration by Typst.

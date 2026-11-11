@@ -297,7 +297,7 @@ pub(super) fn start(path: String) -> Result<String, String> {
                                 tasks
                                     .join_next()
                                     .await
-                                    .unwrap()
+                                    .ok_or("empty task set")?
                                     .map_err(|e| e.to_string())??;
                             }
                             let c = conn.clone();
@@ -500,7 +500,7 @@ pub(super) fn receive(
                             bytes += tasks
                                 .join_next()
                                 .await
-                                .unwrap()
+                                .ok_or("empty task set")?
                                 .map_err(|e| e.to_string())??;
                         }
                         let c = conn.clone();

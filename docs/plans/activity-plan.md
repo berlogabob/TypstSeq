@@ -846,7 +846,7 @@ Phase C, hangs and crashes
 - [ ] W32.C10 (Claude) full gates, then W31.7 release 0.23.1
 
 Phase D, Rust and native
-- [ ] W32.D1 (codex) `typst.rs:431, 437, 528` and `p2p_folder.rs:300, 503`: five `unwrap()` -> error or fallback. Gate: `cargo test --manifest-path packages/typst_flutter/rust/Cargo.toml --lib`
+- [x] W32.D1 (codex) `typst.rs:431, 437, 528` and `p2p_folder.rs:300, 503`: five `unwrap()` -> error or fallback. Gate: `cargo test --manifest-path packages/typst_flutter/rust/Cargo.toml --lib` — Sonnet, 5 min; typst.rs 2 lock().unwrap() -> unwrap_or_else(into_inner), duration_since -> unwrap_or(0); p2p_folder.rs 2 join_next().unwrap() -> ok_or("empty task set")?; NOT COMPILED, run cargo test --lib by hand; w32_metrics ffi_unwrap_sites 0
 - [x] W32.D2 (Ornith) `SyncForegroundService.kt`: `onTimeout(startId, fgsType)` -> `stopSelf()` — Sonnet, 1 min, 4-line override (compileSdk 36); NOT COMPILED (D6 covers it); gate grep onTimeout = 1
 - [x] W32.D3 (Ornith) `VaultSyncWorker.kt:73`: rethrow `CancellationException`, `Log.w` the Throwable — Sonnet, 2 min; rethrows CancellationException, Log.w on Throwable, 2 imports; NOT COMPILED (D6 covers it); gate grep Log.w = 1
 - [x] W32.D4 (codex) `SafBridge.kt:243-248` `acquireSync`: answer `result` when disposed — SKIPPED: postMain drops its action once disposed, so a reply could never be delivered, and a disposed bridge means the engine is already destroyed; no caller left to answer
