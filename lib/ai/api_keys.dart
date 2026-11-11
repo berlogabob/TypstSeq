@@ -31,6 +31,7 @@ Future<void> mirrorWorkerKey(
   String connectionId,
   String? key, {
   String? home,
+  Future<ProcessResult> Function(String, List<String>) runProcess = Process.run,
 }) async {
   final dir = home ?? userHome();
   if (dir == null) return;
@@ -49,7 +50,18 @@ Future<void> mirrorWorkerKey(
   final temp = File('${file.path}.tmp');
   // Owner-only before the key is written into it.
   await temp.writeAsString('');
-  await Process.run('chmod', ['600', temp.path]);
+  if (!Platform.isWindows) {
+    final chmod = await runProcess('chmod', ['600', temp.path]);
+    if (chmod.exitCode != 0) {
+      await temp.delete();
+      throw ProcessException(
+        'chmod',
+        ['600', temp.path],
+        '${chmod.stderr}',
+        chmod.exitCode,
+      );
+    }
+  }
   await temp.writeAsString(const JsonEncoder.withIndent('  ').convert(keys));
   await temp.rename(file.path);
 }
