@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-// Mirrors packages/typst_flutter/rust/src/api/quicklook_ffi.rs.
+// Mirrors packages/typst_flutter/rust/src/quicklook_ffi.rs.
 // Kept as a plain C ABI (not flutter_rust_bridge) so the extension can link
 // libtypst_flutter.a directly without pulling in the Dart VM bridge.
 

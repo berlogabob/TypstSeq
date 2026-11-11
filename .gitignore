@@ -103,3 +103,7 @@ android/app/*.jks
 /2026-*.txt
 .pi-runs/
 /tool/windows_launcher/target/
+
+# Generated reports and delegate logs
+/android/build/
+/tool/audio_plan/logs/
