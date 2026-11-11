@@ -790,11 +790,11 @@ Rules for Ornith steps: one function or one test per step, time box 15 min (PI_T
 - [x] W31.4f VoronoiView panel: Rename button (top-level cluster only) + dialog -> onRenameCluster — Ornith ~3 min, first try, 7/7 tests
 - [x] W31.4g test: dialog Save calls onRenameCluster with label + text — Ornith ~3 min; test needed an `async` on the callback and left 2 stray probe files (removed). The test then caught a real bug in 4f: controller disposed right after pop threw during the dialog exit animation; Claude switched the dialog to TextFormField(initialValue). 8/8 tests
 - [x] W31.4h app_mobile: pass workspace.clusterNames + workspace.renameCluster. Gate: flutter analyze — Claude, 2 lines
-- [ ] W31.5a tylog_core: dart test (Claude)
-- [ ] W31.5b flutter analyze (Claude)
-- [ ] W31.5c flutter test, full (Claude)
-- [ ] W31.5d graphify update . ; commit
-- [ ] W31.6a release build on Mac against real vault (Claude, /verify)
+- [x] W31.5a tylog_core: dart test (Claude) — 571 pass, 2 skipped
+- [x] W31.5b flutter analyze (Claude) — 0 issues
+- [x] W31.5c flutter test, full (Claude) — 2159 pass, 10 skipped, 2 min 3 s
+- [x] W31.5d graphify update . ; commit
+- [ ] W31.6a release build on Mac against real vault (Claude, /verify) — W31.6a-c batched with the W32 phase B+C visual check (one build, one pass over the UI), before W32.C10
 - [ ] W31.6b screenshot Voronoi: names on regions, no journal cluster, no ": " labels
 - [ ] W31.6c rename one cluster in the app; names.json written; name survives restart
 - [ ] W31.7a version bump 0.23.1, CHANGELOG; commit
@@ -806,7 +806,7 @@ Rules for Ornith steps: one function or one test per step, time box 15 min (PI_T
 Audit 2026-11-11 (code only; 2 Sonnet + 1 Haiku agents, read-only; 80 findings). Order: W31.4a-W31.6c first; W31.7 (release 0.23.1) runs at W32.C10, because 4 high data-loss findings are open. Status: `tool/wave_status.sh 32`. Metrics: `tool/w32_metrics.sh` (baseline at A3, again at Z2).
 Rules: Ornith edits only files <= 600 lines, one function per step; larger files -> codex; one-line chores -> Claude. Test (`a`, NEW file) and fix (`b`) are separate runs; Claude confirms the `a` test fails before `b`. Time box 10 min (PI_TIMEOUT=600). Watchdog: pi log idle > 180 s, or diff touches another file, or test count drops -> kill, checkout that file, rewrite the prompt once; second failure -> codex/Claude, noted on the line. Edit steps: PI_TOOLS=read,edit,ls,grep; new-file steps: read,write,ls,grep. Prompt: "In <file>, function <name> only: <change>. Do not touch any other file or function. Done when <gate> passes." After each step: read diff, run gate, tick with minutes + hash, commit `W32.<id> <what> (Ornith 35b)`. No push or device install until the wave ends. Heavy gates run alone.
 Targets: catch (_) {} 40 -> <= 33; HttpClient() without connectionTimeout 3 files -> 0; typst process timeout 0 -> 1; FFI-path unwrap sites 5 -> 0; dead symbols 2 -> 0; CI suites 3 -> 5; `git add -A` in Makefile 1 -> 0; tracked junk 4 -> 0; analyze 0 -> 0; test declarations N -> N+12, 0 failing; Ornith first-try rate and median minutes recorded at Z2.
-Baseline (A3, 2026-11-11): swallowed_catch 40, http_no_timeout_files 4 (4th = lib/github/github_auth.dart, added to C1b), typst_proc_timeout 0, ffi_unwrap_sites 5, dead_symbols 2, ci_suites 3, make_git_add_all 1, tracked_junk 10, test_declarations 2255. Full `flutter test` count comes from W31.5c.
+Baseline (A3, 2026-11-11): swallowed_catch 40, http_no_timeout_files 4 (4th = lib/github/github_auth.dart, added to C1b), typst_proc_timeout 0, ffi_unwrap_sites 5, dead_symbols 2, ci_suites 3, make_git_add_all 1, tracked_junk 10, test_declarations 2255. Full `flutter test` at W31.5c: 2159 pass, 10 skipped; tylog_core 571 pass.
 
 Phase A, setup (Claude)
 - [x] W32.A1 `tool/wave_status.sh <wave>`: generalise `memory/w31status.sh.txt` (wave number as argument, stall threshold 180 s); 10-minute status via CronCreate
