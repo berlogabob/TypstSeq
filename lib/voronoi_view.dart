@@ -367,6 +367,20 @@ class _VoronoiViewState extends State<VoronoiView>
   String _name(String label) =>
       widget.clusterNames[label] ?? prettyGraphLabel(label);
 
+  /// The top-level cluster of [cell] when it can be renamed, else null.
+  _Cell? _renamableRoot(List<_Cell> cells, _Cell cell) {
+    if (widget.onRenameCluster == null) return null;
+    var root = cell;
+    while (root.parent >= 0) {
+      root = cells[root.parent];
+    }
+    if (widget.index.notesByPath.containsKey(root.id) ||
+        root.label == kUncategorizedLabel) {
+      return null;
+    }
+    return root;
+  }
+
   /// Prompts for a new display name for a cluster and persists it.
   Future<void> _renameCluster(String label) async {
     // No controller: disposing one right after pop throws during the
@@ -514,16 +528,15 @@ class _VoronoiViewState extends State<VoronoiView>
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (widget.onRenameCluster != null &&
-                              selected.parent < 0 &&
-                              !widget.index.notesByPath.containsKey(
-                                selected.id,
-                              ))
+                          // A tap on a cluster zooms in, so only notes get
+                          // selected: the pencil renames the selected cell's
+                          // top-level cluster.
+                          if (_renamableRoot(cells, selected) case final root?)
                             IconButton(
                               key: const Key('voronoi-rename'),
-                              tooltip: 'Rename cluster',
+                              tooltip: 'Rename cluster ${_name(root.label)}',
                               icon: const Icon(Icons.edit_outlined),
-                              onPressed: () => _renameCluster(selected.label),
+                              onPressed: () => _renameCluster(root.label),
                             ),
                           FilledButton.tonalIcon(
                             key: const Key('voronoi-open'),

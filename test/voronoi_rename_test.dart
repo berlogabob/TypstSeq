@@ -90,4 +90,28 @@ void main() {
       expect(recorded.single.$1, clusterLabel);
     },
   );
+
+  testWidgets('a selected note offers to rename its top-level cluster', (
+    tester,
+  ) async {
+    final recorded = <(String, String)>[];
+    await tester.pumpWidget(
+      host(
+        initialSelectedPath: 'n1',
+        onRenameCluster: (label, name) async => recorded.add((label, name)),
+      ),
+    );
+    await _waitForLayout(tester);
+
+    await tester.tap(find.byKey(const Key('voronoi-rename')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('voronoi-rename-field')),
+      'Renamed',
+    );
+    await tester.tap(find.byKey(const Key('voronoi-rename-save')));
+    await tester.pumpAndSettle();
+
+    expect(recorded, [(clusterLabel, 'Renamed')]);
+  });
 }
