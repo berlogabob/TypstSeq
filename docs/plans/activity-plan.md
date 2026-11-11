@@ -856,7 +856,7 @@ Phase D, Rust and native
 Phase E, CI and chores (Claude, one commit each)
 - [x] W32.E1 Makefile: `git add -A` -> `git add pubspec.yaml CHANGELOG.md`; `test-core` also runs the `typst_flutter` cargo tests; `ci.yml` same — Sonnet, 3 min; Makefile git add limited to pubspec.yaml CHANGELOG.md, test-core runs typst_flutter cargo test --lib (ci.yml calls make test-core, so CI gets it; cache path + key extended); not run (heavy)
 - [x] W32.E2 `ci.yml`: Python tool tests via `uv run --with pytest pytest tool -q` (after they pass locally) — Sonnet, 2 min; local run 370 passed 3 skipped; setup-uv@v5 + pytest step added to ci.yml; CI not run
-- [ ] W32.E3 `release.yml`: fail fast on empty signing secrets
+- [x] W32.E3 `release.yml`: fail fast on empty signing secrets — Sonnet, 2 min; loop fails with ::error:: on any empty signing secret; YAML parses; CI not run
 - [ ] W32.E4 `flutter drive` in `Makefile:109` and `scripts/p21_android.sh:15`: refuse unless the package is `.profiletest` (AGENTS.md forbids it otherwise)
 - [ ] W32.E5 `git rm --cached` `android/build/reports/...` and `tool/audio_plan/logs/`; ignore both; delete `.read_test`; drop the stale TODO in `build.gradle.kts:28`, the unused import in `lib/main.dart:14`, the wrong path in the QuickLook bridging header
 - [ ] W32.E6 README "Linux compile-tested in CI" -> "on release tags"
