@@ -862,7 +862,7 @@ Phase E, CI and chores (Claude, one commit each)
 - [x] W32.E6 README "Linux compile-tested in CI" -> "on release tags" — Sonnet, 1 min; README line 66 reworded
 
 Phase F, dead code and missing tests (Ornith, one file each)
-- [ ] W32.F1 delete `parseLabCalendar` (`lib/calendar_feeds.dart:200`). Gate: grep 0 + analyze
+- [x] W32.F1 delete `parseLabCalendar` (`lib/calendar_feeds.dart:200`). Gate: grep 0 + analyze — Sonnet, 1 min, deleted directly; grep 0, analyze clean
 - [ ] W32.F2 delete `sameIndexedContent` (`packages/tylog_core/lib/src/index_donor.dart:109`). Gate: grep 0 + `dart test`
 - [ ] W32.F3 new `packages/tylog_core/test/header_repair_tags_test.dart` for `updateNoteTags` (output must compile with Typst, not only re-parse)
 - [ ] W32.F4 new `packages/tylog_core/test/header_repair_import_test.dart` for `withTylogImport` (same rule)

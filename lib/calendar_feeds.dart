@@ -196,9 +196,6 @@ List<FeedEvent> parseIcsCalendar(String body, {String idPrefix = ''}) {
   return result;
 }
 
-@Deprecated('Use parseIcsCalendar')
-List<FeedEvent> parseLabCalendar(String body) => parseIcsCalendar(body);
-
 Future<String> fetchCalendarBody(String url) async {
   final uri = Uri.parse(url);
   if (uri.scheme != 'https' || uri.host.isEmpty) {
