@@ -27,4 +27,37 @@ void main() {
       r'- Read: A — 🗑 #link("https://x.io/\"q")',
     );
   });
+
+  group('applyReadingLog', () {
+    test('appends under a new Reading heading, keeping existing text', () {
+      expect(
+        applyReadingLog('= Day\nnote\n', 'A', '- Read: A', rated: false),
+        '= Day\nnote\n\n== Reading\n- Read: A\n',
+      );
+    });
+
+    test('is applied to the current text, so a concurrent edit survives', () {
+      const edited = '= Day\nwritten meanwhile\n\n== Reading\n- Read: B\n';
+      final out = applyReadingLog(edited, 'A', '- Read: A', rated: false);
+      expect(out, contains('written meanwhile'));
+      expect(out, endsWith('- Read: B\n- Read: A\n'));
+    });
+
+    test('rating upgrades the finished line instead of duplicating', () {
+      expect(
+        applyReadingLog(
+          '== Reading\n- Read: A\n',
+          'A',
+          '- Read: A — ★★★☆☆',
+          rated: true,
+        ),
+        '== Reading\n- Read: A — ★★★☆☆\n',
+      );
+    });
+
+    test('already logged today is left unchanged', () {
+      const source = '== Reading\n- Read: A — ★★★☆☆\n';
+      expect(applyReadingLog(source, 'A', '- Read: A', rated: false), source);
+    });
+  });
 }

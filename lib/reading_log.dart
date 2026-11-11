@@ -21,3 +21,21 @@ String readingLogLine(String safeTitle, {String? rating, String? url}) {
   }
   return line;
 }
+
+/// Applies today's reading-log [line] for [safeTitle] to the day note [source].
+/// Pure, so callers can run it on the note's current text inside a serialized
+/// mutation instead of on an earlier read.
+String applyReadingLog(
+  String source,
+  String safeTitle,
+  String line, {
+  required bool rated,
+}) {
+  if (rated && source.contains('- Read: $safeTitle\n')) {
+    // Finish-then-rate upgrades the existing line instead of duplicating.
+    return source.replaceFirst('- Read: $safeTitle\n', '$line\n');
+  }
+  if (source.contains(': $safeTitle')) return source; // already logged today
+  final header = source.contains('== Reading') ? '' : '\n\n== Reading';
+  return '${source.trimRight()}$header\n$line\n';
+}

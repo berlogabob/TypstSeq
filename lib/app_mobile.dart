@@ -3859,24 +3859,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // writing to disk behind the editor's back would be clobbered by the
       // next autosave, so route through the editor buffer in that case.
       final isOpen = note == dayPath;
-      final source = isOpen
-          ? _currentSource()
-          : await v.storage.readText(dayPath);
-      final String updated;
-      if (rating != null && source.contains('- Read: $safeTitle\n')) {
-        // Finish-then-rate upgrades the existing line instead of duplicating.
-        updated = source.replaceFirst('- Read: $safeTitle\n', '$line\n');
-      } else if (source.contains(': $safeTitle')) {
-        return; // already logged today
-      } else {
-        final header = source.contains('== Reading') ? '' : '\n\n== Reading';
-        updated = '${source.trimRight()}$header\n$line\n';
-      }
+      String apply(String current) =>
+          applyReadingLog(current, safeTitle, line, rated: rating != null);
       if (isOpen) {
+        final source = _currentSource();
+        final updated = apply(source);
+        if (updated == source) return; // already logged today
         _loadSource(updated);
         _queueAutosave();
       } else {
-        await workspace.mutateNote(dayPath, (_) => updated);
+        // Transform the note's current text: a pre-read snapshot would drop
+        // anything written to the day note in between.
+        await workspace.mutateNote(dayPath, apply);
       }
     } catch (_) {
       // Logging must never break the reading/rating flow.
