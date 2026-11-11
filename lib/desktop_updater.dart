@@ -42,6 +42,7 @@ class UpdateInfo {
     required this.zipUrl,
     required this.digestUrl,
     required this.htmlUrl,
+    this.digest,
   });
 
   /// The release version without the leading `v` (e.g. `0.1.0+71`).
@@ -55,6 +56,9 @@ class UpdateInfo {
 
   /// URL of the published SHA-256 for [zipUrl].
   final String digestUrl;
+
+  /// SHA-256 reported by GitHub for the selected asset, if available.
+  final String? digest;
 
   /// The release page, for the manual-install fallback.
   final String htmlUrl;
@@ -141,11 +145,17 @@ UpdateInfo? parseLatestRelease(
       : _stableMacDigestUrl;
   String? zipUrl;
   String? digestUrl;
+  String? digest;
   if (json['assets'] case final List assets) {
     for (final a in assets) {
       if (a is! Map) continue;
       if (a['name'] == selectedAsset) {
         zipUrl = a['browser_download_url'] as String?;
+        final value = a['digest'];
+        if (value is String &&
+            RegExp(r'^sha256:[0-9a-fA-F]{64}$').hasMatch(value)) {
+          digest = value.substring(7).toLowerCase();
+        }
       }
       if (a['name'] == digestAsset) {
         digestUrl = a['browser_download_url'] as String?;
@@ -157,6 +167,7 @@ UpdateInfo? parseLatestRelease(
     notes: (json['body'] as String?)?.trim() ?? '',
     zipUrl: zipUrl ?? stableUrl,
     digestUrl: digestUrl ?? stableDigestUrl,
+    digest: digest,
     htmlUrl:
         (json['html_url'] as String?) ??
         'https://github.com/$_owner/$_repo/releases/latest',
@@ -242,13 +253,7 @@ Future<void> downloadAndApply(
         if (total > 0) onProgress?.call(received / total);
       }
       await sink.close();
-      final expected = await _fetchDigest(info.digestUrl, http);
-      final actual = sha256
-          .convert(await File(newPath).readAsBytes())
-          .toString();
-      if (expected == null || expected != actual) {
-        throw UpdateNotVerified(expected: expected, actual: actual);
-      }
+      await verifyDownloadedZip(File(newPath), info, http);
     } catch (_) {
       final downloaded = File(newPath);
       if (downloaded.existsSync()) downloaded.deleteSync();
@@ -309,11 +314,7 @@ Future<void> downloadAndApply(
       if (total > 0) onProgress?.call(received / total);
     }
     await sink.close();
-    final expected = await _fetchDigest(info.digestUrl, http);
-    final actual = sha256.convert(await File(zipPath).readAsBytes()).toString();
-    if (expected == null || expected != actual) {
-      throw UpdateNotVerified(expected: expected, actual: actual);
-    }
+    await verifyDownloadedZip(File(zipPath), info, http);
   } catch (_) {
     work.deleteSync(recursive: true);
     rethrow;
@@ -395,7 +396,25 @@ start "" "%~3"
 del "%~f0"
 ''';
 
-/// Fetches the published SHA-256 for the macOS asset, or null if unavailable.
+/// Verifies the downloaded asset against its published SHA-256.
+Future<void> verifyDownloadedZip(
+  File zip,
+  UpdateInfo info,
+  HttpClient http,
+) async {
+  final stable =
+      info.digestUrl == _stableMacDigestUrl ||
+      info.digestUrl == _stableWindowsDigestUrl;
+  final expected = stable && info.digest != null
+      ? info.digest
+      : await _fetchDigest(info.digestUrl, http);
+  final actual = sha256.convert(await zip.readAsBytes()).toString();
+  if (expected == null || expected != actual) {
+    throw UpdateNotVerified(expected: expected, actual: actual);
+  }
+}
+
+/// Fetches the published SHA-256 for the asset, or null if unavailable.
 ///
 /// The file holds the bare lowercase hex digest, one line, as written by
 /// `shasum -a 256 ... | awk '{print $1}'` in the release workflow.

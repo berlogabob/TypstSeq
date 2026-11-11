@@ -898,7 +898,7 @@ Phase B, silent failures
 - [x] W33.B4 (luna) missing tests from Wave 32: B8 (temp file removed on failed conflict download), C4 (typst process timeout), G1 (asset reload skipped when paths unchanged), one file each under `test/w32/` — gpt-6-luna/terra, 7 min, B8 and G1 tests added; C4 typst timeout NOT tested (fixed 30 s constant, would need a 30 s fake-typst test or a lib change)
 
 Phase C, safety
-- [ ] W33.C1 (terra) updater: verify the downloaded zip against the digest published in the same release before install; test with a wrong digest
+- [x] W33.C1 (terra) updater: verify the downloaded zip against the digest published in the same release before install; test with a wrong digest — gpt-6.1-terra, 1 min, release already published .sha256 and verified; added inline asset digest as same-release fallback + shared verifyDownloadedZip + wrong-digest tests
 - [ ] W33.C2 (luna, then terra) `SafBridge.read`: log the largest file sizes read on the P30 `.profiletest` build first (main session, device); then a size cap with a clear error
 - [ ] W33.C3 (luna) `VaultSyncWorker`: move off `Dispatchers.Main`; gate = Kotlin compile with Android Studio `jbr`
 
