@@ -434,7 +434,10 @@ VoronoiRequest buildVoronoiRequest(
     var bestCount = -1;
     for (final tag in note.tags) {
       if (!communities.tagToCluster.containsKey(tag)) continue;
-      final count = byTag[tag]!.length;
+      // A stale cluster snapshot can still promote a tag that tagToNotes now
+      // skips (structural tags such as 'journal'); such a tag owns no notes.
+      final count = byTag[tag]?.length;
+      if (count == null) continue;
       if (count > bestCount ||
           (count == bestCount && tag.compareTo(bestTag!) < 0)) {
         bestTag = tag;

@@ -293,4 +293,21 @@ void main() {
       expect(a.cellStart, b.cellStart);
     });
   });
+
+  test('a snapshot that still promotes a structural tag does not throw', () {
+    final notes = [
+      for (var i = 0; i < 3; i++) _note('d$i', ['journal', 'topic']),
+      _note('only-journal', ['journal']),
+    ];
+    final index = _index(notes);
+    // Older snapshot.json files clustered 'journal'; tagToNotes now skips it.
+    final communities = CommunityMap(
+      tagToCluster: {'journal': 'group', 'topic': 'group'},
+      noteToCluster: {for (final note in notes) note.path: 'group'},
+      clusterOrder: ['group'],
+    );
+    final req = buildVoronoiRequest(index, communities, 800, 600);
+    expect(req.labels, contains('topic'));
+    expect(req.labels, isNot(contains('journal')));
+  });
 }
