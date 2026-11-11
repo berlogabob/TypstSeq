@@ -7,27 +7,27 @@
   <array>
     <!-- Compiled CLI (dart compile exe packages/tylog_core/bin/tylog.dart -o ~/.local/bin/tylog):
          launchd jobs can't read ~/Documents (TCC), where the repo lives. -->
-    <string>/Users/berloga/.local/bin/tylog</string>
+    <string>@HOME@/.local/bin/tylog</string>
     <string>index</string>
-    <string>/Users/berloga/Nextcloud/TyLogVault</string>
+    <string>@HOME@/Nextcloud/TyLogVault</string>
   </array>
-  <key>WorkingDirectory</key><string>/Users/berloga/Nextcloud/TyLogVault</string>
+  <key>WorkingDirectory</key><string>@HOME@/Nextcloud/TyLogVault</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key><string>/opt/homebrew/bin:/usr/bin:/bin</string>
     <!-- Copy of the repo's typst/ helpers: rsync -a --delete typst ~/.local/share/tylog/ (redo with the exe after helper changes). -->
-    <key>TYLOG_REPOSITORY_ROOT</key><string>/Users/berloga/.local/share/tylog</string>
+    <key>TYLOG_REPOSITORY_ROOT</key><string>@HOME@/.local/share/tylog</string>
   </dict>
   <key>WatchPaths</key>
   <array>
-    <string>/Users/berloga/Nextcloud/TyLogVault/daily</string>
-    <string>/Users/berloga/Nextcloud/TyLogVault/notes</string>
-    <string>/Users/berloga/Nextcloud/TyLogVault/articles</string>
-    <string>/Users/berloga/Nextcloud/TyLogVault/screenshots</string>
+    <string>@HOME@/Nextcloud/TyLogVault/daily</string>
+    <string>@HOME@/Nextcloud/TyLogVault/notes</string>
+    <string>@HOME@/Nextcloud/TyLogVault/articles</string>
+    <string>@HOME@/Nextcloud/TyLogVault/screenshots</string>
   </array>
   <key>StartInterval</key><integer>900</integer>
   <key>ThrottleInterval</key><integer>120</integer>
-  <key>StandardOutPath</key><string>/Users/berloga/Library/Logs/tylog-indexer.log</string>
-  <key>StandardErrorPath</key><string>/Users/berloga/Library/Logs/tylog-indexer.log</string>
+  <key>StandardOutPath</key><string>@HOME@/Library/Logs/tylog-indexer.log</string>
+  <key>StandardErrorPath</key><string>@HOME@/Library/Logs/tylog-indexer.log</string>
 </dict>
 </plist>

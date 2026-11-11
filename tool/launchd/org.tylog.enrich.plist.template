@@ -10,13 +10,13 @@
     <string>/opt/homebrew/bin/uv</string>
     <string>run</string>
     <string>python</string>
-    <string>/Users/berloga/Documents/GitHub/TypstSeq/tool/enrich_worker.py</string>
+    <string>@REPO@/tool/enrich_worker.py</string>
     <string>--vault</string>
-    <string>/Users/berloga/Nextcloud/TyLogVault</string>
+    <string>@HOME@/Nextcloud/TyLogVault</string>
     <string>--once</string>
   </array>
   <key>StartInterval</key><integer>300</integer>
-  <key>StandardOutPath</key><string>/Users/berloga/Library/Logs/tylog-enrich.log</string>
-  <key>StandardErrorPath</key><string>/Users/berloga/Library/Logs/tylog-enrich.log</string>
+  <key>StandardOutPath</key><string>@HOME@/Library/Logs/tylog-enrich.log</string>
+  <key>StandardErrorPath</key><string>@HOME@/Library/Logs/tylog-enrich.log</string>
 </dict>
 </plist>

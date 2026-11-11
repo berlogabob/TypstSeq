@@ -6,21 +6,21 @@
   <key>Label</key><string>org.tylog.cluster</string>
   <key>ProgramArguments</key>
   <array>
-    <string>/Users/berloga/.local/bin/tylog</string>
+    <string>@HOME@/.local/bin/tylog</string>
     <string>cluster</string>
-    <string>/Users/berloga/Nextcloud/TyLogVault</string>
+    <string>@HOME@/Nextcloud/TyLogVault</string>
   </array>
-  <key>WorkingDirectory</key><string>/Users/berloga/Nextcloud/TyLogVault</string>
+  <key>WorkingDirectory</key><string>@HOME@/Nextcloud/TyLogVault</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key><string>/opt/homebrew/bin:/usr/bin:/bin</string>
-    <key>TYLOG_REPOSITORY_ROOT</key><string>/Users/berloga/.local/share/tylog</string>
+    <key>TYLOG_REPOSITORY_ROOT</key><string>@HOME@/.local/share/tylog</string>
   </dict>
   <key>StartCalendarInterval</key>
   <dict><key>Hour</key><integer>3</integer><key>Minute</key><integer>15</integer></dict>
   <key>StartInterval</key><integer>600</integer>
   <key>ThrottleInterval</key><integer>120</integer>
-  <key>StandardOutPath</key><string>/Users/berloga/Library/Logs/tylog-cluster.log</string>
-  <key>StandardErrorPath</key><string>/Users/berloga/Library/Logs/tylog-cluster.log</string>
+  <key>StandardOutPath</key><string>@HOME@/Library/Logs/tylog-cluster.log</string>
+  <key>StandardErrorPath</key><string>@HOME@/Library/Logs/tylog-cluster.log</string>
 </dict>
 </plist>
