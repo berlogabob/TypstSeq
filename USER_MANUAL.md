@@ -139,7 +139,7 @@ Settings > AI > Servers lists servers on this network first and cloud services s
 
 ## Links from your day log
 
-Settings > AI > Links lets a model read your day notes and find the people, places, projects and topics you mention; TyLog then decides which of your pages each one means. Choose the server, model and when it runs: off, a few minutes after you stop writing, or every night at 03:00. A second server can take over when the first is down. It needs the worker on your Mac (`tool/launchd/org.tylog.enrich.plist`); days older than 90 are only read when you ask.
+Settings > AI > Links lets a model read your day notes and find the people, places, projects and topics you mention; TyLog then decides which of your pages each one means. Choose the server, model and when it runs: off, a few minutes after you stop writing, or every night at 03:00. A second server can take over when the first is down. It needs the worker on your Mac (`tool/launchd/org.tylog.enrich.plist.template (render with tool/launchd/install.sh)`); days older than 90 are only read when you ask.
 
 Your own text is never changed without you. What TyLog is sure about goes into a block at the end of the day, `// tylog:auto-entities` with `== Mentions`, as links and as tags you already use. Under the day note a Mentions strip shows:
 
