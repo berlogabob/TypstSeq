@@ -153,6 +153,16 @@ const _autoRelatedMarker = '// tylog:auto-related';
 /// that carry one; truncating to EOF was correct only for as long as that
 /// holds. The moment a user types below their Related section, a relink would
 /// delete what they wrote, with no error and nothing to undo.
+/// Image asset paths a note's source references (`"assets/…png"`), as written.
+Set<String> referencedAssetPaths(String source) => RegExp(
+  r'"(/?assets/[^"]+\.(?:png|jpe?g|gif|svg|webp|bmp))"',
+  caseSensitive: false,
+).allMatches(source).map((m) => m.group(1)!).toSet();
+
+/// Stable key of [referencedAssetPaths]: equal keys mean no asset to reload.
+String referencedAssetKey(String source) =>
+    (referencedAssetPaths(source).toList()..sort()).join('\n');
+
 String stripAutoRelated(String source) {
   final marker = RegExp(
     '(?:^|\\n)${RegExp.escape(_autoRelatedMarker)}(?:\\r?\\n|\$)',
@@ -1189,6 +1199,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// so the synchronous [_typstFiles] can hand them to the Typst compiler.
   final Map<String, Uint8List> _noteAssetFiles = {};
   int _assetRevision = 0;
+  String? _loadedAssetKey;
+  Object? _loadedAssetVault;
   Future<void>? _assetLoadFuture;
 
   /// The `kind` of the note a `#tylog.ref-note("target")` points at, or a
@@ -1240,7 +1252,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// Loads every `assets/...` image referenced by [source] into
   /// [_noteAssetFiles] (keyed with and without a leading slash) so `#image(...)`
   /// resolves at compile time. Async; triggers a rebuild when it finishes.
-  Future<void> _refreshNoteAssets(String source) {
+  Future<void> _refreshNoteAssets(String source, {bool force = false}) {
+    final key = referencedAssetKey(source);
+    if (!force &&
+        _assetLoadFuture != null &&
+        key == _loadedAssetKey &&
+        identical(vault, _loadedAssetVault) &&
+        referencedAssetPaths(source).every(
+          (p) =>
+              _noteAssetFiles.containsKey(p.replaceFirst(RegExp(r'^/+'), '')),
+        )) {
+      return _assetLoadFuture!;
+    }
+    _loadedAssetKey = key;
+    _loadedAssetVault = vault;
     final revision = ++_assetRevision;
     final future = _loadNoteAssets(source, revision: revision);
     _assetLoadFuture = future;
@@ -1258,10 +1283,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       return;
     }
-    final paths = RegExp(
-      r'"(/?assets/[^"]+\.(?:png|jpe?g|gif|svg|webp|bmp))"',
-      caseSensitive: false,
-    ).allMatches(source).map((m) => m.group(1)!).toSet();
+    final paths = referencedAssetPaths(source);
     for (final path in paths) {
       final relative = path.replaceFirst(RegExp(r'^/+'), '');
       try {
@@ -4990,7 +5012,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (!mounted || vault != exportVault || note != exportPath) return;
     final exportSource = _previewSource();
     final exportRevision = _assetRevision + 1;
-    _refreshNoteAssets(exportSource);
+    _refreshNoteAssets(exportSource, force: true);
     try {
       await _assetLoadFuture!;
     } catch (error) {

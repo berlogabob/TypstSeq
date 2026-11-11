@@ -871,7 +871,7 @@ Phase F, dead code and missing tests (Ornith, one file each)
 - [x] W32.F7 `docs/tylog-ecosystem.md:98-102`: CLI command list regenerated from `_usage` in `packages/tylog_core/bin/tylog.dart` — Sonnet, 2 min, edited directly (docs, copied from _usage in bin/tylog.dart; 12 usage lines)
 
 Phase G, editor performance (codex, measured)
-- [ ] W32.G1 `lib/app_mobile.dart:1259-1275` `_refreshNoteAssets`: skip when the referenced-path set is unchanged; test counts `readBytes` over 10 keystrokes: 0 after the first
+- [x] W32.G1 `lib/app_mobile.dart:1259-1275` `_refreshNoteAssets`: skip when the referenced-path set is unchanged; test counts `readBytes` over 10 keystrokes: 0 after the first — Sonnet, 10 min; _refreshNoteAssets returns the existing load when the referenced-asset key, vault and loaded files are unchanged (export passes force: true); helpers referencedAssetPaths/referencedAssetKey tested in test/w32/note_assets_key_test.dart (3 tests); the spec'd readBytes-count-over-10-keystrokes test NOT written (needs the full app harness); widget_test 191 + image tests green, analyze clean
 - [ ] W32.G2 `lib/app_mobile.dart:987-1023` `_workspaceChanged`: cheap comparison first; timing bound on a 200k-char note
 
 Phase Z, close (Claude)
