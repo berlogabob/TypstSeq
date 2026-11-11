@@ -911,9 +911,9 @@ Phase D, CI and tooling (luna, one commit each)
 
 Phase E, cleanup
 - [x] W33.E1 (luna) remove the dead `catch_unwind` under `panic = "abort"`; QuickLook target stays (deleting it is a product decision, left listed) — driver, 0 min, removed catch_unwind and the unreachable status 2 in quicklook_ffi.rs; cargo test --lib 20 pass
-- [ ] W33.E2 (luna) merge the small duplicated helpers named in the audit, one pair per commit
+- [ ] W33.E2 (luna) merge the small duplicated helpers named in the audit, one pair per commit — BLOCKED: needs definition (the Wave 32 deferred list names no pair; the only audit hit, docs/audits/2026-10-08-rules-compliance.md:207 `validateVaultPath` vs a weaker duplicate, is not located)
 - [ ] W33.E3 (luna) `PLAN.md` / `CONTEXT.md` open-work lines refreshed from the activity plan
-- [ ] W33.E4 (luna) Windows launcher item from the deferred list
+- [ ] W33.E4 (luna) Windows launcher item from the deferred list — BLOCKED: needs definition (the deferred list says only `Windows launcher`, no concrete change)
 
 Phase F, mega-file split (terra, last, one part per step)
 - [ ] W33.F1..Fn `lib/app_mobile.dart` (about 7100 lines): move one cohesive group per step into a `part` file under `lib/app_mobile/` using the recipe in memory `tylog-megafile-split-recipe` (part files + private extensions, public API unchanged, no behaviour change). Gate per step: `flutter analyze` 0 issues + the affected test files. Stop when the file is under 4000 lines or a step fails twice
