@@ -61,6 +61,12 @@ class SyncForegroundService : Service() {
         return START_NOT_STICKY
     }
 
+    // Android 15 caps dataSync foreground services; stop instead of being
+    // killed with an ANR.
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        stopSelf()
+    }
+
     override fun onTaskRemoved(rootIntent: Intent?) {
         stopSelf()
     }

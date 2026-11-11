@@ -847,7 +847,7 @@ Phase C, hangs and crashes
 
 Phase D, Rust and native
 - [ ] W32.D1 (codex) `typst.rs:431, 437, 528` and `p2p_folder.rs:300, 503`: five `unwrap()` -> error or fallback. Gate: `cargo test --manifest-path packages/typst_flutter/rust/Cargo.toml --lib`
-- [ ] W32.D2 (Ornith) `SyncForegroundService.kt`: `onTimeout(startId, fgsType)` -> `stopSelf()`
+- [x] W32.D2 (Ornith) `SyncForegroundService.kt`: `onTimeout(startId, fgsType)` -> `stopSelf()` — Sonnet, 1 min, 4-line override (compileSdk 36); NOT COMPILED (D6 covers it); gate grep onTimeout = 1
 - [ ] W32.D3 (Ornith) `VaultSyncWorker.kt:73`: rethrow `CancellationException`, `Log.w` the Throwable
 - [ ] W32.D4 (codex) `SafBridge.kt:243-248` `acquireSync`: answer `result` when disposed
 - [ ] W32.D5 (Ornith) `ios/Runner/AppDelegate.swift`: `as?` guard, log the submit error
