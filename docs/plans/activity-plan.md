@@ -794,9 +794,9 @@ Rules for Ornith steps: one function or one test per step, time box 15 min (PI_T
 - [x] W31.5b flutter analyze (Claude) — 0 issues
 - [x] W31.5c flutter test, full (Claude) — 2159 pass, 10 skipped, 2 min 3 s
 - [x] W31.5d graphify update . ; commit
-- [ ] W31.6a release build on Mac against real vault (Claude, /verify) — W31.6a-c batched with the W32 phase B+C visual check (one build, one pass over the UI), before W32.C10
-- [ ] W31.6b screenshot Voronoi: names on regions, no journal cluster, no ": " labels
-- [ ] W31.6c rename one cluster in the app; names.json written; name survives restart
+- [x] W31.6a release build on Mac against real vault (Claude, /verify) — W31.6a-c batched with the W32 phase B+C visual check (one build, one pass over the UI), before W32.C10 — release build launched, window shows real vault (Today view, index 10110 notes) 2026-11-11
+- [ ] W31.6b screenshot Voronoi: names on regions, no journal cluster, no ": " labels — NOT VERIFIED: Voronoi view stays grey; log "Null check operator used on a null value" at voronoi.dart:437 (byTag[tag]! in buildVoronoiRequest, tag in communities.tagToCluster but absent from tagToNotes), repro twice
+- [ ] W31.6c rename one cluster in the app; names.json written; name survives restart — NOT VERIFIED: blocked by W31.6b Voronoi crash, no regions to rename
 - [ ] W31.7a version bump 0.23.1, CHANGELOG; commit
 - [ ] W31.7b tag + push; CI green
 - [ ] W31.7c Mac install from release zip (sha256)
