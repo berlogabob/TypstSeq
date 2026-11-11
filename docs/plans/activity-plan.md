@@ -863,7 +863,7 @@ Phase E, CI and chores (Claude, one commit each)
 
 Phase F, dead code and missing tests (Ornith, one file each)
 - [x] W32.F1 delete `parseLabCalendar` (`lib/calendar_feeds.dart:200`). Gate: grep 0 + analyze — Sonnet, 1 min, deleted directly; grep 0, analyze clean
-- [ ] W32.F2 delete `sameIndexedContent` (`packages/tylog_core/lib/src/index_donor.dart:109`). Gate: grep 0 + `dart test`
+- [x] W32.F2 delete `sameIndexedContent` (`packages/tylog_core/lib/src/index_donor.dart:109`). Gate: grep 0 + `dart test` — Sonnet, 1 min, deleted directly with its doc comment; grep 0, analyze clean, tylog_core dart test 573 green
 - [ ] W32.F3 new `packages/tylog_core/test/header_repair_tags_test.dart` for `updateNoteTags` (output must compile with Typst, not only re-parse)
 - [ ] W32.F4 new `packages/tylog_core/test/header_repair_import_test.dart` for `withTylogImport` (same rule)
 - [ ] W32.F5 new `test/w32/updater_script_test.dart`: update-script generators with paths containing spaces
