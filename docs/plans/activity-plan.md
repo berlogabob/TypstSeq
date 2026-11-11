@@ -899,15 +899,15 @@ Phase B, silent failures
 
 Phase C, safety
 - [x] W33.C1 (terra) updater: verify the downloaded zip against the digest published in the same release before install; test with a wrong digest — gpt-6.1-terra, 1 min, release already published .sha256 and verified; added inline asset digest as same-release fallback + shared verifyDownloadedZip + wrong-digest tests
-- [ ] W33.C2 (luna, then terra) `SafBridge.read`: log the largest file sizes read on the P30 `.profiletest` build first (main session, device); then a size cap with a clear error
-- [ ] W33.C3 (luna) `VaultSyncWorker`: move off `Dispatchers.Main`; gate = Kotlin compile with Android Studio `jbr`
+- [ ] W33.C2 (luna, then terra) `SafBridge.read`: log the largest file sizes read on the P30 `.profiletest` build first (main session, device); then a size cap with a clear error — left for main session
+- [ ] W33.C3 (luna) `VaultSyncWorker`: move off `Dispatchers.Main`; gate = Kotlin compile with Android Studio `jbr` — BLOCKED: doWork only suspends on Main (delay, done.await); the blocking parts are `ensureInitializationComplete` and the `FlutterEngine` constructor/`executeDartEntrypoint`, which Flutter requires on the platform (main) thread, so moving off Dispatchers.Main would break the engine; no safe change
 
 Phase D, CI and tooling (luna, one commit each)
 - [ ] W33.D1 pin GitHub Actions to commit SHAs in `ci.yml` and `release.yml`, add `concurrency`
 - [ ] W33.D2 `set -euo pipefail` in the bench scripts
 - [ ] W33.D3 launchd plists: no absolute user paths (template + install script)
 - [ ] W33.D4 untrack `graphify-out/GRAPH_REPORT.md`, ignore it
-- [ ] W33.D5 Gradle version catalog; gate = `./gradlew :app:assembleProfile -PtylogProfileSuffix=.profiletest` (main session, alone)
+- [ ] W33.D5 Gradle version catalog; gate = `./gradlew :app:assembleProfile -PtylogProfileSuffix=.profiletest` (main session, alone) — left for main session
 
 Phase E, cleanup
 - [ ] W33.E1 (luna) remove the dead `catch_unwind` under `panic = "abort"`; QuickLook target stays (deleting it is a product decision, left listed)
