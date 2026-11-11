@@ -43,6 +43,8 @@ jobs:
       - run: make test-typst
       - run: make test-core
       - uses: astral-sh/setup-uv@v5
+      # The transcribe worker tests cut audio with ffmpeg.
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: uv run --with pytest pytest tool -q
       - run: flutter analyze
       - run: flutter test
