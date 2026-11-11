@@ -395,6 +395,7 @@ class _VoronoiViewState extends State<VoronoiView>
           initialValue: text,
           decoration: const InputDecoration(
             helperText: 'Leave empty to restore the automatic name',
+            helperMaxLines: 2,
           ),
           autofocus: true,
           onChanged: (value) => text = value,

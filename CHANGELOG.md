@@ -5,6 +5,41 @@ their history is in the commit log and the GitHub release notes.
 
 ## Unreleased
 
+## 0.23.1+171
+
+### New
+
+- Graph map: rename a top-level cluster. Select a note on the map and use the
+  pencil in the bottom panel; names are kept in `_system/clusters/names.json`
+  and an empty name restores the automatic one.
+
+### Fixed
+
+- Graph map no longer shows a "journal" cluster or names clusters after
+  structural tags (journal, daily, inbox, years); a map drawn from an older
+  cluster snapshot no longer stays grey.
+- Obsidian import of `key:: value` frontmatter no longer leaves `: ` in titles
+  and tags; `tool/repair_obsidian_headers.py` repairs notes imported earlier.
+- AI and audio settings are no longer rewritten from empty when reading the
+  settings file fails; calendar settings writes no longer overwrite each other.
+- The reading log is added to the day note's current text, so an edit made in
+  between is kept.
+- A corrupt `vaults.json` no longer stops the app from starting (the file is
+  kept as `vaults.json.corrupt`).
+- GitHub requests, the Nextcloud login poll, article image downloads and the
+  Typst check in note merge now time out instead of hanging.
+- A failed vault-move rollback and a failed enrich-feedback save are reported
+  instead of ignored.
+- Long notes: comparing the editor with a saved or synced copy is about seven
+  times faster; images are not re-read on every keystroke.
+- Android: the sync service stops cleanly at the system time limit; a
+  cancelled background sync is no longer retried as a failure.
+
+### Internal
+
+- CI also runs the Typst plugin's Rust tests and the Python tool tests;
+  `make release` commits only the version files.
+
 ## 0.23.0+170
 
 ### New

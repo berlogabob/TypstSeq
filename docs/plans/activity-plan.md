@@ -797,7 +797,7 @@ Rules for Ornith steps: one function or one test per step, time box 15 min (PI_T
 - [x] W31.6a release build on Mac against real vault (Claude, /verify) — W31.6a-c batched with the W32 phase B+C visual check (one build, one pass over the UI), before W32.C10 — release build launched, window shows real vault (Today view, index 10110 notes) 2026-11-11
 - [x] W31.6b screenshot Voronoi: names on regions, no journal cluster, no ": " labels — 2026-11-11 release build: 52-cluster map, no journal/daily/inbox/year region, no ": " label in overview or zoomed Music concert (0 Null check/EXCEPTION)
 - [x] W31.6c rename one cluster in the app; names.json written; name survives restart — 2026-11-11: note-selected pencil renamed "Music concert" to "W31 rename test"; names.json {"schema":1,"names":{"music-concert":...}}; survived restart; cleared back to "Music concert", names.json names={}
-- [ ] W31.7a version bump 0.23.1, CHANGELOG; commit
+- [x] W31.7a version bump 0.23.1, CHANGELOG; commit — 0.23.1+171; full suite 2185 pass, 10 skipped on the final code. P30 `.profiletest` check 2026-11-11 (Sonnet agent): profile build 32 s, install in place, cold start today-readable 1362 ms, scan-done 16.4 s (10085 notes), Voronoi drawn with names and no Journal region, rename pencil + dialog reachable (cancelled), logcat FATAL 0 / Null check 0 / EXCEPTION 0; `org.tylog.tylog` absent before and after. Label showed 0.22.0 because android/local.properties is stale (local only; CI builds fresh)
 - [ ] W31.7b tag + push; CI green
 - [ ] W31.7c Mac install from release zip (sha256)
 - [ ] W31.7d A24 install in place when connected (firstInstallTime unchanged)
