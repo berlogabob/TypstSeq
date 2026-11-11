@@ -918,6 +918,7 @@ Phase E, cleanup
 Phase F, mega-file split (terra, last, one part per step)
 - [ ] W33.F1..Fn `lib/app_mobile.dart` (about 7100 lines): move one cohesive group per step into a `part` file under `lib/app_mobile/` using the recipe in memory `tylog-megafile-split-recipe` (part files + private extensions, public API unchanged, no behaviour change). Gate per step: `flutter analyze` 0 issues + the affected test files. Stop when the file is under 4000 lines or a step fails twice
 - [x] W33.F2 sync settings/dashboard/conflicts -> lib/app_mobile/sync_flow.dart — driver (mechanical move by script), 1 min, app_mobile.dart 7150 -> 6723 lines; analyze 0 issues + targeted tests green
+- [x] W33.F3 knowledge/problems screens and repairs -> lib/app_mobile/knowledge_flow.dart — driver (mechanical move by script), 0 min, app_mobile.dart 6723 -> 6320 lines; analyze 0 issues + targeted tests green
 
 Phase Z, close (main session)
 - [ ] W33.Z1 `flutter analyze`, full `flutter test`, `make test-core` (each alone)
