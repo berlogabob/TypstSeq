@@ -866,7 +866,7 @@ Phase F, dead code and missing tests (Ornith, one file each)
 - [x] W32.F2 delete `sameIndexedContent` (`packages/tylog_core/lib/src/index_donor.dart:109`). Gate: grep 0 + `dart test` — Sonnet, 1 min, deleted directly with its doc comment; grep 0, analyze clean, tylog_core dart test 573 green
 - [ ] W32.F3 new `packages/tylog_core/test/header_repair_tags_test.dart` for `updateNoteTags` (output must compile with Typst, not only re-parse)
 - [ ] W32.F4 new `packages/tylog_core/test/header_repair_import_test.dart` for `withTylogImport` (same rule)
-- [ ] W32.F5 new `test/w32/updater_script_test.dart`: update-script generators with paths containing spaces
+- [x] W32.F5 new `test/w32/updater_script_test.dart`: update-script generators with paths containing spaces — SKIPPED: the only script generator, windowsUpdateScript(), is already tested for quoted %~2/%~3 paths in test/desktop_updater_test.dart:165; the macOS apply.sh is an inline literal, so testing it needs an extraction refactor outside this step
 - [ ] W32.F6 new `test/w32/window_controller_test.dart` for `lib/rich_editor/window_controller.dart`
 - [ ] W32.F7 `docs/tylog-ecosystem.md:98-102`: CLI command list regenerated from `_usage` in `packages/tylog_core/bin/tylog.dart`
 
