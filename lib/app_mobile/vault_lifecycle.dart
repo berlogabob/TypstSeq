@@ -18,6 +18,7 @@ extension _VaultLifecycle on _HomeScreenState {
       }
       final registry = await VaultRegistry.load();
       vaultRegistry = registry;
+      if (mounted) showLoadWarning(context, registry.loadWarning);
       workspace.deviceId = registry.deviceId;
       widget.onThemeModeChanged?.call(themeModeFromName(registry.themeMode));
       if (Platform.isAndroid) {

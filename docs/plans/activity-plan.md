@@ -889,10 +889,10 @@ Phase A, article links (user-visible)
 - [x] W33.A1 (luna) `packages/tylog_core/lib/src/article_links.dart` `linkArticle`: empty title falls back to the URL host; test in `packages/tylog_core/test/` — gpt-6-luna, 0 min, blank title falls back to URL host
 - [x] W33.A2 (terra) `lib/app_mobile/article_links_flow.dart`: when `_refreshArticleJobs` sees a job turn `done`, call `_relinkArticles(v, only: job.origin)` for that origin on every platform, today included (write already goes through `mutateNote`); the periodic desktop relink stays as is. Test: job file flips to done, bare link in today's note becomes `#tylog.ref-note(...)`, a concurrent edit to the note survives — gpt-6.1-terra, 1 min, vanished-job detection in refresh; relink on all platforms incl. today; concurrent-edit case covered by existing mutateNote guard, not separately tested
 - [x] W33.A3 (terra) `~/Nextcloud/scripts/article-pipeline` (separate repo, `uv`): YouTube title empty; find the title source, fall back to oEmbed/page `<title>`, never write `title: ""`. Gate: its pytest plus a fixture for a `youtube.com/watch` URL. Committed in that repo — gpt-6.1-terra, 1 min, pipeline repo commit 771653b: oEmbed title when transcript exists + host fallback
-- [ ] W33.A4 (main session, asks first) the 2 existing untitled articles in the real vault: retitle through the guarded write path
+- [ ] W33.A4 (main session, asks first) the 2 existing untitled articles in the real vault: retitle through the guarded write path — left for main session
 
 Phase B, silent failures
-- [ ] W33.B1 (terra) show `VaultRegistry.loadWarning` in the vault picker / startup (snackbar or banner); widget test
+- [x] W33.B1 (terra) show `VaultRegistry.loadWarning` in the vault picker / startup (snackbar or banner); widget test — gpt-6.1-terra + driver, 50 min, showLoadWarning helper (snack.dart) called after VaultRegistry.load; test is helper-level (full HomeScreen _open hangs in flutter test)
 - [ ] W33.B2 (luna) 2 more swallowed catches narrowed or logged (metric 35 to 33); pick sites where an IO error is hidden
 - [ ] W33.B3 (terra) `lib/app_mobile/enrich_flow.dart`: failed feedback append keeps the events and retries on the next append; test
 - [ ] W33.B4 (luna) missing tests from Wave 32: B8 (temp file removed on failed conflict download), C4 (typst process timeout), G1 (asset reload skipped when paths unchanged), one file each under `test/w32/`
