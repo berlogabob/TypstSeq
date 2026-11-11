@@ -669,7 +669,11 @@ class VaultRegistry {
     if (entry.storageKind == 'android-tree') {
       try {
         await (entry.storage as AndroidTreeVaultStorage).releaseAccess();
-      } catch (_) {}
+      } catch (error) {
+        stderr.writeln(
+          'Could not release folder access for ${entry.id}: $error',
+        );
+      }
     }
     // Keystore access can fail/hang (macOS keychain entitlement mismatch);
     // an orphaned secret must not block forgetting the vault.
@@ -677,7 +681,9 @@ class VaultRegistry {
       await NextcloudConfig.deleteSecret(
         vaultId: entry.id,
       ).timeout(const Duration(seconds: 5));
-    } catch (_) {}
+    } catch (error) {
+      stderr.writeln('Could not delete secret for ${entry.id}: $error');
+    }
     entries.removeWhere((item) => item.id == entry.id);
     if (activeId == entry.id) {
       activeId = entries.isNotEmpty ? entries.first.id : '';
