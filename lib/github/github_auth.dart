@@ -29,7 +29,9 @@ class GitHubAuth {
     Uri? baseUri,
     FlutterSecureStorage? storage,
     Future<void> Function(Duration)? delay,
-  }) : _client = client ?? HttpClient(),
+  }) : _client =
+           client ??
+           (HttpClient()..connectionTimeout = const Duration(seconds: 20)),
        _clientId =
            clientId ??
            const String.fromEnvironment(
@@ -69,8 +71,11 @@ class GitHubAuth {
           )
           .join('&'),
     );
-    final response = await request.close();
-    final body = await utf8.decoder.bind(response).join();
+    final response = await request.close().timeout(const Duration(seconds: 30));
+    final body = await utf8.decoder
+        .bind(response)
+        .join()
+        .timeout(const Duration(seconds: 30));
     if (response.statusCode != 200) {
       throw GitHubDeviceFlowError('HTTP ${response.statusCode}');
     }

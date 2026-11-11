@@ -26,11 +26,16 @@ class GitHubHttpError implements Exception {
 
 class GitHubClient {
   GitHubClient([this.token, HttpClient? client, Uri? baseUri])
-    : _client = client ?? HttpClient(),
+    : _client =
+          client ??
+          (HttpClient()..connectionTimeout = const Duration(seconds: 20)),
       _baseUri = baseUri ?? Uri.parse('https://api.github.com');
   final String? token;
   final HttpClient _client;
   final Uri _baseUri;
+
+  /// Per-request bound on response headers and on reading the body.
+  Duration timeout = const Duration(seconds: 60);
   static const maxZipBytes = 200 * 1024 * 1024;
 
   String _repo(String repo) =>
@@ -55,7 +60,7 @@ class GitHubClient {
   }) async {
     var current = uri;
     for (var redirects = 0; redirects <= 10; redirects++) {
-      final request = await _client.openUrl(method, current);
+      final request = await _client.openUrl(method, current).timeout(timeout);
       request.followRedirects = false;
       request.headers.set(HttpHeaders.userAgentHeader, 'TyLog');
       request.headers.set(HttpHeaders.acceptHeader, accept);
@@ -66,7 +71,7 @@ class GitHubClient {
         request.headers.contentType = ContentType.json;
         request.write(jsonEncode(body));
       }
-      final response = await request.close();
+      final response = await request.close().timeout(timeout);
       if ([301, 302, 303, 307, 308].contains(response.statusCode) &&
           response.headers.value(HttpHeaders.locationHeader) != null) {
         final next = current.resolve(
@@ -99,7 +104,7 @@ class GitHubClient {
         );
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        final error = await utf8.decoder.bind(response).join();
+        final error = await utf8.decoder.bind(response).join().timeout(timeout);
         if (conflict &&
             (response.statusCode == 409 ||
                 (response.statusCode == 422 &&
@@ -116,7 +121,7 @@ class GitHubClient {
         throw StateError('Download exceeds size limit');
       }
       final bytes = BytesBuilder(copy: false);
-      await for (final chunk in response) {
+      await for (final chunk in response.timeout(timeout)) {
         if (limit != null && bytes.length + chunk.length > limit) {
           throw StateError('Download exceeds size limit');
         }

@@ -830,7 +830,7 @@ Phase B, data loss
 
 Phase C, hangs and crashes
 - [x] W32.C1a (Ornith, new file) `test/w32/github_client_timeout_test.dart`: stalled local server -> `TimeoutException`. Gate: fails — Ornith, ~3 min, fixed by Sonnet: stray imports; red before fix (compile: no timeout setter)
-- [ ] W32.C1b (Ornith) `lib/github/github_client.dart` + `lib/github/github_auth.dart:32` (second run): `connectionTimeout` + `.timeout` on `close()` and body. Gate: C1a + `test/github/` pass
+- [x] W32.C1b (Ornith) `lib/github/github_client.dart` + `lib/github/github_auth.dart:32` (second run): `connectionTimeout` + `.timeout` on `close()` and body. Gate: C1a + `test/github/` pass — Sonnet, 3 min, edited directly (multi-site, cheaper than a prompt); analyze clean, C1a + test/github green; github_auth timeouts not separately tested
 - [ ] W32.C2a (Ornith, new file) `test/w32/login_flow_timeout_test.dart`: hanging poll endpoint -> `TimeoutException`. Gate: fails
 - [ ] W32.C2b (Ornith) `lib/nextcloud_sync/login_flow.dart`: `connectionTimeout` + 20 s timeout per poll request. Gate: C2a + `test/login_flow_test.dart`
 - [ ] W32.C3a (Ornith, new file) `test/w32/article_image_fetch_test.dart`: never-ending and oversize responses fail. Gate: fails
