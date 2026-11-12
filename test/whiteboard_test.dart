@@ -81,7 +81,9 @@ void main() {
   }
 
   Future<T?> pollIo<T>(WidgetTester tester, Future<T?> Function() read) async {
-    for (var i = 0; i < 20; i++) {
+    // Wall-clock budget: an iteration count shrinks under machine load.
+    final deadline = DateTime.now().add(const Duration(seconds: 20));
+    while (DateTime.now().isBefore(deadline)) {
       final value = await tester.runAsync(read);
       if (value != null && (value is! List || value.isNotEmpty)) return value;
       await tester.runAsync(
@@ -394,11 +396,9 @@ Body
     await gesture.up();
     await tester.pump();
     await tester.tap(find.byType(BackButton));
-    for (
-      var i = 0;
-      i < 30 && find.byType(Whiteboard).evaluate().isNotEmpty;
-      i++
-    ) {
+    final backDeadline = DateTime.now().add(const Duration(seconds: 20));
+    while (find.byType(Whiteboard).evaluate().isNotEmpty &&
+        DateTime.now().isBefore(backDeadline)) {
       await settleIo(tester);
       await tester.pump(const Duration(milliseconds: 50));
     }

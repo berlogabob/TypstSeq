@@ -43,6 +43,7 @@ void main() {
       marker: 'fixit',
     );
     var source = issue.text;
+    Future<void>? sending;
     final controller = TyLogEditingController(
       source: source,
       onSourceChanged: (_) {},
@@ -63,7 +64,7 @@ void main() {
               onInsert: () async {},
               issueAction: (line) => line != 1
                   ? null
-                  : () async {
+                  : () => sending = (() async {
                       await sendIssueToGithub(
                         issue: issue,
                         repo: 'a/b',
@@ -74,7 +75,7 @@ void main() {
                           return true;
                         },
                       );
-                    },
+                    })(),
             ),
           ),
         ),
@@ -88,9 +89,9 @@ void main() {
     expect(find.text('Send to GitHub'), findsOneWidget);
     await tester.runAsync(() async {
       await tester.tap(find.text('Send to GitHub'));
-      for (var i = 0; i < 100 && !source.contains('77'); i++) {
-        await Future<void>.delayed(const Duration(milliseconds: 20));
-      }
+      // Await the send itself: a polling budget fails under load and lets the
+      // send outlive the test's temp directory.
+      await sending;
     });
     await tester.pump();
     expect(client.creates, 1);
