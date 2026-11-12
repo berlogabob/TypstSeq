@@ -68,6 +68,47 @@ List<EnrichDayResolution> _resolveEnrichPage(
 /// Day-log enrichment in the app: reads the worker's mentions files,
 /// resolves them with [EnrichMemory], and records decisions in the ledger.
 extension _EnrichFlow on _HomeScreenState {
+  Future<void> _loadEnrichSkipped(Vault v) {
+    if (identical(_enrichSkippedVault, v)) return _enrichSkippedLoad!;
+    _enrichSkippedVault = v;
+    final generation = ++_enrichSkippedGeneration;
+    _enrichSkipped = EnrichSkipped();
+    final device = vaultRegistry?.deviceId;
+    return _enrichSkippedLoad = () async {
+      if (device == null) return;
+      await _enrichSkippedWrite;
+      final loaded = await EnrichSkipped.load(v.storage, device);
+      if (_enrichSkippedGeneration == generation) {
+        _enrichSkipped = loaded;
+      } else if (identical(_enrichSkippedVault, v)) {
+        await _enrichSkippedLoad;
+      }
+    }();
+  }
+
+  void _saveEnrichSkipped(Vault v) {
+    final device = vaultRegistry?.deviceId;
+    if (device == null) return;
+    final contents = _enrichSkipped.serialize();
+    _enrichSkippedWrite = _enrichSkippedWrite.then((_) async {
+      try {
+        await v.storage.createDirectory(enrichSkippedDir);
+        await v.storage.writeText('$enrichSkippedDir/$device.json', contents);
+      } catch (error) {
+        debugPrint('Could not save skipped enrichment lines: $error');
+      }
+    });
+  }
+
+  void _pruneEnrichSkipped(Vault v, String path, _EnrichView view) {
+    final keys = enrichLineCards(
+      decisions: view.decisions,
+      loans: view.loans,
+      lines: view.source.split('\n'),
+    ).map((card) => card.key).toSet();
+    if (_enrichSkipped.prune(path, keys)) _saveEnrichSkipped(v);
+  }
+
   bool get _enrichAutoWrite =>
       defaultTargetPlatform != TargetPlatform.android &&
       defaultTargetPlatform != TargetPlatform.iOS;
@@ -198,6 +239,8 @@ extension _EnrichFlow on _HomeScreenState {
     final currentIndex = index;
     final currentIndexRevision = workspace.indexRevision;
     if (v == null || currentIndex == null) return;
+    await _loadEnrichSkipped(v);
+    if (!mounted || !identical(vault, v)) return;
     final path = note;
     final isDay = path != null && path.startsWith('daily/');
     if (!isDay) {
@@ -227,6 +270,7 @@ extension _EnrichFlow on _HomeScreenState {
           workspace.indexRevision != currentIndexRevision) {
         return;
       }
+      if (!identical(view, _noEnrich)) _pruneEnrichSkipped(v, path, view);
       _rebuild(() => _enrichDecisions = (path, view));
     } catch (error) {
       // Enrichment is advisory: never break opening a note.
@@ -830,6 +874,8 @@ extension _EnrichIncoming on _HomeScreenState {
     final v = vault;
     final currentIndex = index;
     if (v == null || currentIndex == null) return;
+    await _loadEnrichSkipped(v);
+    if (!mounted || !identical(vault, v)) return;
     List<String>? paths;
     var cursor = 0;
     var more = false;
@@ -883,6 +929,8 @@ extension _EnrichIncoming on _HomeScreenState {
       for (final path in eligiblePage) {
         views.remove(path);
         final view = pageViews[path] ?? _noEnrich;
+        if (!identical(vault, v)) return {};
+        if (pageViews.containsKey(path)) _pruneEnrichSkipped(v, path, view);
         if (view.decisions.isEmpty &&
             view.tags.isEmpty &&
             view.markers.isEmpty &&
@@ -1282,11 +1330,12 @@ extension _EnrichIncoming on _HomeScreenState {
                                   loans: entry.value.loans,
                                   openLoans: openLoansByEquipment(currentIndex),
                                   skipped:
-                                      _enrichSkipped[entry.key] ?? const {},
+                                      _enrichSkipped.notes[entry.key] ??
+                                      const {},
                                   onSkipLine: (key) => _rebuild(() {
-                                    _enrichSkipped
-                                        .putIfAbsent(entry.key, () => {})
-                                        .add(key);
+                                    if (!identical(vault, v)) return;
+                                    _enrichSkipped.skip(entry.key, key);
+                                    _saveEnrichSkipped(v);
                                   }),
                                   batch: (body) => _enrichOnce(() async {
                                     await body();

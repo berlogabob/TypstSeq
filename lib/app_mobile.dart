@@ -24,7 +24,13 @@ import 'package:tylog_audio/tylog_audio.dart'
     show audioDurationMs, peaksFromWav;
 import 'package:tylog_core/enrich.dart';
 import 'package:tylog_core/tylog_core.dart'
-    show Decision, decisionsDir, encodeDecisions, loadDecisions, runClusterStep;
+    show
+        Decision,
+        EnrichSkipped,
+        decisionsDir,
+        encodeDecisions,
+        loadDecisions,
+        runClusterStep;
 import 'package:tylog_core/values.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -846,9 +852,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   (String, _EnrichView)? _enrichDecisions;
   bool _enrichBusy = false;
   final _enrichShown = <(Vault, String, String, String)>{};
-  // Keys include line text and suggestions, so skips lapse on changes; they
-  // live only in memory and never touch the feedback ledger.
-  final _enrichSkipped = <String, Set<String>>{};
+  EnrichSkipped _enrichSkipped = EnrichSkipped();
+  Vault? _enrichSkippedVault;
+  Future<void>? _enrichSkippedLoad;
+  int _enrichSkippedGeneration = 0;
+  Future<void> _enrichSkippedWrite = Future.value();
   Future<void> _enrichLedgerWrite = Future.value();
   final _enrichRetry = EnrichLedgerRetry();
   DateTime? _articleRelinkAt;
@@ -3152,7 +3160,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               )
               .where(
                 (card) =>
-                    !(_enrichSkipped[current]?.contains(card.key) ?? false),
+                    !(_enrichSkipped.notes[current]?.contains(card.key) ??
+                        false),
               )
               .length;
     if (documentModes.contains(mode) &&

@@ -7,6 +7,7 @@ export 'src/attention.dart';
 export 'src/date_words.dart';
 export 'src/enrich.dart';
 export 'src/enrich_cards.dart';
+export 'src/enrich_skipped.dart';
 export 'src/loan.dart';
 export 'src/loan_due.dart';
 export 'src/eval_links.dart';

@@ -33,6 +33,7 @@ String appendAboveAutoBlock(String source, String line) {
 const enrichMentionsDir = '_system/enrich/mentions';
 const enrichFeedbackDir = '_system/enrich/feedback';
 const enrichShownDir = '_system/enrich/shown';
+const enrichSkippedDir = '_system/enrich/skipped';
 const enrichIgnoreEntity = 'mention:ignore';
 
 /// Ledger `entity` for a decision about an auto-added tag.
