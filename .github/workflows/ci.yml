@@ -18,6 +18,7 @@ jobs:
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
+          flutter-version: 3.47.8 # pinned: stable 3.50 deprecates material.dart (185 analyze infos)
           cache: true
       - uses: typst-community/setup-typst@6a2cfaf0b28d636b00148f965e315bae81079aaa # v5
         with:
