@@ -37,19 +37,28 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: EnrichReview(
-            decisions: const [decision],
-            pages: const [first, second, other],
-            onAccept: (_, target) => accepted(target),
-            onReject: (_, _) {},
-            onCreate: (_) {},
-            onIgnore: (_) {},
+          body: ListView(
+            children: [
+              EnrichReview(
+                source: 'Alex',
+                decisions: const [decision],
+                pages: const [first, second, other],
+                onAccept: (_, target) => accepted(target),
+                onReject: (_, _) {},
+                onCreate: (_) {},
+                onIgnore: (_) {},
+              ),
+            ],
           ),
         ),
       ),
     );
-    await tester.tap(find.byKey(const ValueKey('enrich-review-Alex')));
-    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('enrich-row-1-Alex')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.byKey(const ValueKey('enrich-menu-other')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
   }
 
   testWidgets('shows candidate kind and last seen', (tester) async {
@@ -68,7 +77,8 @@ void main() {
     NoteRef? accepted;
     await showReview(tester, (target) => accepted = target);
     await tester.tap(find.text('Alex B'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(accepted, second);
   });
 
@@ -76,11 +86,14 @@ void main() {
     NoteRef? accepted;
     await showReview(tester, (target) => accepted = target);
     await tester.tap(find.text('Other page…'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.enterText(find.byType(TextField), 'Charlie');
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.tap(find.widgetWithText(ListTile, 'Charlie'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(accepted, other);
   });
 
@@ -89,13 +102,16 @@ void main() {
   ) async {
     await showReview(tester, (_) {});
     await tester.tap(find.text('Other page…'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.enterText(find.byType(TextField), 'no matching page');
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('No matching pages'), findsOneWidget);
     await tester.tap(find.byTooltip('Back to suggestions'));
-    await tester.pumpAndSettle();
-    expect(find.text('Alex A'), findsOneWidget);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.widgetWithText(ListTile, 'Alex A'), findsOneWidget);
     expect(find.text('Not a person/ignore'), findsOneWidget);
   });
 
@@ -128,32 +144,39 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: EnrichReview(
-            decisions: const [
-              EnrichDecision(quest, EnrichStatus.review, [
-                EnrichCandidate(q1, 0, strong: false),
-                EnrichCandidate(q2, 0, strong: false),
-              ], choose: true),
+          body: ListView(
+            children: [
+              EnrichReview(
+                source: 'Quest 3',
+                decisions: const [
+                  EnrichDecision(quest, EnrichStatus.review, [
+                    EnrichCandidate(q1, 0, strong: false),
+                    EnrichCandidate(q2, 0, strong: false),
+                  ], choose: true),
+                ],
+                pages: const [q1, q2, other],
+                onAccept: (_, target) => accepted = target,
+                onReject: (_, _) {},
+                onCreate: (_) {},
+                onIgnore: (_) {},
+              ),
             ],
-            pages: const [q1, q2, other],
-            onAccept: (_, target) => accepted = target,
-            onReject: (_, _) {},
-            onCreate: (_) {},
-            onIgnore: (_) {},
           ),
         ),
       ),
     );
-    expect(find.text('Which \u201cQuest 3\u201d?'), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('enrich-choose-Quest 3')));
-    await tester.pumpAndSettle();
+    expect(find.text('choose…'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('enrich-row-1-Quest 3')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('QUEST 3 [1] \u00b7 yellow'), findsOneWidget);
     expect(find.text('QUEST 3 [2] \u00b7 blue'), findsOneWidget);
     expect(find.text('Charlie'), findsNothing);
     expect(find.text('Other page…'), findsNothing);
     expect(find.text('New page'), findsNothing);
     await tester.tap(find.text('QUEST 3 [2] \u00b7 blue'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     expect(accepted, q2);
   });
 }

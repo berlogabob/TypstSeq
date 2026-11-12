@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:test/test.dart';
-import 'package:tylog_core/enrich.dart';
 import 'package:tylog_core/tylog_core.dart';
 
 void main() {
