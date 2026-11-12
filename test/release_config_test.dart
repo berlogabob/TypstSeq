@@ -55,8 +55,16 @@ void main() {
         'if (keystorePropertiesFile.exists()) {\n                signingConfig = signingConfigs.getByName("release")',
       ),
     );
-    expect(profile, contains('tylogProfileSuffix'));
-    expect(profile, contains('?.let { applicationIdSuffix = it }'));
+    final profileVariant = gradle.substring(
+      gradle.indexOf('androidComponents {'),
+      gradle.indexOf('\ndependencies {'),
+    );
+    expect(profileVariant, contains('findProperty("tylogProfileSuffix")'));
+    expect(profileVariant, contains('onVariants(selector().withBuildType("profile"))'));
+    expect(
+      profileVariant,
+      contains('variant.applicationId.set("org.tylog.tylog" + profileSuffix)'),
+    );
     expect(profile, isNot(contains('".debug"')));
     expect(profile, isNot(contains('".profiletest"')));
     expect(

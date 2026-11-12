@@ -4531,7 +4531,7 @@ void main() {
         await controller.refreshIndex(always: true);
         controller.dispose();
         await server.server.close(force: true);
-        await directory.delete(recursive: true);
+        await deleteTempDir(directory);
       });
     });
     controller.startCloudPolling();
