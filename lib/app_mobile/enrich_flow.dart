@@ -929,6 +929,8 @@ extension _EnrichIncoming on _HomeScreenState {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
         builder: (context, setSheetState) {
           void decide(
@@ -951,9 +953,21 @@ extension _EnrichIncoming on _HomeScreenState {
             );
           }
 
-          return SafeArea(
-            child: SizedBox(
-              height: MediaQuery.sizeOf(context).height * .75,
+          // One scroll for the whole sheet: the controller below drives both
+          // the content and the drag from 3/4 height up to the status bar.
+          return DraggableScrollableSheet(
+            expand: false,
+            initialChildSize: .75,
+            minChildSize: .5,
+            maxChildSize: 1,
+            snap: true,
+            snapSizes: const [.75, 1],
+            builder: (context, scrollController) => Material(
+              color: Theme.of(context).colorScheme.surfaceContainerLow,
+              clipBehavior: Clip.antiAlias,
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              ),
               child:
                   FutureBuilder<
                     (
@@ -985,7 +999,26 @@ extension _EnrichIncoming on _HomeScreenState {
                             ).where((note) => note.kind == 'booking').toList()
                           : <NoteRef>[];
                       return ListView(
+                        key: const ValueKey('enrich-sheet-scroll'),
+                        controller: scrollController,
+                        padding: EdgeInsets.only(
+                          bottom: MediaQuery.viewPaddingOf(context).bottom,
+                        ),
                         children: [
+                          Center(
+                            child: Container(
+                              key: const ValueKey('enrich-sheet-handle'),
+                              width: 32,
+                              height: 4,
+                              margin: const EdgeInsets.only(top: 12, bottom: 4),
+                              decoration: BoxDecoration(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurfaceVariant.withAlpha(100),
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                          ),
                           ListTile(
                             title: const Text('Incoming'),
                             trailing: Row(

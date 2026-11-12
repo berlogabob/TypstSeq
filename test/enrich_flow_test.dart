@@ -154,6 +154,26 @@ Future<void> _pump(WidgetTester tester) async {
   }
 }
 
+/// The Incoming sheet is one lazy list: build the row before asking for it.
+Future<void> _reveal(WidgetTester tester, Finder finder) async {
+  // Expand to full height first: dragging the list would otherwise move the
+  // sheet before it scrolls.
+  final title = find.text('Incoming');
+  if (title.hitTestable().evaluate().isNotEmpty) {
+    await tester.drag(title, const Offset(0, -800));
+    await tester.pumpAndSettle();
+  }
+  await tester.scrollUntilVisible(
+    finder,
+    200,
+    scrollable: find.descendant(
+      of: find.byKey(const ValueKey('enrich-sheet-scroll')),
+      matching: find.byType(Scrollable),
+    ),
+  );
+  await tester.ensureVisible(finder);
+}
+
 Future<void> _openIncoming(WidgetTester tester) async {
   if (find.byKey(const ValueKey('incoming-open')).evaluate().isEmpty) {
     await tester.tap(find.textContaining('More ·').first);
@@ -188,6 +208,32 @@ void main() {
     await tester.pumpAndSettle();
     await _openIncoming(tester);
     expect(find.byType(EnrichReview), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('Incoming sheet has one scroll and drags to full height', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await _mount(tester);
+    final sheet = find.byType(DraggableScrollableSheet);
+    expect(sheet, findsOneWidget);
+    expect(
+      find.descendant(of: sheet, matching: find.byType(Scrollable)),
+      findsOneWidget,
+    );
+    expect(find.byKey(const ValueKey('enrich-sheet-handle')), findsOneWidget);
+    final body = find.byKey(const ValueKey('enrich-sheet-scroll'));
+    final before = tester.getTopLeft(body).dy;
+    expect(before, closeTo(800 * .25, 1));
+    await tester.drag(find.text('Incoming'), const Offset(0, -600));
+    await tester.pumpAndSettle();
+    // Full height, below the status bar (useSafeArea).
+    expect(tester.getTopLeft(body).dy, lessThan(before / 2));
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
@@ -279,16 +325,16 @@ void main() {
 
     for (final heading in ['OCR rows', 'Vault health']) {
       final finder = find.text(heading);
-      await tester.ensureVisible(finder);
+      await _reveal(tester, finder);
       expect(finder, findsOneWidget);
     }
     final row = find.textContaining('A very long imported value');
-    await tester.ensureVisible(row);
+    await _reveal(tester, row);
     expect(row, findsOneWidget);
     final accept = find.byTooltip('Accept');
-    await tester.ensureVisible(accept);
+    await _reveal(tester, accept);
     expect(accept, findsOneWidget);
-    await tester.ensureVisible(find.text('missing-note-header'));
+    await _reveal(tester, find.text('missing-note-header'));
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
@@ -313,7 +359,7 @@ void main() {
     );
     await tester.tap(find.text('Try again'));
     await _pump(tester);
-    await tester.ensureVisible(find.text('missing-note-header'));
+    await _reveal(tester, find.text('missing-note-header'));
     expect(find.text('Could not load suggestions'), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
@@ -367,10 +413,10 @@ void main() {
         Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
         await _pump(tester);
         await _openIncoming(tester);
-        await tester.ensureVisible(find.text('Vault health'));
+        await _reveal(tester, find.text('Vault health'));
         expect(find.text('missing-note-header'), findsOneWidget);
         final action = find.text(sourceMode ? 'Open Source' : 'Open');
-        await tester.ensureVisible(action);
+        await _reveal(tester, action);
         await tester.tap(action);
         await _pump(tester);
         expect(home.workspace.note, 'notes/kz.typ');

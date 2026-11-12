@@ -223,7 +223,19 @@ void main() {
         EnrichStatus.review,
         [EnrichCandidate(notes[2], 0, strong: false)],
       );
-      expect(enrichLoanOffers(hints, source, mem, [review]), isEmpty);
+      // A lone candidate is the item meant; two are a guess.
+      expect(
+        enrichLoanOffers(hints, source, mem, [
+          review,
+        ]).single.equipment.single.id,
+        'TL-0007',
+      );
+      final ambiguous =
+          EnrichDecision(hints.mentions.single, EnrichStatus.review, [
+            EnrichCandidate(notes[2], 0, strong: false),
+            EnrichCandidate(notes[3], 0, strong: false),
+          ]);
+      expect(enrichLoanOffers(hints, source, mem, [ambiguous]), isEmpty);
       mem.addFeedback(
         EnrichFeedback(
           surface: enrichPlainLine(source.split('\n')[2]),

@@ -85,8 +85,14 @@ List<EnrichLoanOffer> enrichLoanOffers(
       if (decision.mention.line == hint.line &&
           (decision.mention.type == 'equipment' ||
               decision.mention.type == 'person') &&
-          decision.status == EnrichStatus.linked &&
-          target != null) {
+          target != null &&
+          // A lone equipment candidate in review is the item the user means:
+          // waiting for a tap per item hid the offer until every link was
+          // accepted by hand.
+          (decision.status == EnrichStatus.linked ||
+              (decision.status == EnrichStatus.review &&
+                  decision.mention.type == 'equipment' &&
+                  decision.candidates.length == 1))) {
         if (target.kind == decision.mention.type) add(target);
       }
     }

@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "prompt": 5,
+  "note": "daily/2026/11/2026-11-12.typ",
+  "content_sha": "629060056c179bae31e45debb4b0f0fd1b6bace6250c97e30b4cce75b40c6b3b",
+  "extracted_at": "2026-11-12T17:04:43.034822+00:00",
+  "model": "ollama/ornith-1.5:35b",
+  "connection": "studio",
+  "mentions": [
+    {
+      "surface": "Student 20231234",
+      "type": "person",
+      "line": 13,
+      "hints": []
+    },
+    {
+      "surface": "lab",
+      "type": "place",
+      "line": 13,
+      "hints": [
+        "LAB",
+        "Lab"
+      ],
+      "entity": "LAB"
+    },
+    {
+      "surface": "ESP32 DevKit",
+      "type": "equipment",
+      "line": 13,
+      "hints": [
+        "ESP32 DevKit TL-0102"
+      ],
+      "entity": "TL-0102"
+    },
+    {
+      "surface": "Soldering station A",
+      "type": "equipment",
+      "line": 13,
+      "hints": [
+        "Soldering station A TL-0103"
+      ],
+      "entity": "TL-0103"
+    },
+    {
+      "surface": "ESP32 library",
+      "type": "topic",
+      "line": 13,
+      "hints": []
+    },
+    {
+      "surface": "José Graça",
+      "type": "person",
+      "line": 14,
+      "hints": [
+        "Jose Graca"
+      ],
+      "entity": "lab-person-7"
+    },
+    {
+      "surface": "Quest 3",
+      "type": "equipment",
+      "line": 14,
+      "hints": [
+        "QUEST 3"
+      ]
+    },
+    {
+      "surface": "Студент 20239876",
+      "type": "person",
+      "line": 15,
+      "hints": []
+    },
+    {
+      "surface": "QUEST 3 [2]",
+      "type": "equipment",
+      "line": 15,
+      "hints": [
+        "QUEST 3 [2] TL-0202",
+        "QUEST 3 2"
+      ],
+      "entity": "TL-0202"
+    }
+  ],
+  "keywords": [
+    "ESP32",
+    "soldering",
+    "Quest 3",
+    "VR",
+    "library",
+    "lab appointments"
+  ],
+  "markers": [],
+  "loans": [
+    {
+      "line": 13,
+      "borrower": "Student 20231234",
+      "purpose": "consultation",
+      "topic": "ESP32 library"
+    },
+    {
+      "line": 15,
+      "borrower": "Студент 20239876",
+      "purpose": "take-home",
+      "topic": "QUEST 3 [2]"
+    }
+  ]
+}

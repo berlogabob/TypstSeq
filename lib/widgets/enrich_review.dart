@@ -62,92 +62,83 @@ class EnrichReview extends StatelessWidget {
       return const SizedBox.shrink();
     }
     final small = Theme.of(context).textTheme.bodySmall;
-    // At most a fifth of the screen, scrolling inside: five chips on the P30
-    // took half the height and left the note a few lines.
-    return ConstrainedBox(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * 0.2,
-      ),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(
-          kSpace16,
-          kSpace4,
-          kSpace16,
-          kSpace8,
-        ),
-        child: Wrap(
-          spacing: kSpace8,
-          runSpacing: kSpace4,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            Text('Mentions', style: small),
-            for (final decision in decisions) _chip(context, decision),
-            for (final offer in markers)
-              InputChip(
-                key: ValueKey('enrich-marker-${offer.marker.id}-${offer.line}'),
-                // Tinted like a button: a pale "fixit?" read as a note, not a
-                // suggestion, and the line was never filed.
-                backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                avatar: const Icon(Icons.bookmark_add_outlined, size: 16),
-                label: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 240),
-                  child: Text(
-                    'Tap to link as ${offer.marker.title}: ${offer.text}',
-                    overflow: TextOverflow.ellipsis,
-                  ),
+    // No scroll view of its own: the hosting sheet scrolls once. A capped
+    // inner scroller hid every chip below the first rows (lines 14-15 and the
+    // loan offer of a day never showed).
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(kSpace16, kSpace4, kSpace16, kSpace8),
+      child: Wrap(
+        spacing: kSpace8,
+        runSpacing: kSpace4,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text('Mentions', style: small),
+          for (final decision in decisions) _chip(context, decision),
+          for (final offer in markers)
+            InputChip(
+              key: ValueKey('enrich-marker-${offer.marker.id}-${offer.line}'),
+              // Tinted like a button: a pale "fixit?" read as a note, not a
+              // suggestion, and the line was never filed.
+              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+              avatar: const Icon(Icons.bookmark_add_outlined, size: 16),
+              label: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 240),
+                child: Text(
+                  'Tap to link as ${offer.marker.title}: ${offer.text}',
+                  overflow: TextOverflow.ellipsis,
                 ),
-                tooltip: 'Tap to file this line under ${offer.marker.title}',
-                onPressed: onAcceptMarker == null
-                    ? null
-                    : () => onAcceptMarker!(offer),
-                deleteIcon: const Icon(Icons.close, size: 16),
-                onDeleted: onRejectMarker == null
-                    ? null
-                    : () => onRejectMarker!(offer),
-                deleteButtonTooltipMessage: 'Not ${offer.marker.title}',
               ),
-            for (final offer in loans)
-              InputChip(
-                key: ValueKey('enrich-loan-${offer.line}'),
-                backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                avatar: const Icon(Icons.outbox_outlined, size: 16),
-                label: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 240),
-                  child: Text(
-                    'Track as loan: ${offer.equipment.map((e) => e.title).join(', ')}',
-                    overflow: TextOverflow.ellipsis,
-                  ),
+              tooltip: 'Tap to file this line under ${offer.marker.title}',
+              onPressed: onAcceptMarker == null
+                  ? null
+                  : () => onAcceptMarker!(offer),
+              deleteIcon: const Icon(Icons.close, size: 16),
+              onDeleted: onRejectMarker == null
+                  ? null
+                  : () => onRejectMarker!(offer),
+              deleteButtonTooltipMessage: 'Not ${offer.marker.title}',
+            ),
+          for (final offer in loans)
+            InputChip(
+              key: ValueKey('enrich-loan-${offer.line}'),
+              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+              avatar: const Icon(Icons.outbox_outlined, size: 16),
+              label: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 240),
+                child: Text(
+                  'Track as loan: ${offer.equipment.map((e) => e.title).join(', ')}',
+                  overflow: TextOverflow.ellipsis,
                 ),
-                tooltip:
-                    'Rewrite this line as a task: issued now, mark it Done when returned',
-                onPressed: onAcceptLoan == null
-                    ? null
-                    : () => onAcceptLoan!(offer),
-                deleteIcon: const Icon(Icons.close, size: 16),
-                onDeleted: onRejectLoan == null
-                    ? null
-                    : () => onRejectLoan!(offer),
-                deleteButtonTooltipMessage: 'Not a loan',
               ),
-            for (final tag in tags)
-              InputChip(
-                key: ValueKey('enrich-tag-$tag'),
-                avatar: Icon(
-                  appliedTags.contains(tag) ? Icons.check : Icons.tag,
-                  size: 16,
-                ),
-                label: Text(tag),
-                tooltip: appliedTags.contains(tag)
-                    ? 'Tag added to this day'
-                    : 'Suggested tag: tap to add or remove',
-                onPressed: onRejectTag == null && onAcceptTag == null
-                    ? null
-                    : () => _confirmRemoveTag(context, tag),
-                deleteIcon: const Icon(Icons.close, size: 16),
-                onDeleted: onRejectTag == null ? null : () => onRejectTag!(tag),
+              tooltip:
+                  'Rewrite this line as a task: issued now, mark it Done when returned',
+              onPressed: onAcceptLoan == null
+                  ? null
+                  : () => onAcceptLoan!(offer),
+              deleteIcon: const Icon(Icons.close, size: 16),
+              onDeleted: onRejectLoan == null
+                  ? null
+                  : () => onRejectLoan!(offer),
+              deleteButtonTooltipMessage: 'Not a loan',
+            ),
+          for (final tag in tags)
+            InputChip(
+              key: ValueKey('enrich-tag-$tag'),
+              avatar: Icon(
+                appliedTags.contains(tag) ? Icons.check : Icons.tag,
+                size: 16,
               ),
-          ],
-        ),
+              label: Text(tag),
+              tooltip: appliedTags.contains(tag)
+                  ? 'Tag added to this day'
+                  : 'Suggested tag: tap to add or remove',
+              onPressed: onRejectTag == null && onAcceptTag == null
+                  ? null
+                  : () => _confirmRemoveTag(context, tag),
+              deleteIcon: const Icon(Icons.close, size: 16),
+              onDeleted: onRejectTag == null ? null : () => onRejectTag!(tag),
+            ),
+        ],
       ),
     );
   }
@@ -345,9 +336,33 @@ class EnrichReview extends StatelessWidget {
       ),
       EnrichStatus.review => InputChip(
         key: ValueKey('enrich-review-${mention.surface}'),
-        avatar: const Icon(Icons.help_outline, size: 16),
-        label: Text('${mention.surface} → ${target!.title}?'),
-        tooltip: 'Choose a page',
+        avatar: const Icon(Icons.add_link, size: 16),
+        label: ConstrainedBox(
+          constraints: BoxConstraints(
+            // Chip padding, avatar and the x take about 100 px.
+            maxWidth: MediaQuery.sizeOf(context).width - 2 * kSpace16 - 100,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  'Link \u201c${mention.surface}\u201d',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Flexible(
+                flex: 2,
+                child: Text(
+                  ' \u2192 ${enrichShortTarget(mention.surface, target!)}',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+        tooltip:
+            'Link \u201c${mention.surface}\u201d to ${target.title}, or choose another page',
         onPressed: () => _choose(context, decision),
         deleteIcon: const Icon(Icons.close, size: 16),
         onDeleted: () => onReject(mention, target),
@@ -362,4 +377,19 @@ class EnrichReview extends StatelessWidget {
       ),
     };
   }
+}
+
+/// The target without the name the surface already says: "ESP32 DevKit
+/// TL-0102" for "ESP32 DevKit" is just "TL-0102".
+String enrichShortTarget(String surface, NoteRef target) {
+  final title = target.title;
+  if (title.endsWith(' ${target.id}')) {
+    final head = title.substring(0, title.length - target.id.length).trim();
+    if (head.toLowerCase() == surface.toLowerCase() ||
+        surface.toLowerCase().contains(head.toLowerCase()) ||
+        head.toLowerCase().contains(surface.toLowerCase())) {
+      return target.id;
+    }
+  }
+  return title;
 }
