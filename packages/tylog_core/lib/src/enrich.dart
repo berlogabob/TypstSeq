@@ -43,7 +43,9 @@ const _pageTypes = {'person', 'place', 'organization', 'project', 'event'};
 /// Plain `note` pages count: people imported from Logseq or created by hand
 /// are often kind `note`, and proposing a new page for them is the noise.
 bool isEnrichTarget(NoteRef note) =>
-    note.kind == 'note' || entityNoteKinds.contains(note.kind);
+    note.kind == 'note' ||
+    note.kind == 'equipment' ||
+    entityNoteKinds.contains(note.kind);
 
 /// Groups pages that share a normalized title or alias.
 List<List<NoteRef>> findDuplicates(VaultIndex index) {
@@ -85,6 +87,20 @@ String enrichKey(String s) => unorm
     .toLowerCase()
     .replaceAll(RegExp(r'[^\p{L}\p{N}]', unicode: true), '');
 
+/// Normalizes equipment names while ignoring unit-number markers.
+String enrichEquipmentKey(String s) => unorm
+    .nfd(s)
+    .replaceAll(RegExp(r'\p{M}', unicode: true), '')
+    .toLowerCase()
+    .replaceAll(
+      RegExp(
+        r'(?<![\p{L}\p{N}])(?:number|номер|num|nº|n°|no|nr|№|#)\.?(?=$|[^\p{L}\p{N}]|\p{N})',
+        unicode: true,
+      ),
+      '',
+    )
+    .replaceAll(RegExp(r'[^\p{L}\p{N}]', unicode: true), '');
+
 class EnrichMention {
   const EnrichMention({
     required this.surface,
@@ -112,6 +128,20 @@ class EnrichMention {
   );
 }
 
+class EnrichLoanHint {
+  const EnrichLoanHint({
+    required this.line,
+    this.borrower,
+    this.purpose,
+    this.topic,
+  });
+
+  final int line;
+  final String? borrower;
+  final String? purpose;
+  final String? topic;
+}
+
 class EnrichMentions {
   const EnrichMentions({
     required this.note,
@@ -120,6 +150,7 @@ class EnrichMentions {
     this.mentions = const [],
     this.keywords = const [],
     this.markers = const [],
+    this.loans = const [],
   });
 
   final String note;
@@ -131,6 +162,7 @@ class EnrichMentions {
   /// Lines the model would file under a marker page (e.g. fixit), as
   /// (line, marker note id).
   final List<(int, String)> markers;
+  final List<EnrichLoanHint> loans;
 
   /// Null when [json] is not a schema-1 mentions file.
   static EnrichMentions? tryParse(Object? json) {
@@ -149,6 +181,21 @@ class EnrichMentions {
           for (final item in json['markers'] as List? ?? const [])
             if (item case {'line': final int line, 'marker': final String id})
               (line, id),
+        ],
+        loans: [
+          for (final item
+              in json['loans'] is List ? json['loans'] as List : const [])
+            if (item is Map &&
+                item['line'] is int &&
+                (item['borrower'] == null || item['borrower'] is String) &&
+                (item['purpose'] == null || item['purpose'] is String) &&
+                (item['topic'] == null || item['topic'] is String))
+              EnrichLoanHint(
+                line: item['line'] as int,
+                borrower: item['borrower'] as String?,
+                purpose: item['purpose'] as String?,
+                topic: item['topic'] as String?,
+              ),
         ],
       );
     } catch (_) {
@@ -404,6 +451,9 @@ class EnrichMemory {
         {
           for (final name in [entity.title, entity.id, ...entity.aliases])
             enrichKey(name),
+          if (entity.kind == 'equipment')
+            for (final name in [entity.title, entity.id, ...entity.aliases])
+              enrichEquipmentKey(name),
         }..remove(''),
         {
           for (final name in [entity.title, ...entity.aliases])
@@ -502,6 +552,9 @@ List<EnrichDecision> resolveMentions(
 Set<String> _keys(EnrichMention mention) => {
   for (final form in [mention.surface, ...mention.hints])
     if (enrichKey(form) case final key when key.length >= 2) key,
+  if (mention.type == 'equipment')
+    for (final form in [mention.surface, ...mention.hints])
+      if (enrichEquipmentKey(form) case final key when key.length >= 2) key,
 };
 
 /// Entity notes a mention could mean, with whether the name matches exactly.
@@ -534,7 +587,8 @@ List<(NoteRef, bool)> _candidates(EnrichMention mention, EnrichMemory memory) {
       : [...typed, ...match(pool.where((e) => e.kind == 'note'))];
   // The model's own guess counts only when no name matched at all.
   if (found.isEmpty) {
-    if (memory.entities[mention.entity] case final entity?) {
+    if (memory.entities[mention.entity] case final entity?
+        when entity.kind != 'equipment' || mention.type == 'equipment') {
       found = [(entity, false)];
     }
   }
@@ -549,7 +603,31 @@ bool? _match(
   String surfaceKey,
   EnrichMemory memory,
 ) {
+  if (entity.kind == 'equipment' && mention.type != 'equipment') return null;
   final (names, words) = memory.nameKeys[entity.id]!;
+  if (entity.kind == 'equipment' && mention.type == 'equipment') {
+    final equipmentKeys = [
+      for (final form in [mention.surface, ...mention.hints])
+        enrichEquipmentKey(form),
+    ];
+    final exact =
+        names.contains(equipmentKeys.first) && equipmentKeys.first.isNotEmpty;
+    final accepted = (memory._accepted[surfaceKey]?[entity.id] ?? 0) > 0;
+    if (equipmentKeys.any(
+      (key) => RegExp(r'\p{N}', unicode: true).hasMatch(key),
+    )) {
+      return equipmentKeys.any(
+                (key) => key.isNotEmpty && names.contains(key),
+              ) ||
+              accepted
+          ? exact
+          : null;
+    }
+    final prefix = equipmentKeys.any(
+      (key) => key.length >= 4 && names.any((name) => name.startsWith(key)),
+    );
+    return prefix || exact || accepted ? exact : null;
+  }
   // Exact only on the user's own words: hints are the model's guesses
   // ("Катя" came back hinted with the surname of a known Катя), so they
   // may find a candidate but never prove one; single words of a name
@@ -645,7 +723,20 @@ EnrichDecision _decide(
     return EnrichDecision(mention, EnrichStatus.propose, const []);
   }
   final best = ranked.first;
-  final clear = ranked.length == 1 || best.score - ranked[1].score >= _margin;
+  final ambiguousEquipment =
+      mention.type == 'equipment' &&
+      found
+              .where(
+                (c) =>
+                    c.$1.kind == 'equipment' &&
+                    c.$2 &&
+                    !memory.isRejected(mention.surface, c.$1.id),
+              )
+              .length >
+          1;
+  final clear =
+      !ambiguousEquipment &&
+      (ranked.length == 1 || best.score - ranked[1].score >= _margin);
   return EnrichDecision(
     mention,
     best.strong && clear ? EnrichStatus.linked : EnrichStatus.review,
