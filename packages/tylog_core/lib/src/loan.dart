@@ -150,6 +150,33 @@ String trackAsLoan(
   return startTaskClock(updated, id, now.toIso8601String());
 }
 
+/// Moves the line numbers a sidecar holds past [after] by [delta]. A tracked
+/// loan turns one line into several, so without this the sidecar's later
+/// offers point at the wrong lines (and, with its hash refreshed, are never
+/// re-extracted).
+Map<String, Object?> shiftEnrichLines(
+  Map<String, Object?> json,
+  int after,
+  int delta,
+) {
+  if (delta == 0) return json;
+  return {
+    for (final entry in json.entries)
+      entry.key:
+          const {'mentions', 'markers', 'loans'}.contains(entry.key) &&
+              entry.value is List
+          ? [
+              for (final item in entry.value as List)
+                item is Map &&
+                        item['line'] is int &&
+                        (item['line'] as int) > after
+                    ? {...item, 'line': (item['line'] as int) + delta}
+                    : item,
+            ]
+          : entry.value,
+  };
+}
+
 /// Equipment ids of a loan task. The scanner keeps nested property values as
 /// their Typst source (`("TL-0003",)`), so read both that and a real list.
 List<String> loanEquipmentIds(TaskRef task) {

@@ -130,6 +130,56 @@ void main() {
     expect(resolveEnrichDay(mentions, day, mem, index, tracked).loans, isEmpty);
   });
 
+  test('second loan in a note survives the first one growing the file', () {
+    const source = '$header$ru\n$en\n';
+    final mentionsJson = {
+      'loans': [
+        {'line': 3, 'purpose': 'class'},
+        {'line': 4, 'purpose': 'consultation'},
+      ],
+      'mentions': <Object?>[],
+    };
+    EnrichMentions parse(Map<String, Object?> json) => EnrichMentions.tryParse({
+      'note': 'day',
+      'schema': 1,
+      'content_sha': '',
+      'mentions': <Object?>[],
+      ...json,
+    })!;
+    final index = VaultIndex(
+      notesByPath: {for (final n in notes) n.path: n},
+      backlinksByTarget: const {},
+    );
+    final mem = memory();
+    final first = resolveEnrichDay(
+      parse(mentionsJson),
+      day,
+      mem,
+      index,
+      source,
+    ).loans.first;
+    final tracked = trackAsLoan(source, first, 'loan-ru', now);
+    final shifted = shiftEnrichLines(
+      mentionsJson,
+      first.line,
+      tracked.split('\n').length - source.split('\n').length,
+    );
+    final rest = resolveEnrichDay(
+      parse(shifted),
+      day,
+      mem,
+      index,
+      tracked,
+    ).loans;
+    expect(rest.single.equipment.map((e) => e.id), ['TL-0007', 'TL-0008']);
+    expect(trackAsLoan(tracked, rest.single, 'loan-en', now), isNot(tracked));
+    // Without the shift the second hint points into the task block.
+    expect(
+      resolveEnrichDay(parse(mentionsJson), day, mem, index, tracked).loans,
+      isEmpty,
+    );
+  });
+
   test('English loan resolves both equipment links', () {
     const source = '$header$en\n';
     const hints = EnrichMentions(

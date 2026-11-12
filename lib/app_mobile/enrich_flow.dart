@@ -724,8 +724,13 @@ extension _EnrichFlow on _HomeScreenState {
       final file = enrichMentionsPath(path);
       final json = (jsonDecode(await v.storage.readText(file)) as Map)
           .cast<String, Object?>();
-      json['content_sha'] = enrichContentSha(tracked);
-      await v.storage.writeText(file, '${jsonEncode(json)}\n');
+      final shifted = shiftEnrichLines(
+        json,
+        offer.line,
+        tracked.split('\n').length - source.split('\n').length,
+      );
+      shifted['content_sha'] = enrichContentSha(tracked);
+      await v.storage.writeText(file, '${jsonEncode(shifted)}\n');
     }
     await _refreshEnrichDay(path);
   }
