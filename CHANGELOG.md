@@ -5,6 +5,17 @@ their history is in the commit log and the GitHub release notes.
 
 ## Unreleased
 
+## 0.23.2+173
+
+### Fixed
+
+- A link saved as an article is replaced by a link to the new article as soon as the article is ready, on every device and in today's note. An article with no title links with the site name instead of empty text.
+- YouTube articles get their title from the video page instead of an empty one.
+- A corrupt vault list is reported at startup instead of silently starting empty.
+- Enrich feedback that could not be written is kept and retried.
+- Update downloads are also checked against the digest published with the release.
+- A file too large to read on Android shows an error instead of crashing.
+
 ## 0.23.1+172
 
 ### New
