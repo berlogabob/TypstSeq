@@ -3,7 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:tylog_core/storage.dart';
 
 Rect cropMove(Rect rect, Rect bounds, Offset delta) => rect.shift(

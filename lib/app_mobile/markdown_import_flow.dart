@@ -38,12 +38,12 @@ extension _MarkdownImportFlow on _HomeScreenState {
       type: FileType.custom,
       allowedExtensions: const ['md', 'markdown'],
     );
-    if (picked == null || picked.files.isEmpty) return;
+    if (picked.isEmpty) return;
     if (dirty && !await _save(syncAfter: false)) return;
     if (!mounted || vault != opened) return;
 
     final progress = ValueNotifier<String>(
-      'Preparing 0 of ${picked.files.length}',
+      'Preparing 0 of ${picked.length}',
     );
     unawaited(
       showDialog<void>(
@@ -72,10 +72,10 @@ extension _MarkdownImportFlow on _HomeScreenState {
 
     final prepared = <_PreparedMarkdownArticle>[];
     final report = <_MarkdownImportReportItem>[];
-    for (var index = 0; index < picked.files.length; index++) {
-      final file = picked.files[index];
+    for (var index = 0; index < picked.length; index++) {
+      final file = picked[index];
       progress.value =
-          'Preparing ${index + 1} of ${picked.files.length}\n${file.name}';
+          'Preparing ${index + 1} of ${picked.length}\n${file.name}';
       try {
         final lower = file.name.toLowerCase();
         if (!lower.endsWith('.md') && !lower.endsWith('.markdown')) {

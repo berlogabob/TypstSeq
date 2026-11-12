@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/rich_editor.dart';
@@ -410,6 +410,7 @@ void main() {
         ),
       );
     await loader.load();
+    await tester.pump();
     tester.view.physicalSize = const Size(420, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -455,6 +456,11 @@ void main() {
       ),
       greaterThan(normal),
     );
+    // Flutter 3.50: the font-change message from FontLoader arrives late and schedules a frame.
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 200)),
+    );
+    await tester.pump();
   });
 
   testWidgets('A24 popups show rows above keyboard and preserve date caret', (

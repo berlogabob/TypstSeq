@@ -6,7 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:tylog_core/tylog_core.dart';
 
@@ -666,8 +666,8 @@ class _WhiteboardState extends State<Whiteboard> {
         }
       } else if (type == 'Image from file') {
         final result = await FilePicker.pickFiles(type: FileType.image);
-        if (result == null) return;
-        final file = result.files.single;
+        if (result.isEmpty) return;
+        final file = result.single;
         final bytes = await file.readAsBytes();
         final ext = file.extension?.toLowerCase();
         if (ext == null || !RegExp(r'^[a-z0-9]+$').hasMatch(ext)) {

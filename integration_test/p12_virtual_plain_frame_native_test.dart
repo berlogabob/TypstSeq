@@ -1,6 +1,6 @@
 import 'dart:ui' show FramePhase;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/foundation.dart' show FlutterTimeline;
 import 'package:flutter/rendering.dart'
     show debugProfileLayoutsEnabled, debugProfilePaintsEnabled;

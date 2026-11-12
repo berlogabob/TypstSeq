@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../constants.dart';
 
 /// One Settings page: a title bar with back arrow and a scrolling list.

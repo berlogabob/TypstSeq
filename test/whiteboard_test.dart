@@ -1,8 +1,10 @@
 import 'dart:io';
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
+import 'package:cross_file/cross_file.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/widgets/entity_header.dart';
 import 'package:tylog/widgets/whiteboard.dart';
@@ -11,6 +13,51 @@ import 'package:tylog/vault.dart';
 import 'package:tylog_core/tylog_core.dart';
 
 import 'support/temp_dir.dart';
+
+final class _PickedPlatformFile extends PlatformFile {
+  _PickedPlatformFile(this.name, this.path, this.size);
+
+  @override
+  final String name;
+  @override
+  final String path;
+  final int size;
+
+  @override
+  Uri get uri => Uri.file(path);
+  @override
+  XFile get xFile => XFile(path);
+  @override
+  int lengthSync() => size;
+  @override
+  Future<int> length() async => size;
+  @override
+  Future<Uint8List> readAsBytes() => File(path).readAsBytes();
+  @override
+  Stream<Uint8List> readAsByteStream() =>
+      File(path).openRead().map(Uint8List.fromList);
+}
+
+final class _FakeFilePickerPlatform extends FilePickerPlatform {
+  _FakeFilePickerPlatform(this.file);
+
+  final PlatformFile file;
+
+  @override
+  Future<List<PlatformFile>> pickFiles({
+    String? dialogTitle,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    Function(FilePickerStatus)? onFileLoading,
+    int compressionQuality = 0,
+    AndroidOptions androidOptions = const AndroidOptions(),
+    DarwinOptions darwinOptions = const DarwinOptions(),
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
+  }) async => [file];
+}
 
 class CountingStorage extends LocalVaultStorage {
   CountingStorage(super.root);
@@ -893,19 +940,11 @@ Body
   testWidgets('copies a picked image into the board assets', (tester) async {
     final input = File('${dir.path}/picture.png');
     await tester.runAsync(() => input.writeAsBytes([1, 2, 3, 4]));
-    const channel = MethodChannel('miguelruivo.flutter.plugins.filepicker');
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      channel,
-      (call) async => [
-        {'name': 'picture.png', 'path': input.path, 'size': 4},
-      ],
+    final originalPlatform = FilePickerPlatform.instance;
+    FilePickerPlatform.instance = _FakeFilePickerPlatform(
+      _PickedPlatformFile('picture.png', input.path, 4),
     );
-    addTearDown(
-      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        channel,
-        null,
-      ),
-    );
+    addTearDown(() => FilePickerPlatform.instance = originalPlatform);
     await tester.pumpWidget(
       MaterialApp(
         home: Whiteboard(

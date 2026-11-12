@@ -89,9 +89,18 @@ android {
             if (keystorePropertiesFile.exists()) {
                 signingConfig = signingConfigs.getByName("release")
             }
-            (project.findProperty("tylogProfileSuffix") as? String)
-                ?.takeIf { it.startsWith(".") && it.length > 1 }
-                ?.let { applicationIdSuffix = it }
+        }
+    }
+}
+
+// Set through the variant API: Flutter 3.50 copies the app's `profile` build type into
+// plugin library projects, and AGP rejects applicationIdSuffix there.
+androidComponents {
+    val profileSuffix = (project.findProperty("tylogProfileSuffix") as? String)
+        ?.takeIf { it.startsWith(".") && it.length > 1 }
+    if (profileSuffix != null) {
+        onVariants(selector().withBuildType("profile")) { variant ->
+            variant.applicationId.set("org.tylog.tylog" + profileSuffix)
         }
     }
 }

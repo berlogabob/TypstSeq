@@ -9,7 +9,7 @@ import 'app_icons.dart';
 import 'entity_tree.dart';
 import 'screenshot_strip.dart';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../models.dart';
 import '../controlled_editor.dart' show localTime;

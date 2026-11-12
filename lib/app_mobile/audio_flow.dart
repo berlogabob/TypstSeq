@@ -128,7 +128,7 @@ extension _AudioFlow on _HomeScreenState {
 
   Future<void> _importAudioNote({bool inline = false}) async {
     final picked = await FilePicker.pickFiles(type: FileType.audio);
-    final source = picked?.files.single.path;
+    final source = picked.isEmpty ? null : picked.single.path;
     if (source == null || !mounted) return;
     final extension = source.split('.').last.toLowerCase();
     if (!isAudioPath('.$extension')) {

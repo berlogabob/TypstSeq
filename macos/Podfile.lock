@@ -1,7 +1,7 @@
 PODS:
   - audio_session (0.0.1):
     - FlutterMacOS
-  - file_picker (0.0.1):
+  - file_picker_darwin (1.0.0):
     - Flutter
     - FlutterMacOS
   - flutter_local_notifications (0.0.1):
@@ -32,7 +32,7 @@ PODS:
 
 DEPENDENCIES:
   - audio_session (from `Flutter/ephemeral/.symlinks/plugins/audio_session/macos`)
-  - file_picker (from `Flutter/ephemeral/.symlinks/plugins/file_picker/darwin`)
+  - file_picker_darwin (from `Flutter/ephemeral/.symlinks/plugins/file_picker_darwin/darwin`)
   - flutter_local_notifications (from `Flutter/ephemeral/.symlinks/plugins/flutter_local_notifications/macos`)
   - flutter_secure_storage_darwin (from `Flutter/ephemeral/.symlinks/plugins/flutter_secure_storage_darwin/darwin`)
   - flutter_timezone (from `Flutter/ephemeral/.symlinks/plugins/flutter_timezone/macos`)
@@ -48,8 +48,8 @@ DEPENDENCIES:
 EXTERNAL SOURCES:
   audio_session:
     :path: Flutter/ephemeral/.symlinks/plugins/audio_session/macos
-  file_picker:
-    :path: Flutter/ephemeral/.symlinks/plugins/file_picker/darwin
+  file_picker_darwin:
+    :path: Flutter/ephemeral/.symlinks/plugins/file_picker_darwin/darwin
   flutter_local_notifications:
     :path: Flutter/ephemeral/.symlinks/plugins/flutter_local_notifications/macos
   flutter_secure_storage_darwin:
@@ -75,7 +75,7 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   audio_session: eaca2512cf2b39212d724f35d11f46180ad3a33e
-  file_picker: 70164d9778c42c47218d6cd79ce435de0856b11a
+  file_picker_darwin: 4c2b9a50ea44cb3b071381ea0cf48591bdd80251
   flutter_local_notifications: 1fc7ffb10a83d6a2eeeeddb152d43f1944b0aad0
   flutter_secure_storage_darwin: acdb3f316ed05a3e68f856e0353b133eec373a23
   flutter_timezone: d272288c69082ad571630e0d17140b3d6b93dc0c

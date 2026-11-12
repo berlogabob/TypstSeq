@@ -6,7 +6,7 @@ import 'package:tylog_core/scanner.dart';
 import 'package:tylog/database/tylog_database.dart';
 import 'package:tylog/database/note_persistence.dart';
 import 'package:tylog/retrieval/note_chunk_sync.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/models.dart';

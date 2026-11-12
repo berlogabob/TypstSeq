@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'constants.dart';
 
 /// Plain-note editor that keeps only visible rows in the render tree.

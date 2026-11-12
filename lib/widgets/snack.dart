@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Shows a simple text [SnackBar] via the nearest [ScaffoldMessenger].
 void showSnack(BuildContext context, String message, {SnackBarAction? action}) {

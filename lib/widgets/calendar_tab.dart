@@ -1,5 +1,5 @@
 import 'dart:typed_data';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'app_icons.dart';
 import 'screenshot_strip.dart';
 

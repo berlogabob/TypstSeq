@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// A [CircularProgressIndicator], optionally boxed to a fixed [size].
 class LoadingIndicator extends StatelessWidget {

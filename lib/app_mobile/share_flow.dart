@@ -244,7 +244,7 @@ extension _ShareFlow on _HomeScreenState {
   Future<void> _insertAttachment() async {
     if (vault == null) return;
     final picked = await FilePicker.pickFiles();
-    final sourcePath = picked?.files.single.path;
+    final sourcePath = picked.isEmpty ? null : picked.single.path;
     if (sourcePath == null) return;
     await _attachFile(File(sourcePath));
   }

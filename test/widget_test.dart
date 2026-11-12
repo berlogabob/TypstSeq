@@ -5,7 +5,7 @@ import 'dart:io';
 // ignore_for_file: depend_on_referenced_packages
 
 import 'package:crypto/crypto.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:tylog/widgets/app_icons.dart';
 import 'package:tylog/widgets/constants.dart';
 import 'package:tylog/kind_registry.dart';

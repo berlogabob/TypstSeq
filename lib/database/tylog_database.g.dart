@@ -6228,10 +6228,11 @@ class $$NodesTableTableManager
                   getPrefetchedDataCallback: (items) async {
                     return [
                       if (edgeOutgoing)
-                        await $_getPrefetchedData<
+                        await $_getPrefetchedDataByColumns<
                           NodeData,
                           $NodesTable,
-                          EdgeData
+                          EdgeData,
+                          $EdgesTable
                         >(
                           currentTable: table,
                           referencedTable: $$NodesTableReferences
@@ -6242,17 +6243,16 @@ class $$NodesTableTableManager
                                 table,
                                 p0,
                               ).edgeOutgoing,
-                          referencedItemsForCurrentItem:
-                              (item, referencedItems) => referencedItems.where(
-                                (e) => e.fromNodeId == item.id,
-                              ),
+                          currentColumn: 'id',
+                          referencedColumn: 'from_node_id',
                           typedResults: items,
                         ),
                       if (edgeIncoming)
-                        await $_getPrefetchedData<
+                        await $_getPrefetchedDataByColumns<
                           NodeData,
                           $NodesTable,
-                          EdgeData
+                          EdgeData,
+                          $EdgesTable
                         >(
                           currentTable: table,
                           referencedTable: $$NodesTableReferences
@@ -6263,10 +6263,8 @@ class $$NodesTableTableManager
                                 table,
                                 p0,
                               ).edgeIncoming,
-                          referencedItemsForCurrentItem:
-                              (item, referencedItems) => referencedItems.where(
-                                (e) => e.toNodeId == item.id,
-                              ),
+                          currentColumn: 'id',
+                          referencedColumn: 'to_node_id',
                           typedResults: items,
                         ),
                     ];
@@ -7085,10 +7083,11 @@ class $$SourcesTableTableManager
               getPrefetchedDataCallback: (items) async {
                 return [
                   if (sourceVersionsRefs)
-                    await $_getPrefetchedData<
+                    await $_getPrefetchedDataByColumns<
                       SourceData,
                       $SourcesTable,
-                      SourceVersionData
+                      SourceVersionData,
+                      $SourceVersionsTable
                     >(
                       currentTable: table,
                       referencedTable: $$SourcesTableReferences
@@ -7098,8 +7097,8 @@ class $$SourcesTableTableManager
                         table,
                         p0,
                       ).sourceVersionsRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.sourceId == item.id),
+                      currentColumn: 'id',
+                      referencedColumn: 'source_id',
                       typedResults: items,
                     ),
                 ];
@@ -7603,10 +7602,11 @@ class $$SourceVersionsTableTableManager
                   getPrefetchedDataCallback: (items) async {
                     return [
                       if (annotationsRefs)
-                        await $_getPrefetchedData<
+                        await $_getPrefetchedDataByColumns<
                           SourceVersionData,
                           $SourceVersionsTable,
-                          AnnotationData
+                          AnnotationData,
+                          $AnnotationsTable
                         >(
                           currentTable: table,
                           referencedTable: $$SourceVersionsTableReferences
@@ -7617,17 +7617,16 @@ class $$SourceVersionsTableTableManager
                                 table,
                                 p0,
                               ).annotationsRefs,
-                          referencedItemsForCurrentItem:
-                              (item, referencedItems) => referencedItems.where(
-                                (e) => e.sourceVersionId == item.id,
-                              ),
+                          currentColumn: 'id',
+                          referencedColumn: 'source_version_id',
                           typedResults: items,
                         ),
                       if (chunksRefs)
-                        await $_getPrefetchedData<
+                        await $_getPrefetchedDataByColumns<
                           SourceVersionData,
                           $SourceVersionsTable,
-                          ChunkData
+                          ChunkData,
+                          $ChunksTable
                         >(
                           currentTable: table,
                           referencedTable: $$SourceVersionsTableReferences
@@ -7638,10 +7637,8 @@ class $$SourceVersionsTableTableManager
                                 table,
                                 p0,
                               ).chunksRefs,
-                          referencedItemsForCurrentItem:
-                              (item, referencedItems) => referencedItems.where(
-                                (e) => e.sourceVersionId == item.id,
-                              ),
+                          currentColumn: 'id',
+                          referencedColumn: 'source_version_id',
                           typedResults: items,
                         ),
                     ];
@@ -8946,10 +8943,11 @@ class $$RevisionsTableTableManager
                   getPrefetchedDataCallback: (items) async {
                     return [
                       if (outboxEntriesRefs)
-                        await $_getPrefetchedData<
+                        await $_getPrefetchedDataByColumns<
                           RevisionData,
                           $RevisionsTable,
-                          OutboxEntry
+                          OutboxEntry,
+                          $OutboxEntriesTable
                         >(
                           currentTable: table,
                           referencedTable: $$RevisionsTableReferences
@@ -8960,17 +8958,16 @@ class $$RevisionsTableTableManager
                                 table,
                                 p0,
                               ).outboxEntriesRefs,
-                          referencedItemsForCurrentItem:
-                              (item, referencedItems) => referencedItems.where(
-                                (e) => e.revisionId == item.id,
-                              ),
+                          currentColumn: 'id',
+                          referencedColumn: 'revision_id',
                           typedResults: items,
                         ),
                       if (derivedInvalidationsRefs)
-                        await $_getPrefetchedData<
+                        await $_getPrefetchedDataByColumns<
                           RevisionData,
                           $RevisionsTable,
-                          DerivedInvalidation
+                          DerivedInvalidation,
+                          $DerivedInvalidationsTable
                         >(
                           currentTable: table,
                           referencedTable: $$RevisionsTableReferences
@@ -8981,10 +8978,8 @@ class $$RevisionsTableTableManager
                                 table,
                                 p0,
                               ).derivedInvalidationsRefs,
-                          referencedItemsForCurrentItem:
-                              (item, referencedItems) => referencedItems.where(
-                                (e) => e.revisionId == item.id,
-                              ),
+                          currentColumn: 'id',
+                          referencedColumn: 'revision_id',
                           typedResults: items,
                         ),
                     ];
@@ -9934,10 +9929,11 @@ class $$ImportJobsTableTableManager
               getPrefetchedDataCallback: (items) async {
                 return [
                   if (importItemsRefs)
-                    await $_getPrefetchedData<
+                    await $_getPrefetchedDataByColumns<
                       ImportJobData,
                       $ImportJobsTable,
-                      ImportItemData
+                      ImportItemData,
+                      $ImportItemsTable
                     >(
                       currentTable: table,
                       referencedTable: $$ImportJobsTableReferences
@@ -9948,8 +9944,8 @@ class $$ImportJobsTableTableManager
                             table,
                             p0,
                           ).importItemsRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.jobId == item.id),
+                      currentColumn: 'id',
+                      referencedColumn: 'job_id',
                       typedResults: items,
                     ),
                 ];

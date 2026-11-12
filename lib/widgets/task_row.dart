@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../models.dart';
 import 'task_chip_strip.dart';
 import 'task_fields.dart';

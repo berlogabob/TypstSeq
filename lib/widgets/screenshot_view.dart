@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'constants.dart';
 import '../audio/audio_note_doc.dart';
 import 'text_note_widgets.dart';

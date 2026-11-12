@@ -29,7 +29,7 @@ jobs:
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
-          flutter-version: 3.47.8 # pinned: stable 3.50 deprecates material.dart (185 analyze infos)
+          flutter-version: 3.50.0 # pinned so a new stable cannot break CI unreviewed
           cache: true
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
@@ -89,7 +89,7 @@ jobs:
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
-          flutter-version: 3.47.8 # pinned: stable 3.50 deprecates material.dart (185 analyze infos)
+          flutter-version: 3.50.0 # pinned so a new stable cannot break CI unreviewed
           cache: true
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
@@ -138,7 +138,7 @@ jobs:
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
-          flutter-version: 3.47.8 # pinned: stable 3.50 deprecates material.dart (185 analyze infos)
+          flutter-version: 3.50.0 # pinned so a new stable cannot break CI unreviewed
           cache: true
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
@@ -195,7 +195,7 @@ jobs:
       - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
         with:
           channel: stable
-          flutter-version: 3.47.8 # pinned: stable 3.50 deprecates material.dart (185 analyze infos)
+          flutter-version: 3.50.0 # pinned so a new stable cannot break CI unreviewed
           cache: true
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:

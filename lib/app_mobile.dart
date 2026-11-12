@@ -11,7 +11,7 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:drift/drift.dart' hide Column;
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, compute, defaultTargetPlatform, listEquals;
 import 'package:flutter/services.dart';

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Small note under a setting's title saying which devices it applies to.
 class ScopeNote extends StatelessWidget {

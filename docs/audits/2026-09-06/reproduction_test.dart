@@ -4,7 +4,7 @@
 // Run explicitly with flutter test; uses temporary/in-memory vaults only.
 import 'package:tylog/models.dart';
 import 'package:tylog/vault_worker.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:tylog/app_mobile.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/widgets/work_surface.dart';

@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:file_picker/file_picker.dart';
 import 'app_icons.dart';
 import '../screenshots_ocr.dart';

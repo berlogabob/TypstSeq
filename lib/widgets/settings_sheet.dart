@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:tylog_core/storage.dart';
 import 'package:tylog_core/tylog_core.dart' show InstalledModule;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'date_format.dart' show shortStamp;
 import '../calendar_feeds.dart' show isValidFeedUrl;
 import '../workspace_controller.dart';

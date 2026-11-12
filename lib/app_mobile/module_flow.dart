@@ -217,7 +217,7 @@ extension _ModuleFlow on _HomeScreenState {
     final v = vault;
     if (!mounted || v == null) return;
     final picked = await FilePicker.pickFiles();
-    final path = picked?.files.single.path;
+    final path = picked.isEmpty ? null : picked.single.path;
     if (path == null || !mounted) return;
     final ModulePack pack;
     try {

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Shows a two-button confirm/cancel [AlertDialog]. Returns `true` only when
 /// the user taps the confirm action; dismissing or cancelling returns `false`.

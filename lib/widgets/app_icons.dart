@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// App-owned icon vocabulary. Actions use outlined glyphs where available;
 /// overflow, close and warning follow the design-system decisions.
