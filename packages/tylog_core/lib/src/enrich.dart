@@ -653,22 +653,10 @@ bool? _match(
           ? exact
           : null;
     }
-    return equipmentKeys.any(
-              (key) =>
-                  key.isNotEmpty &&
-                  names.any(
-                    (name) =>
-                        name == key ||
-                        (name.startsWith(key) &&
-                            RegExp(
-                              r'^\p{N}',
-                              unicode: true,
-                            ).hasMatch(name.substring(key.length))),
-                  ),
-            ) ||
-            accepted
-        ? exact
-        : null;
+    final prefix = equipmentKeys.any(
+      (key) => key.length >= 4 && names.any((name) => name.startsWith(key)),
+    );
+    return prefix || exact || accepted ? exact : null;
   }
   // Exact only on the user's own words: hints are the model's guesses
   // ("Катя" came back hinted with the surname of a known Катя), so they
@@ -680,12 +668,11 @@ bool? _match(
       names.any(keys.contains) ||
       words.any(keys.contains) ||
       names.any(
-        (name) => mention.hints.any((hint) {
-          final key = enrichKey(hint);
-          return key.length >= 4 && name.startsWith(key);
-        }),
-      ) ||
-      names.any((name) => keys.any((key) => _sameStem(name, key)));
+        (name) => keys.any(
+          (key) =>
+              (key.length >= 4 && name.startsWith(key)) || _sameStem(name, key),
+        ),
+      );
   return prefix || (memory._accepted[surfaceKey]?[entity.id] ?? 0) > 0
       ? exact
       : null;
@@ -879,7 +866,13 @@ EnrichDayResolution resolveEnrichDay(
       for (final mention in mentions.mentions)
         if (mention.line > 0 &&
             mention.line <= lines.length &&
-            enrichSurfaceIndex(lines[mention.line - 1], mention.surface) >= 0)
+            // Drop only a surface that sits inside a longer word ("Андрей"
+            // in "Андрейб"); one absent from the line stays as before.
+            (enrichSurfaceIndex(lines[mention.line - 1], mention.surface) >=
+                    0 ||
+                !lines[mention.line - 1].toLowerCase().contains(
+                  mention.surface.toLowerCase(),
+                )))
           mention,
     ],
     keywords: mentions.keywords,
