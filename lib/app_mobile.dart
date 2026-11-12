@@ -27,6 +27,8 @@ import 'package:tylog_core/tylog_core.dart'
     show
         Decision,
         acceptLoan,
+        equipmentUsage,
+        loanHistoryFor,
         EnrichSkipped,
         decisionsDir,
         encodeDecisions,
@@ -157,6 +159,16 @@ part 'app_mobile/magic_flow.dart';
 part 'app_mobile/share_flow.dart';
 part 'app_mobile/navigation_flow.dart';
 part 'app_mobile/reading_flow.dart';
+
+String? _equipmentLoanSummary(VaultIndex index, String equipmentId) {
+  final usage = equipmentUsage(index)[equipmentId];
+  if (usage == null || usage.loans == 0) return null;
+  final returned = usage.lastReturned;
+  final date = returned == null
+      ? ''
+      : ' · last returned ${returned.day} ${const ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][returned.month - 1]}';
+  return '${usage.loans} loans · ${usage.hoursOut.round()} h out$date';
+}
 
 const _autoRelatedMarker = '// tylog:auto-related';
 
@@ -3012,6 +3024,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       context,
                       title: '${currentNote.title}: loans',
                       loans: loanHistoryFor(index!, currentNote.id),
+                      summary: _equipmentLoanSummary(index!, currentNote.id),
                       titleOf: loanTitle,
                       onOpen: openLoan,
                     )

@@ -10,6 +10,7 @@ class LoanList extends StatelessWidget {
     required this.now,
     required this.onOpen,
     this.empty = 'Nothing out',
+    this.summary,
   });
 
   final List<TaskRef> loans;
@@ -17,6 +18,7 @@ class LoanList extends StatelessWidget {
   final DateTime now;
   final ValueChanged<TaskRef> onOpen;
   final String empty;
+  final String? summary;
 
   @override
   Widget build(BuildContext context) {
@@ -25,9 +27,19 @@ class LoanList extends StatelessWidget {
     }
     return ListView.separated(
       shrinkWrap: true,
-      itemCount: loans.length,
+      itemCount: loans.length + (summary == null ? 0 : 1),
       separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (context, i) {
+        if (summary != null && i == 0) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Text(
+              summary!,
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+          );
+        }
+        if (summary != null) i--;
         final task = loans[i];
         final duration = loanOutFor(task, now);
         final purpose = task.properties['purpose'];
@@ -64,6 +76,7 @@ Future<void> showLoanSheet(
   required List<TaskRef> loans,
   required String Function(String equipmentId) titleOf,
   required ValueChanged<TaskRef> onOpen,
+  String? summary,
 }) async {
   await showModalBottomSheet<void>(
     context: context,
@@ -83,6 +96,7 @@ Future<void> showLoanSheet(
                 titleOf: titleOf,
                 now: DateTime.now(),
                 onOpen: onOpen,
+                summary: summary,
               ),
             ),
           ],

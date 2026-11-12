@@ -299,6 +299,119 @@ List<TaskRef> loanHistoryFor(VaultIndex index, String equipmentId) =>
         .toList()
       ..sort(_loanOrder);
 
+class EquipmentUsage {
+  const EquipmentUsage({
+    required this.loans,
+    required this.hoursOut,
+    required this.hoursByPurpose,
+    required this.borrowers,
+    required this.lastReturned,
+  });
+
+  final int loans;
+  final double hoursOut;
+  final Map<String, double> hoursByPurpose;
+  final Set<String> borrowers;
+  final DateTime? lastReturned;
+}
+
+/// Summarizes recorded equipment loans, merging concurrent intervals per item.
+Map<String, EquipmentUsage> equipmentUsage(
+  VaultIndex index, {
+  DateTime? from,
+  DateTime? to,
+}) {
+  final endLimit = to ?? DateTime.now();
+  final startLimit = from ?? DateTime.fromMillisecondsSinceEpoch(0);
+  final intervals = <String, List<(DateTime, DateTime)>>{};
+  final loanCounts = <String, int>{};
+  final purposes = <String, Map<String, double>>{};
+  final borrowers = <String, Set<String>>{};
+  final returned = <String, DateTime>{};
+  for (final task in index.tasks.where(
+    (task) => task.properties['loan'] == true,
+  )) {
+    final ids = loanEquipmentIds(task).toSet();
+    if (ids.isEmpty) continue;
+    final taskIntervals = <(DateTime, DateTime)>[];
+    DateTime? taskReturned;
+    for (final clock in task.clocked) {
+      final start = DateTime.tryParse(clock.start);
+      final end = clock.end == null ? endLimit : DateTime.tryParse(clock.end!);
+      if (start == null || end == null) continue;
+      final clippedStart = start.isBefore(startLimit) ? startLimit : start;
+      final clippedEnd = end.isAfter(endLimit) ? endLimit : end;
+      if (clippedEnd.isAfter(clippedStart))
+        taskIntervals.add((clippedStart, clippedEnd));
+      if (clock.end != null && !isOpenLoan(task)) {
+        final actualEnd = DateTime.tryParse(clock.end!);
+        if (actualEnd != null &&
+            (taskReturned == null || actualEnd.isAfter(taskReturned))) {
+          taskReturned = actualEnd;
+        }
+      }
+    }
+    if ((from != null || to != null) && taskIntervals.isEmpty) {
+      continue;
+    }
+    for (final id in ids) {
+      loanCounts.update(id, (count) => count + 1, ifAbsent: () => 1);
+      final purpose = task.properties['purpose'];
+      final key = purpose == null || '$purpose'.trim().isEmpty
+          ? 'unspecified'
+          : '$purpose';
+      final hours = taskIntervals.fold<double>(
+        0,
+        (sum, interval) =>
+            sum + interval.$2.difference(interval.$1).inSeconds / 3600,
+      );
+      purposes
+          .putIfAbsent(id, () => {})
+          .update(key, (value) => value + hours, ifAbsent: () => hours);
+      intervals.putIfAbsent(id, () => []).addAll(taskIntervals);
+      final names = borrowers.putIfAbsent(id, () => {});
+      final borrower = task.properties['borrower'];
+      if (borrower is String && borrower.trim().isNotEmpty) {
+        names.add(borrower.trim());
+      }
+      names.addAll(task.assignees.where((name) => name.trim().isNotEmpty));
+      if (taskReturned != null &&
+          (returned[id] == null || taskReturned.isAfter(returned[id]!))) {
+        returned[id] = taskReturned;
+      }
+    }
+  }
+  return {
+    for (final id in loanCounts.keys)
+      id: EquipmentUsage(
+        loans: loanCounts[id]!,
+        hoursOut: _mergedLoanHours(intervals[id]!),
+        hoursByPurpose: Map.unmodifiable(purposes[id]!),
+        borrowers: Set.unmodifiable(borrowers[id]!),
+        lastReturned: returned[id],
+      ),
+  };
+}
+
+double _mergedLoanHours(List<(DateTime, DateTime)> intervals) {
+  intervals.sort((a, b) => a.$1.compareTo(b.$1));
+  if (intervals.isEmpty) return 0;
+  var start = intervals.first.$1;
+  var end = intervals.first.$2;
+  var seconds = 0;
+  for (final interval in intervals.skip(1)) {
+    if (!interval.$1.isAfter(end)) {
+      if (interval.$2.isAfter(end)) end = interval.$2;
+    } else {
+      seconds += end.difference(start).inSeconds;
+      start = interval.$1;
+      end = interval.$2;
+    }
+  }
+  seconds += end.difference(start).inSeconds;
+  return seconds / 3600;
+}
+
 Duration? loanOutFor(TaskRef task, DateTime now) {
   if (task.clocked.isEmpty) return null;
   final start = DateTime.tryParse(task.clocked.first.start);

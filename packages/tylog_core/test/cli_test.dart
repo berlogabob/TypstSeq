@@ -117,6 +117,64 @@ void main() {
       ),
     );
   });
+  test(
+    'CLI loans prints usage sorted by hours and leaves the vault alone',
+    () async {
+      final typst = await Process.run('typst', ['--version']);
+      if (typst.exitCode != 0) {
+        markTestSkipped('Typst is not installed');
+        return;
+      }
+      final repository = Directory.current.parent.parent.absolute;
+      final root = await Directory.systemTemp.createTemp('tylog_cli_loans_');
+      addTearDown(() => root.delete(recursive: true));
+      final environment = {
+        ...Platform.environment,
+        'TYLOG_REPOSITORY_ROOT': repository.path,
+      };
+      expect((await _cli(['init', root.path], environment)).exitCode, 0);
+      await File('${root.path}/notes/quest.typ').writeAsString(
+        '''#import "/_system/tylog.typ" as tylog
+#show: tylog.note.with(id: "TL-1", title: "Quest 3 [1]", kind: "equipment")
+= Quest
+''',
+      );
+      await File('${root.path}/notes/day.typ').writeAsString(
+        '''#import "/_system/tylog.typ" as tylog
+#show: tylog.note.with(id: "day", title: "Day", kind: "note")
+#tylog.task(
+  id: "loan-a",
+  text: "Student took Quest",
+  status: "done",
+  properties: ("loan": true, "purpose": "lab", "equipment": ("TL-1",), "clocked": (("2026-11-10T09:00:00.000Z", "2026-11-10T11:00:00.000Z"),),),
+)
+''',
+      );
+      Future<List<String>> files() async => [
+        for (final f in root.listSync(recursive: true).whereType<File>())
+          '${f.path}:${f.lengthSync()}',
+      ]..sort();
+      final before = await files();
+      final csv = File(
+        '${root.parent.path}/tylog_loans_${root.path.hashCode}.csv',
+      );
+      addTearDown(() async {
+        if (await csv.exists()) await csv.delete();
+      });
+      final result = await _cli([
+        'loans',
+        root.path,
+        '--csv',
+        csv.path,
+      ], environment);
+      expect(result.exitCode, 0, reason: result.stderr.toString());
+      final lines = result.stdout.toString().trim().split('\n');
+      expect(lines.first, startsWith('Equipment\tLoans'));
+      expect(lines[1], 'Quest 3 [1]\t1\t2.0\t2026-11-10\tlab: 2.0 h');
+      expect(await csv.readAsString(), contains('"Quest 3 [1]","1","2.0"'));
+      expect(await files(), before);
+    },
+  );
 }
 
 Future<ProcessResult> _cli(

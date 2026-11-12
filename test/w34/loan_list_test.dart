@@ -36,12 +36,17 @@ void main() {
             titleOf: (id) => id.toUpperCase(),
             now: DateTime.utc(2026, 1, 1, 12, 10),
             onOpen: (task) => opened = task,
+            summary: '2 loans · 3 h out · last returned 10 Nov',
           ),
         ),
       ),
     );
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('Borrow camera'), findsOneWidget);
+    expect(
+      find.text('2 loans · 3 h out · last returned 10 Nov'),
+      findsOneWidget,
+    );
     expect(
       find.text('CAMERA, TRIPOD · Class · out 2 h 10 min'),
       findsOneWidget,

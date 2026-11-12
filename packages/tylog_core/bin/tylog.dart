@@ -34,6 +34,7 @@ Future<int> runTylog(List<String> arguments) async {
     'index' => _index(args),
     'cluster' => _cluster(args),
     'eval-links' => _evalLinks(args),
+    'loans' => _loans(args),
     'doctor' => _doctor(args),
     'vault-health' => _vaultHealth(args),
     'dedupe' => _dedupe(args),
@@ -43,6 +44,103 @@ Future<int> runTylog(List<String> arguments) async {
     'mcp' => _mcp(args),
     _ => throw _UsageException('Unknown command: $command'),
   };
+}
+
+Future<int> _loans(List<String> args) async {
+  final options = <String, String>{};
+  String? vault;
+  for (var i = 0; i < args.length; i++) {
+    final arg = args[i];
+    if (const {'--from', '--to', '--csv'}.contains(arg)) {
+      if (i + 1 >= args.length ||
+          args[i + 1].startsWith('--') ||
+          options.containsKey(arg)) {
+        throw _UsageException('Invalid loans option: $arg');
+      }
+      options[arg] = args[++i];
+    } else if (arg.startsWith('--') || vault != null) {
+      throw _UsageException(
+        'loans requires <vault> [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--csv out]',
+      );
+    } else {
+      vault = arg;
+    }
+  }
+  if (vault == null) throw _UsageException('loans requires <vault>');
+  DateTime? date(String option) {
+    final value = options[option];
+    if (value == null) return null;
+    final parsed = DateTime.tryParse(value);
+    if (parsed == null || parsed.toIso8601String().substring(0, 10) != value) {
+      throw _UsageException('Invalid $option date: $value');
+    }
+    return DateTime.utc(parsed.year, parsed.month, parsed.day);
+  }
+
+  final from = date('--from');
+  final toDate = date('--to');
+  final to = toDate == null ? null : toDate.add(const Duration(days: 1));
+  if (from != null && to != null && !from.isBefore(to))
+    throw _UsageException('--from must not be after --to');
+  final root = Directory(vault).absolute;
+  final csvPath = options['--csv'];
+  if (csvPath != null) {
+    final output = File(csvPath).absolute.path;
+    if (output == root.path ||
+        output.startsWith('${root.path}${Platform.pathSeparator}')) {
+      throw _UsageException('--csv output must be outside the vault');
+    }
+  }
+  final storage = LocalVaultStorage(root);
+  if ((await inspectVaultStorage(storage)).kind !=
+      VaultStorageKind.validVault) {
+    throw StateError('TyLog vault marker is missing or invalid');
+  }
+  final index = await scanVaultStorage(
+    storage,
+    inspector: CliTypstInspector(root),
+    force: true,
+  );
+  final usage = equipmentUsage(index, from: from, to: to);
+  final entries = usage.entries.toList()
+    ..sort((a, b) => b.value.hoursOut.compareTo(a.value.hoursOut));
+  final rows = entries.map((entry) {
+    final note = index.notesByPath.values
+        .where((note) => note.id == entry.key)
+        .firstOrNull;
+    final summary = entry.value;
+    final purposes = summary.hoursByPurpose.entries
+        .map((e) => '${e.key}: ${e.value.toStringAsFixed(1)} h')
+        .join('; ');
+    return [
+      note?.title ?? entry.key,
+      '${summary.loans}',
+      summary.hoursOut.toStringAsFixed(1),
+      summary.lastReturned == null
+          ? ''
+          : summary.lastReturned!.toIso8601String().substring(0, 10),
+      purposes,
+    ];
+  }).toList();
+  const header = [
+    'Equipment',
+    'Loans',
+    'Hours out',
+    'Last returned',
+    'Purposes',
+  ];
+  if (options['--csv'] case final path?) {
+    String quote(String value) => '"${value.replaceAll('"', '""')}"';
+    await File(path).writeAsString(
+      ([header, ...rows].map((row) => row.map(quote).join(',')).join('\n')) +
+          '\n',
+    );
+  }
+  stdout.writeln(header.join('\t'));
+  for (final row in rows) {
+    stdout.writeln(row.join('\t'));
+  }
+  return 0;
 }
 
 Future<int> _mcp(List<String> args) async {
@@ -1022,4 +1120,5 @@ Usage:
   tylog export <file.typ> [output.pdf]
   tylog pack-validate <file.tylogpack>
   tylog eval-links --vault <dir> --gold <file.jsonl>
-  tylog eval-links --vault <dir> --sample N --out <file.jsonl>''';
+  tylog eval-links --vault <dir> --sample N --out <file.jsonl>
+  tylog loans <vault> [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--csv out]''';
