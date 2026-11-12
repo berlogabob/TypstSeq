@@ -32,7 +32,7 @@ Future<bool> acceptLoan({
       mutationIsCurrent(tracked) &&
       mentions != null &&
       enrichContentSha(source) == mentions.contentSha) {
-    final shifted = shiftEnrichLines(
+    final shifted = consumeEnrichLine(
       await readSidecar(),
       offer.line,
       tracked.split('\n').length - source.split('\n').length,

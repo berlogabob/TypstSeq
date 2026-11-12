@@ -54,7 +54,7 @@ class EnrichReview extends StatefulWidget {
   final FutureOr<void> Function(EnrichMention, NoteRef) onReject;
   final FutureOr<void> Function(EnrichMention) onCreate;
   final FutureOr<void> Function(EnrichMention) onIgnore;
-  final FutureOr<void> Function(EnrichLoanOffer)? onAcceptLoan;
+  final FutureOr<dynamic> Function(EnrichLoanOffer)? onAcceptLoan;
   final FutureOr<void> Function(EnrichLoanOffer)? onRejectLoan;
   final FutureOr<void> Function(EnrichMarkerOffer)? onAcceptMarker;
   final FutureOr<void> Function(EnrichMarkerOffer)? onRejectMarker;
@@ -72,6 +72,17 @@ class EnrichReview extends StatefulWidget {
 class _EnrichReviewState extends State<EnrichReview> {
   final Set<String> _skipped = {};
   final Set<EnrichDecision> _hidden = {};
+  final Set<String> _accepted = {};
+
+  @override
+  void didUpdateWidget(covariant EnrichReview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.decisions != widget.decisions ||
+        oldWidget.loans != widget.loans ||
+        oldWidget.source != widget.source) {
+      _accepted.clear();
+    }
+  }
 
   List<EnrichCardRow> _rows(EnrichLineCard card) => [
     for (final row in card.rows)
@@ -83,18 +94,30 @@ class _EnrichReviewState extends State<EnrichReview> {
     card.loan,
   );
 
-  Future<void> _cardBody(EnrichLineCard card) => acceptCard(
-    card,
-    _rows(card),
-    acceptLink: (mention, target) async =>
-        await widget.onAccept(mention, target),
-    acceptLoan: (loan) async => await widget.onAcceptLoan?.call(loan),
-  );
+  Future<void> _cardBody(EnrichLineCard card) async {
+    try {
+      for (final row in _rows(card)) {
+        if (row.state == EnrichRowState.willLink) {
+          await widget.onAccept(row.decision!.mention, row.target!);
+        }
+      }
+      if (card.loan != null &&
+          await widget.onAcceptLoan?.call(card.loan!) == false) {
+        if (mounted) setState(() => _accepted.remove(card.key));
+      }
+    } catch (_) {
+      if (mounted) setState(() => _accepted.remove(card.key));
+      rethrow;
+    }
+  }
 
-  Future<void> _runCard(EnrichLineCard card) =>
-      widget.batch(() async => await _cardBody(card));
+  Future<void> _runCard(EnrichLineCard card) async {
+    setState(() => _accepted.add(card.key));
+    await widget.batch(() async => await _cardBody(card));
+  }
 
   Future<void> _acceptAll(List<EnrichLineCard> cards) async {
+    cards = cards.where((card) => _label(card) != null).toList();
     final links = cards.fold<int>(
       0,
       (count, card) =>
@@ -128,7 +151,8 @@ class _EnrichReviewState extends State<EnrichReview> {
         ],
       ),
     );
-    if (confirmed == true) {
+    if (confirmed == true && mounted) {
+      setState(() => _accepted.addAll(cards.map((card) => card.key)));
       await widget.batch(() async {
         for (final card in acceptAllOrder(cards)) {
           await _cardBody(card);
@@ -364,6 +388,7 @@ class _EnrichReviewState extends State<EnrichReview> {
     final visible = cards
         .where(
           (card) =>
+              !_accepted.contains(card.key) &&
               !_skipped.contains(card.key) &&
               !widget.skipped.contains(card.key) &&
               (_rows(card).isNotEmpty || card.loan != null),

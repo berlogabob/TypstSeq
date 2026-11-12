@@ -1339,9 +1339,8 @@ extension _EnrichIncoming on _HomeScreenState {
                                       });
                                     }
                                   }),
-                                  onAcceptLoan: (offer) async {
-                                    await _acceptEnrichLoan(entry.key, offer);
-                                  },
+                                  onAcceptLoan: (offer) =>
+                                      _acceptEnrichLoan(entry.key, offer),
                                   onRejectLoan: (offer) =>
                                       _rejectEnrichLoan(entry.key, offer),
                                   onAcceptMarker: (offer) =>

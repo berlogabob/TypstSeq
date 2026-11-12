@@ -1,6 +1,7 @@
 import 'enrich.dart';
 import 'loan.dart';
 import 'models.dart';
+import 'scanner.dart' show locateTypstCalls;
 
 enum EnrichRowState { linked, willLink, ambiguous, propose }
 
@@ -96,7 +97,9 @@ List<EnrichLineCard> enrichLineCards({
       loansByLine[loan.line] = loan;
     }
   }
-  final numbers = {...byLine.keys, ...loansByLine.keys}.toList()..sort();
+  final numbers = {...byLine.keys, ...loansByLine.keys}.toList()
+    ..removeWhere((line) => _startsUnclosedCall(lines[line - 1]))
+    ..sort();
   final markup = RegExp(r'#tylog\.ref-note\("((?:\\.|[^"\\])*)"\)\[([^\]]*)\]');
   return [
     for (final line in numbers)
@@ -200,4 +203,14 @@ List<EnrichLineCard> enrichLineCards({
         );
       })(),
   ];
+}
+
+// A stale sidecar must never turn the beginning of a call into editable prose.
+bool _startsUnclosedCall(String line) {
+  final start = RegExp(r'^\s*#[\w.-]+\(').firstMatch(line);
+  if (start == null) return false;
+  return !locateTypstCalls(
+    line,
+    anyName: true,
+  ).any((call) => call.start == line.indexOf('#'));
 }

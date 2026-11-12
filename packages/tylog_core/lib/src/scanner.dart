@@ -315,6 +315,7 @@ List<Object?> _recordValues(
 
 List<TypstCall> locateTypstCalls(
   String source, {
+  bool anyName = false,
   Set<String> names = const {
     'tylog.ref-note',
     'tylog.tag',
@@ -366,7 +367,7 @@ List<TypstCall> locateTypstCalls(
       i++;
     }
     var name = source.substring(nameStart, i);
-    if (i < source.length && source.codeUnitAt(i) == 46) {
+    while (i < source.length && source.codeUnitAt(i) == 46) {
       final memberStart = ++i;
       while (i < source.length && _identifier(source.codeUnitAt(i))) {
         i++;
@@ -376,7 +377,7 @@ List<TypstCall> locateTypstCalls(
     while (i < source.length && _space(source.codeUnitAt(i))) {
       i++;
     }
-    if (!names.contains(name) ||
+    if ((!anyName && !names.contains(name)) ||
         i >= source.length ||
         source.codeUnitAt(i) != 40) {
       continue;

@@ -191,6 +191,26 @@ Map<String, Object?> shiftEnrichLines(
   };
 }
 
+/// Consumes the converted line, including any unresolved new-person proposal.
+Map<String, Object?> consumeEnrichLine(
+  Map<String, Object?> json,
+  int line,
+  int delta,
+) {
+  final remaining = {
+    for (final entry in json.entries)
+      entry.key:
+          const {'mentions', 'markers', 'loans'}.contains(entry.key) &&
+              entry.value is List
+          ? [
+              for (final item in entry.value as List)
+                if (item is! Map || item['line'] != line) item,
+            ]
+          : entry.value,
+  };
+  return shiftEnrichLines(remaining, line, delta);
+}
+
 /// Equipment ids of a loan task. The scanner keeps nested property values as
 /// their Typst source (`("TL-0003",)`), so read both that and a real list.
 List<String> loanEquipmentIds(TaskRef task) {

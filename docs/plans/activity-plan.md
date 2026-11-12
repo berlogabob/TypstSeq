@@ -951,7 +951,7 @@ Plan: `~/.claude/plans/perform-app-audit-create-reactive-lerdorf.md`. The techni
 - [x] W34.E2 (luna) target row shows " · colour" from the equipment note's `color` property - shared enrichTargetLabel helper used by row and chooser; core + widget tests
 - [x] W34.E3 (terra) "Skip line" persisted per note in device-local enrich state, pruned on change, capped - EnrichSkipped (enrich_skipped.dart), _system/enrich/skipped/<device>.json atomic, cap 200/500; 4 core tests; widget wiring not mounted
 - [x] W34.E4 (terra) loan accept / double-loan / Accept all decision logic extracted and unit-tested - loan_accept.dart (acceptLoan with ports, acceptAllOrder); handlers are thin callers; core tests cover exact task string, sidecar shift, bottom-up three tasks, double-loan decline
-- [ ] W34.E8 (terra) loan conversion consumes the line's sidecar mentions; alias scan and enrichLineCards skip multi-line function calls; optimistic card removal on accept
+- [x] W34.E8 (terra) loan conversion consumes the line's sidecar mentions; alias scan and enrichLineCards skip multi-line function calls; optimistic card removal on accept - converted line consumed from sidecar (borrower "new person?" dropped with the line); multi-line calls are code lines; optimistic card hide, un-hide on declined; regressions fail pre-fix
 - [ ] W34.E5 (Sonnet + luna) flaky whiteboard_test + today_issue_menu_test: find timing assumption, fix
 - [ ] W34.E6 (luna) `--misses` in enrich_prompt_stats.py, classify recall@30 misses, cheap rule if any
 - [ ] W34.E7 (Sonnet) prefix-cache check on the Studio (read-only), numbers into this note

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:test/test.dart';
 import 'package:tylog_core/tylog_core.dart';
+import 'package:tylog_core/src/enrich_alias.dart';
 
 const equipment = NoteRef(
   id: 'eq',
@@ -102,7 +103,6 @@ void main() {
       ')\n- Later\n',
     );
     expect(fake.sidecar['loans'], [
-      {'line': 1},
       {'line': 7},
     ]);
     expect(fake.sidecar['mentions'], [
@@ -118,6 +118,84 @@ void main() {
       'writeSidecar',
     ]);
   });
+  test(
+    'consumes only the converted line and preserves shifted cards',
+    () async {
+      final fake = Fake(
+        'Microscope first\nBorrowed Microscope\nMicroscope last',
+      );
+      fake.sidecar['mentions'] = [
+        for (var line = 1; line <= 3; line++)
+          {'line': line, 'surface': 'Microscope'},
+        {'line': 2, 'surface': 'new person'},
+      ];
+      fake.sidecar['markers'] = [
+        for (var line = 1; line <= 3; line++) {'line': line},
+      ];
+      fake.sidecar['loans'] = [
+        for (var line = 1; line <= 3; line++) {'line': line},
+      ];
+      await fake.accept(offer(2, 'Borrowed Microscope'));
+      final last = fake.source.split('\n').length;
+      for (final key in ['mentions', 'markers', 'loans']) {
+        expect((fake.sidecar[key] as List).map((e) => e['line']), [1, last]);
+      }
+      final decisions = [
+        for (final item in fake.sidecar['mentions'] as List)
+          EnrichDecision(
+            EnrichMention(
+              surface: item['surface'] as String,
+              type: 'equipment',
+              line: item['line'] as int,
+            ),
+            EnrichStatus.review,
+            [const EnrichCandidate(equipment, 1, strong: true)],
+          ),
+      ];
+      expect(
+        enrichLineCards(
+          decisions: decisions,
+          loans: [],
+          lines: fake.source.split('\n'),
+        ).map((c) => c.line),
+        [1, last],
+      );
+      expect(fake.sidecar['content_sha'], enrichContentSha(fake.source));
+    },
+  );
+
+  test('stale task opening is not a card, inline calls remain prose', () {
+    final decision = EnrichDecision(
+      const EnrichMention(surface: 'Microscope', type: 'equipment', line: 1),
+      EnrichStatus.review,
+      [const EnrichCandidate(equipment, 1, strong: true)],
+    );
+    expect(
+      enrichLineCards(
+        decisions: [decision],
+        loans: [],
+        lines: ['#tylog.task('],
+      ),
+      isEmpty,
+    );
+    expect(
+      enrichLineCards(
+        decisions: [decision],
+        loans: [],
+        lines: ['#tylog.ref-note("eq")[Microscope] here'],
+      ),
+      hasLength(1),
+    );
+  });
+
+  test('alias scan skips multiline calls of any name', () {
+    final index = EnrichAliasIndex.build([equipment]);
+    final hits = index.scan(
+      'Microscope\n#tylog.task(\n text: "Microscope",\n)\n#custom.call(\n "Microscope",\n)\nMicroscope',
+    );
+    expect(hits.map((hit) => hit.line), [1, 8]);
+  });
+
   test('accept all processes bottom-up and links before each loan', () async {
     final fake = Fake(
       '- Levou Microscope\n- Взял Microscope\n- Borrowed Microscope\n',

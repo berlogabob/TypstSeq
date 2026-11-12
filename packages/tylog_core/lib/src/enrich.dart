@@ -1047,7 +1047,8 @@ Set<int> _enrichCodeLines(String source) {
     starts.add(offset);
     offset += line.length + 1;
   }
-  for (final call in locateTypstCalls(source)) {
+  for (final call in locateTypstCalls(source, anyName: true)) {
+    if (!call.source.contains('\n')) continue;
     for (var i = 0; i < lines.length; i++) {
       final lineEnd = starts[i] + lines[i].length;
       if (starts[i] < call.end && lineEnd > call.start && call.end > lineEnd) {
