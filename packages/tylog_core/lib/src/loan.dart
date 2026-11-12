@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 
 import 'enrich.dart';
+import 'loan_due.dart';
 import 'models.dart';
 import 'scanner.dart';
 import 'values.dart';
@@ -19,6 +20,7 @@ class EnrichLoanOffer {
     this.borrower,
     this.purpose,
     this.topic,
+    this.due,
   });
 
   final int line;
@@ -29,6 +31,7 @@ class EnrichLoanOffer {
   final String? borrower;
   final String? purpose;
   final String? topic;
+  final String? due;
 }
 
 String _taskText(String line) => line
@@ -42,8 +45,9 @@ List<EnrichLoanOffer> enrichLoanOffers(
   EnrichMentions mentions,
   String source,
   EnrichMemory memory,
-  List<EnrichDecision> decisions,
-) {
+  List<EnrichDecision> decisions, {
+  DateTime? noteDate,
+}) {
   final lines = source.split('\n');
   final code = enrichCodeLines(source);
   final offers = <EnrichLoanOffer>[];
@@ -107,6 +111,9 @@ List<EnrichLoanOffer> enrichLoanOffers(
           borrower: hint.borrower,
           purpose: hint.purpose,
           topic: hint.topic,
+          due: noteDate == null
+              ? null
+              : parseLoanDue(enrichPlainLine(line), noteDate),
         ),
       );
     }
@@ -150,6 +157,7 @@ String trackAsLoan(
       '  id: ${typstString(id)},\n'
       '  text: ${typstString(_taskText(lines[offer.line - 1]))},\n'
       '${offer.person == null ? '' : '  assignees: (${typstString(offer.person!.id)},),\n'}'
+      '${offer.due == null ? '' : '  due: ${typstString(offer.due!)},\n'}'
       '  properties: (${properties.join(', ')}),\n'
       ')';
   final updated = replaceTaskStatus(lines.join('\n'), id, 'doing');

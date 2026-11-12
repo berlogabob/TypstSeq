@@ -831,7 +831,15 @@ EnrichDayResolution resolveEnrichDay(
     ],
     tags: enrichTags(mentions.keywords, index, memory: memory),
     markers: enrichMarkerOffers(mentions, source, memory),
-    loans: enrichLoanOffers(mentions, source, memory, allDecisions),
+    loans: enrichLoanOffers(
+      mentions,
+      source,
+      memory,
+      allDecisions,
+      noteDate: note.kind == 'daily'
+          ? DateTime.tryParse(dailyDayOf(note) ?? '')
+          : null,
+    ),
   );
 }
 

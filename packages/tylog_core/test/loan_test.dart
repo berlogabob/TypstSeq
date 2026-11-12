@@ -105,6 +105,66 @@ void main() {
     expect(compiled.exitCode, 0, reason: '${compiled.stderr}');
   });
 
+  test('English loan writes and scans its return date', () async {
+    const source = '$header- 14:05 Borrowed #tylog.ref-note("TL-0007")[Equipment A] until Friday\n';
+    const mentions = EnrichMentions(
+      note: 'day', contentSha: '', loans: [EnrichLoanHint(line: 3)],
+    );
+    final mem = memory();
+    final offer = enrichLoanOffers(
+      mentions, source, mem, resolveMentions(mentions, day, mem), noteDate: now,
+    ).single;
+    expect(
+      trackAsLoan(source, EnrichLoanOffer(
+        line: offer.line, text: offer.text, ledgerSurface: offer.ledgerSurface,
+        equipment: offer.equipment, person: notes.first, due: offer.due,
+      ), 'with-person', now),
+      contains('  assignees: ("lab-person-4",),\n  due: "2026-11-13",\n'),
+    );
+    final result = trackAsLoan(source, offer, 'loan-en', now);
+    expect(result,
+      '$header#tylog.task(\n'
+      '  id: "loan-en",\n'
+      '  text: "14:05 Borrowed Equipment A until Friday",\n'
+      '  due: "2026-11-13",\n'
+      '  properties: ("loan": true, "equipment": ("TL-0007",), "clocked": (("2026-11-12T10:00:00.000Z", none),),),\n'
+      '  status: "doing",\n'
+      ')\n',
+    );
+    final vault = Directory('${tmp.path}/due-vault')..createSync(recursive: true);
+    final daily = Directory('${vault.path}/daily')..createSync(recursive: true);
+    File('${daily.path}/day.typ').writeAsStringSync(result);
+    final task = (await scanVaultStorage(LocalVaultStorage(vault))).tasks.single;
+    expect(task.due, '2026-11-13');
+    if (Process.runSync('which', ['typst']).exitCode != 0) {
+      markTestSkipped('typst not on PATH');
+      return;
+    }
+    final file = File('${tmp.path}/loan-due.typ')
+      ..writeAsStringSync('#import "/typst/tylog/lib.typ" as tylog\n$result');
+    final compiled = Process.runSync('typst', [
+      'compile', '--root', repo, file.path, '${file.path}.pdf',
+    ]);
+    expect(compiled.exitCode, 0, reason: '${compiled.stderr}');
+  });
+
+  test('day resolution carries the daily note return date', () {
+    const source = '$header- Borrowed #tylog.ref-note("TL-0007")[Equipment A] until Friday\n';
+    const mentions = EnrichMentions(
+      note: 'day', contentSha: '', loans: [EnrichLoanHint(line: 3)],
+    );
+    const daily = NoteRef(
+      id: 'day', path: 'daily/2026/11/2026-11-12.typ', title: 'Day',
+      kind: 'daily', outgoingLinks: [],
+    );
+    final index = VaultIndex(
+      notesByPath: {for (final n in notes) n.path: n},
+      backlinksByTarget: const {},
+    );
+    expect(resolveEnrichDay(mentions, daily, memory(), index, source).loans.single.due, '2026-11-13');
+    expect(resolveEnrichDay(mentions, day, memory(), index, source).loans.single.due, isNull);
+  });
+
   test('day resolution includes loans until the line is converted', () {
     const source = '$header$ru\n';
     const mentions = EnrichMentions(
