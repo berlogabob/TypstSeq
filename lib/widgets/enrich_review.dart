@@ -246,8 +246,8 @@ class _EnrichReviewState extends State<EnrichReview> {
             ? 'new person?'
             : 'new page?',
       _ => enrichTargetLabel(
-        enrichShortTarget(row.surface, target!),
-        fullTarget?.properties['color'],
+        enrichShortTarget(row.surface, fullTarget!),
+        fullTarget.properties['color'],
       ),
     };
     return InkWell(
@@ -267,38 +267,66 @@ class _EnrichReviewState extends State<EnrichReview> {
           constraints: const BoxConstraints(
             minHeight: kMinTapTarget - 2 * kSpace4,
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Tooltip(
-                  message: row.surface,
-                  child: Text(
-                    ellipsizeMiddle(row.surface, 28),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final surface = ellipsizeMiddle(row.surface, 28);
+              final linked = row.state == EnrichRowState.linked;
+              final painter = TextPainter(
+                text: TextSpan(
+                  text: '$surface  →  $label${linked ? '  ✓ linked' : ''}',
+                  style: DefaultTextStyle.of(context).style,
                 ),
-              ),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: kSpace8),
-                child: Text('→'),
-              ),
-              Flexible(
+                textDirection: Directionality.of(context),
+                textScaler: MediaQuery.textScalerOf(context),
+                maxLines: 1,
+              )..layout();
+              final wrap = painter.width + 2 * kSpace8 > constraints.maxWidth;
+              painter.dispose();
+              final surfaceText = Tooltip(
+                message: row.surface,
                 child: Text(
-                  label,
+                  surface,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              if (row.state == EnrichRowState.linked)
-                Padding(
-                  padding: const EdgeInsets.only(left: kSpace8),
-                  child: Text(
-                    '✓ linked',
-                    style: TextStyle(color: scheme.onSurfaceVariant),
-                  ),
-                ),
-            ],
+              );
+              final destination = Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('→'),
+                  const SizedBox(width: kSpace8),
+                  Flexible(child: Text(label)),
+                  if (linked)
+                    Padding(
+                      padding: const EdgeInsets.only(left: kSpace8),
+                      child: Text(
+                        '✓ linked',
+                        style: TextStyle(color: scheme.onSurfaceVariant),
+                      ),
+                    ),
+                ],
+              );
+              return wrap
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        surfaceText,
+                        Padding(
+                          padding: const EdgeInsets.only(left: kSpace8),
+                          child: destination,
+                        ),
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        Expanded(child: surfaceText),
+                        const SizedBox(width: kSpace8),
+                        destination,
+                      ],
+                    );
+            },
           ),
         ),
       ),
