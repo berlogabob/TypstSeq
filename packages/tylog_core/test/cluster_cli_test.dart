@@ -33,7 +33,11 @@ void main() {
         jsonDecode(await File('${vault.path}/$path').readAsString())
             as Map<String, Object?>;
 
+    var clusterRequestCount = 0;
     Future<void> cluster() async {
+      await write('_system/clusters/run-request.json', {
+        'requested_at': 'test-${++clusterRequestCount}',
+      });
       final result = await Process.run(
         Platform.resolvedExecutable,
         ['run', 'bin/tylog.dart', 'cluster', vault.path],
