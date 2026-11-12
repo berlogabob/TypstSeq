@@ -959,3 +959,5 @@ Plan: `~/.claude/plans/perform-app-audit-create-reactive-lerdorf.md`. The techni
 - [x] W34.F2 (terra) card row target never truncated: narrow rows wrap, only surface ellipsizes; short target + colour - rows wrap target to an indented second line, 360 px at text scale 1.0/1.3 tested
 - [ ] W34.F3 (terra) task source lines in cards show clean task text with a "task" label; accept adds assignee through the task writer
 - [ ] W34.F4 (terra) resolver respects word boundaries: "Андрейб" no match, real inflections still match
+- [ ] W34.F1b (terra) revised borrower rule: person is borrower when subject of taking/using; class construction only with a student word; purposes class|lab|research|take-home|consultation; weekend -> due next Monday; worker prompt enum + PROMPT_VERSION bump
+- [ ] W34.F5 (luna) `equipmentUsage` in tylog_core, read-only `tylog loans` CLI, totals line on the per-equipment Loans sheet
