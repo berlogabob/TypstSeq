@@ -29,7 +29,7 @@ MENTION_TYPES = ("person", "place", "organization", "project", "event", "topic",
 SETTLE_SECONDS = 300
 # Bump when the prompt or reply shape changes: older mentions files are
 # re-read once so every day carries the same fields.
-PROMPT_VERSION = 7
+PROMPT_VERSION = 8
 
 
 def content_sha(text):
@@ -226,7 +226,7 @@ def parse_reply(reply, lines, markers=()):
         if isinstance(borrower, str) and borrower.strip() and _fold(borrower.strip()) in _fold(by_number[line]):
             loan["borrower"] = borrower.strip()
         purpose = item.get("purpose")
-        if purpose in ("class", "lab", "take-home", "consultation"):
+        if purpose in ("class", "lab", "research", "take-home", "consultation"):
             loan["purpose"] = purpose
         topic = item.get("topic")
         if isinstance(topic, str) and topic.strip():
@@ -267,7 +267,7 @@ SYSTEM_PROMPT = """You read one day of a personal journal and list what it menti
 Return only a JSON object:
 {"mentions": [{"surface": str, "type": "person|place|organization|project|event|topic|equipment",
   "line": int, "hints": [str], "entity": str?}], "keywords": [str],
- "loans": [{"line": int, "borrower": str?, "purpose": "class|lab|take-home|consultation"?, "topic": str?}]}
+ "loans": [{"line": int, "borrower": str?, "purpose": "class|lab|research|take-home|consultation"?, "topic": str?}]}
 Rules:
 - surface is copied exactly from that line (any language, keep the original script and case).
 - line is the number shown before the text.
@@ -283,7 +283,9 @@ Rules:
   bracket index ("QUEST 3 [2]"); never shorten it to the bare model name.
 - loans: only for a line where someone takes, books for, asks for, returns or is given lab equipment.
   borrower is copied from that line (a name, "student", "студент", or a student number such as
-  "student 2031"). purpose: class = for a taught class/course, lab = working in the lab,
+  "student 2031"). A teacher taking or using equipment is the borrower; for a teacher's class
+  with a student, the student is the borrower. purpose: class = for a taught class/course,
+  lab = working in the lab, research = research work,
   take-home = taken away, consultation = booked an appointment/help. topic is the problem or subject
   in a few words, copied or shortened, in the line language. Omit unknown fields; never invent.
 - Only real named people, places, organizations, projects and events, plus at most a few

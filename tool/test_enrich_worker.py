@@ -288,7 +288,7 @@ def test_run_once_writes_loans_and_preserves_content_sha(tmp_path):
                                       "topic": "ESP32 library"}]}), "m", "c"
     assert enrich.run_once(vault, chat=chat, state_path=tmp_path / "s.json") == 1
     out = json.loads((vault / "_system/enrich/mentions/daily/2026/10/2026-10-22.json").read_text())
-    assert out["prompt"] == 7 and out["content_sha"] == expected_sha
+    assert out["prompt"] == enrich.PROMPT_VERSION and out["content_sha"] == expected_sha
     assert out["loans"] == [{"line": 3, "borrower": "Student 2031", "purpose": "consultation",
                              "topic": "ESP32 library"}]
 
@@ -394,5 +394,13 @@ def test_chat_asks_for_short_json_without_thinking(monkeypatch):
 
 
 def test_prompt_keeps_distinguishing_words_in_equipment_surface():
-    assert enrich.PROMPT_VERSION == 7
+    assert enrich.PROMPT_VERSION == 8
     assert "yellow Quest 3" in enrich.SYSTEM_PROMPT and "bracket index" in enrich.SYSTEM_PROMPT
+    assert "class|lab|research|take-home|consultation" in enrich.SYSTEM_PROMPT
+
+
+def test_research_purpose_is_accepted():
+    reply = json.dumps({"mentions": [{"surface": "Quest 3", "type": "equipment", "line": 1}],
+                        "loans": [{"line": 1, "borrower": "José", "purpose": "research"}]})
+    assert enrich.parse_reply(reply, [(1, "José uses Quest 3 for research")])[3] == [
+        {"line": 1, "borrower": "José", "purpose": "research"}]

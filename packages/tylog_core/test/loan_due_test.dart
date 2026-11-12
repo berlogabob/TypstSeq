@@ -63,11 +63,24 @@ void main() {
       ('for 366 weeks', '2026-11-12', null),
       ('until Friday then for 2 days', '2026-11-12', '2026-11-13'),
       ('until 31 Feb then tomorrow', '2026-01-01', null),
+      ('for the weekend', '2026-11-12', '2026-11-16'),
+      ('fim de semana', '2026-11-16', '2026-11-23'),
+      ('на выходные', '2026-11-15', '2026-11-16'),
+      ('weekend until Friday', '2026-11-12', '2026-11-13'),
+      ('weekend 20/11/2026', '2026-11-12', null),
+      ('weekend until 31 Feb', '2026-01-01', null),
     ];
     for (final (phrase, date, expected) in cases) {
-      expect(parseLoanDue(phrase, DateTime.parse(date)), expected, reason: phrase);
+      expect(
+        parseLoanDue(phrase, DateTime.parse(date)),
+        expected,
+        reason: phrase,
+      );
     }
     expect(parseLoanDue('tomorrow', DateTime.utc(2026, 11, 12, 23)), isNull);
-    expect(parseLoanDue('by tomorrow', DateTime.utc(2026, 11, 12, 23)), '2026-11-13');
+    expect(
+      parseLoanDue('by tomorrow', DateTime.utc(2026, 11, 12, 23)),
+      '2026-11-13',
+    );
   });
 }

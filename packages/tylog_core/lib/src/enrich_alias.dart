@@ -244,7 +244,7 @@ final _studentWord = RegExp(
 bool _classPerson(String line, String person) {
   final name = RegExp.escape(person);
   return RegExp(
-    '(?:\\bfor\\s+$name\\s+class\\b|\\bpara\\s+(?:a\\s+aula\\s+de\\s+)?$name|для\\s+$name|на\\s+(?:пару|занятие)\\s+$name|$name\\s+class\\b|\\baula\\s+do\\s+$name)',
+    '(?:\\bfor\\s+$name\\s+class\\b|\\bpara\\s+a\\s+(?:aula|turma)\\s+de\\s+$name|для\\s+занятия\\s+$name|на\\s+(?:пару|занятие)\\s+$name)',
     caseSensitive: false,
     unicode: true,
   ).hasMatch(line);
@@ -260,11 +260,18 @@ String _loanPurpose(String line, bool classPerson) {
     return 'class';
   }
   if (RegExp(
-    r'\bhome\b|домой|\bpara\s+casa\b|\blevar\b',
+    r'\bhome\b|домой|\bpara\s+casa\b|\bweekend\b|\bfim\s+de\s+semana\b|на\s+выходные',
     caseSensitive: false,
     unicode: true,
   ).hasMatch(line)) {
     return 'take-home';
+  }
+  if (RegExp(
+    r'\bresearch\b|investiga[çc][ãa]o|\bpesquisa\b|исследован',
+    caseSensitive: false,
+    unicode: true,
+  ).hasMatch(line)) {
+    return 'research';
   }
   if (RegExp(
     r'\bappointment\b|\bconsult|консультац|\batendimento\b',
@@ -312,23 +319,47 @@ EnrichMentions applyAliasHits(
         .firstOrNull;
     final line = enrichPlainLine(lines[hit.line - 1]);
     final teacher = person != null && _classPerson(line, person.surface);
+    final student = _studentWord.firstMatch(line)?[0];
+    final personSubject =
+        person != null &&
+        RegExp(
+          '${RegExp.escape(person.surface)}\\s+(?:took|takes|uses|used|borrowed|levou|usa|usou|взял\\p{L}*|использу\\p{L}*)',
+          caseSensitive: false,
+          unicode: true,
+        ).hasMatch(line);
     final existing = loans.indexWhere((l) => l.line == hit.line);
     if (existing >= 0) {
       final hint = loans[existing];
-      if (teacher && hint.borrower == person.surface) {
+      if (teacher && student != null) {
         loans[existing] = EnrichLoanHint(
           line: hint.line,
-          purpose: hint.purpose ?? 'class',
+          borrower: student,
+          purpose: 'class',
+          topic: hint.topic,
+        );
+      } else if (teacher) {
+        loans[existing] = EnrichLoanHint(
+          line: hint.line,
+          borrower: person.surface,
+          purpose: 'class',
+          topic: hint.topic,
+        );
+      } else if (personSubject) {
+        loans[existing] = EnrichLoanHint(
+          line: hint.line,
+          borrower: person.surface,
+          purpose: hint.purpose,
           topic: hint.topic,
         );
       }
     } else {
-      final student = _studentWord.firstMatch(line)?[0];
       if (person != null || student != null) {
         loans.add(
           EnrichLoanHint(
             line: hit.line,
-            borrower: student ?? (teacher ? null : person?.surface),
+            borrower: teacher && student != null
+                ? student
+                : person?.surface ?? student,
             purpose: _loanPurpose(line, teacher),
           ),
         );

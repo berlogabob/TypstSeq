@@ -49,15 +49,37 @@ void main() {
         'class',
       ),
       (
-        'для José Graça студент 20239876 взял QUEST 3 домой',
+        'для занятия José Graça студент 20239876 взял QUEST 3 домой',
         'José Graça',
         'студент 20239876',
         'class',
       ),
       ('Андрей взял QUEST 3', 'Андрей', 'Андрей', 'lab'),
-      ('aula do José Graça Quest 3', 'José Graça', null, 'class'),
-      ('на пару José Graça Quest 3', 'José Graça', null, 'class'),
-      ('para José Graça Quest 3', 'José Graça', null, 'class'),
+      ('for José Graça class Quest 3', 'José Graça', 'José Graça', 'class'),
+      ('на пару José Graça Quest 3', 'José Graça', 'José Graça', 'class'),
+      (
+        'para a turma de José Graça aluno 2 Quest 3',
+        'José Graça',
+        'aluno 2',
+        'class',
+      ),
+      (
+        'José Graça took Quest 3 for the weekend',
+        'José Graça',
+        'José Graça',
+        'take-home',
+      ),
+      (
+        'José Graça uses Quest 3 for research in the lab',
+        'José Graça',
+        'José Graça',
+        'research',
+      ),
+      ('Жозе взял Quest 3 на выходные', 'Жозе', 'Жозе', 'take-home'),
+      ('José levou o Quest 3 para casa', 'José', 'José', 'take-home'),
+      ('José usa Quest 3 para investigação', 'José', 'José', 'research'),
+      ('José usa Quest 3 para pesquisa', 'José', 'José', 'research'),
+      ('Жозе использует Quest 3 для исследования', 'Жозе', 'Жозе', 'research'),
     ];
     for (final (line, person, borrower, purpose) in cases) {
       final hint = apply(line, person: person).loans.single;
@@ -66,7 +88,8 @@ void main() {
   });
 
   test('corrects only a teacher borrower in a sidecar hint on plain text', () {
-    const line = 'for #tylog.ref-note("teacher")[José Graça] class Quest 3';
+    const line =
+        'for #tylog.ref-note("teacher")[José Graça] class student 123 took Quest 3';
     final corrected = apply(
       line,
       person: 'José Graça',
@@ -74,14 +97,30 @@ void main() {
     ).loans.single;
     expect(
       (corrected.borrower, corrected.purpose, corrected.topic),
-      (null, 'class', 'VR'),
+      ('student 123', 'class', 'VR'),
     );
     final kept = apply(
       line,
       person: 'José Graça',
       hint: const EnrichLoanHint(line: 1, borrower: 'student', purpose: 'lab'),
     ).loans.single;
-    expect((kept.borrower, kept.purpose), ('student', 'lab'));
+    expect((kept.borrower, kept.purpose), ('student 123', 'class'));
+    final alone = apply(
+      'for José Graça class Quest 3',
+      person: 'José Graça',
+      hint: const EnrichLoanHint(
+        line: 1,
+        borrower: 'José Graça',
+        purpose: 'lab',
+      ),
+    ).loans.single;
+    expect((alone.borrower, alone.purpose), ('José Graça', 'class'));
+    final subject = apply(
+      'José Graça uses Quest 3 for research',
+      person: 'José Graça',
+      hint: const EnrichLoanHint(line: 1, purpose: 'research'),
+    ).loans.single;
+    expect((subject.borrower, subject.purpose), ('José Graça', 'research'));
   });
 
   test('writes and compiles a synthesized teacher-class loan', () {
