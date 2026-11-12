@@ -62,7 +62,8 @@ def test_parse_reply_drops_hallucinated_surfaces():
         {"surface": "Barbara", "type": "person", "line": 13},
         {"surface": "IADE", "type": "university", "line": 18, "entity": "iade"},
     ], "keywords": ["метро", ""]})
-    mentions, keywords, _ = enrich.parse_reply("```json\n" + reply + "\n```", lines)
+    mentions, keywords, _, loans = enrich.parse_reply("```json\n" + reply + "\n```", lines)
+    assert loans == []
     assert [(m["surface"], m["type"]) for m in mentions] == [
         ("Катя", "person"), ("andre", "person"), ("IADE", "topic")]
     assert mentions[2]["entity"] == "iade"
@@ -213,6 +214,83 @@ def test_old_prompt_version_is_read_again(tmp_path):
     target.write_text(json.dumps(data))
     enrich.run_once(vault, chat=chat, state_path=tmp_path / "s.json")
     assert len(calls) == 2
+
+
+def test_build_messages_describes_equipment_and_loans():
+    system = enrich.build_messages([(1, "borrowed a kit")], [])[0]["content"]
+    assert '"type": "person|place|organization|project|event|topic|equipment"' in system
+    assert '"loans": [{"line": int' in system
+    assert '"VR glasses no. 3"' in system and '"VR-очки №3"' in system
+
+
+@pytest.mark.parametrize("line_text,mentions,loan", [
+    ("- 14:05 Student 2031 booked an appointment in the lab, asked for Equipment A and B, has problems with the ESP32 library",
+     [{"surface": "Equipment A", "type": "equipment", "line": 1},
+      {"surface": "Equipment B", "type": "equipment", "line": 1},
+      {"surface": "ESP32 library", "type": "topic", "line": 1}],
+     {"line": 1, "borrower": "Student 2031", "purpose": "consultation", "topic": "ESP32 library"}),
+    ("- 11:20 Для занятия у Жозе Граса студент взял VR-очки №3",
+     [{"surface": "VR-очки №3", "type": "equipment", "line": 1,
+       "hints": ["VR-очки 3", "VR glasses 3"]}],
+     {"line": 1, "borrower": "студент", "purpose": "class"}),
+    ("- 11:20 for José Graça class a student took VR glasses no. 3",
+     [{"surface": "VR glasses no. 3", "type": "equipment", "line": 1}],
+     {"line": 1, "borrower": "student", "purpose": "class"}),
+])
+def test_equipment_mentions_and_loans_are_validated(line_text, mentions, loan):
+    lines = [(1, line_text)]
+    reply = json.dumps({"mentions": mentions, "loans": [loan]})
+    parsed_mentions, _, _, loans = enrich.parse_reply(reply, lines)
+    accepted = [m for m in mentions if m["surface"].casefold() in line_text.casefold()]
+    assert parsed_mentions == [{"surface": m["surface"], "type": m["type"],
+                                "line": 1, "hints": m.get("hints", [])} for m in accepted]
+    assert loans == [loan]
+
+
+def test_invalid_and_duplicate_loans_are_dropped():
+    lines = [(1, "student borrowed Equipment A"), (2, "student called about class")]
+    mentions = [{"surface": "Equipment A", "type": "equipment", "line": 1}]
+    reply = json.dumps({"mentions": mentions, "loans": [
+        {"line": 2, "purpose": "class"},  # no equipment mention
+        {"line": 1, "borrower": "invented", "purpose": "bogus", "topic": "  "},
+        {"line": 1, "borrower": "student", "purpose": "lab", "topic": "Second"},
+        "bad item"]})
+    assert enrich.parse_reply(reply, lines)[3] == [{"line": 1}]
+
+
+def test_equipment_surface_must_exist_on_line():
+    reply = json.dumps({"mentions": [{"surface": "Equipment B", "type": "equipment", "line": 1}],
+                        "loans": [{"line": 1, "purpose": "lab"}]})
+    mentions, _, _, loans = enrich.parse_reply(reply, [(1, "asked for Equipment A")])
+    assert mentions == [] and loans == []
+
+
+def test_known_equipment_has_its_own_cap_and_no_aliases():
+    notes = ([{"id": f"p{i}", "title": f"P{i}", "kind": "person", "aliases": []} for i in range(205)]
+             + [{"id": f"e{i}", "title": f"E{i}", "kind": "equipment", "aliases": ["alias"]} for i in range(160)])
+    entities = enrich.known_entities({"notes": notes})
+    assert len(entities) == 350
+    assert [item["kind"] for item in entities[:200]] == ["person"] * 200
+    assert entities[200] == {"id": "e0", "title": "E0", "kind": "equipment"}
+    assert all(item["kind"] == "equipment" for item in entities[200:])
+
+
+def test_run_once_writes_loans_and_preserves_content_sha(tmp_path):
+    vault, note = vault_with(tmp_path)
+    day = "= 2026-10-22\n\n- 14:05 Student 2031 booked an appointment in the lab, asked for Equipment A and B, has problems with the ESP32 library\n"
+    note.write_text(day, encoding="utf-8")
+    os.utime(note, (0, 0))
+    expected_sha = enrich.content_sha(day)
+    def chat(messages):
+        line = enrich.body_lines(day)[0][0]
+        return json.dumps({"mentions": [{"surface": "Equipment A", "type": "equipment", "line": line}],
+                           "loans": [{"line": line, "borrower": "Student 2031", "purpose": "consultation",
+                                      "topic": "ESP32 library"}]}), "m", "c"
+    assert enrich.run_once(vault, chat=chat, state_path=tmp_path / "s.json") == 1
+    out = json.loads((vault / "_system/enrich/mentions/daily/2026/10/2026-10-22.json").read_text())
+    assert out["prompt"] == 5 and out["content_sha"] == expected_sha
+    assert out["loans"] == [{"line": 3, "borrower": "Student 2031", "purpose": "consultation",
+                             "topic": "ESP32 library"}]
 
 
 def test_markers_are_discovered_from_line_starts(tmp_path):

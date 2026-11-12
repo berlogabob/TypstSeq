@@ -24,12 +24,12 @@ import transcribe_worker as tw
 
 
 AUTO_MARKER = "// tylog:auto-entities"
-ENTITY_KINDS = ("person", "organization", "place", "event", "website", "project")
-MENTION_TYPES = ("person", "place", "organization", "project", "event", "topic")
+ENTITY_KINDS = ("person", "organization", "place", "event", "website", "project", "equipment")
+MENTION_TYPES = ("person", "place", "organization", "project", "event", "topic", "equipment")
 SETTLE_SECONDS = 300
 # Bump when the prompt or reply shape changes: older mentions files are
 # re-read once so every day carries the same fields.
-PROMPT_VERSION = 4
+PROMPT_VERSION = 5
 
 
 def content_sha(text):
@@ -73,9 +73,13 @@ def read_index(vault):
 
 def known_entities(index, limit=200):
     # ponytail: sends every entity note up to `limit`; prefilter by token overlap with the note when vaults grow past it.
-    return [{"id": note["id"], "title": note["title"], "kind": note["kind"],
-             "aliases": note.get("aliases") or []}
-            for note in index.get("notes", []) if note.get("kind") in ENTITY_KINDS][:limit]
+    notes = index.get("notes", [])
+    regular = [{"id": note["id"], "title": note["title"], "kind": note["kind"],
+                "aliases": note.get("aliases") or []}
+               for note in notes if note.get("kind") in ENTITY_KINDS and note.get("kind") != "equipment"][:limit]
+    equipment = [{"id": note["id"], "title": note["title"], "kind": "equipment"}
+                 for note in notes if note.get("kind") == "equipment"][:150]
+    return regular + equipment
 
 
 def _fold(text):
@@ -153,7 +157,7 @@ def load_markers(vault, task, index):
 
 
 def parse_reply(reply, lines, markers=()):
-    """Validate the model reply; drop mentions whose surface is not on that line."""
+    """Validate mentions, loans and markers against the journal lines."""
     reply = reply.strip()
     if reply.startswith("```"):
         reply = re.sub(r"^```[^\n]*\n", "", reply)
@@ -177,6 +181,26 @@ def parse_reply(reply, lines, markers=()):
         if isinstance(item.get("entity"), str) and item["entity"]:
             mention["entity"] = item["entity"]
         mentions.append(mention)
+    equipment_lines = {mention["line"] for mention in mentions if mention["type"] == "equipment"}
+    loans, loan_lines = [], set()
+    for item in value.get("loans") or []:
+        if not isinstance(item, dict):
+            continue
+        line = item.get("line")
+        if not isinstance(line, int) or line not in by_number or line not in equipment_lines or line in loan_lines:
+            continue
+        loan = {"line": line}
+        borrower = item.get("borrower")
+        if isinstance(borrower, str) and borrower.strip() and _fold(borrower.strip()) in _fold(by_number[line]):
+            loan["borrower"] = borrower.strip()
+        purpose = item.get("purpose")
+        if purpose in ("class", "lab", "take-home", "consultation"):
+            loan["purpose"] = purpose
+        topic = item.get("topic")
+        if isinstance(topic, str) and topic.strip():
+            loan["topic"] = topic.strip()[:80]
+        loans.append(loan)
+        loan_lines.add(line)
     keywords = [word.strip() for word in value.get("keywords") or []
                 if isinstance(word, str) and word.strip()][:10]
     ids = {marker["id"]: marker["title"] for marker in markers}
@@ -204,19 +228,30 @@ def parse_reply(reply, lines, markers=()):
                 continue
             if {"line": number, "marker": marker["id"]} not in marked:
                 marked.append({"line": number, "marker": marker["id"]})
-    return mentions, keywords, marked
+    return mentions, keywords, marked, loans
 
 
 SYSTEM_PROMPT = """You read one day of a personal journal and list what it mentions.
 Return only a JSON object:
-{"mentions": [{"surface": str, "type": "person|place|organization|project|event|topic",
-  "line": int, "hints": [str], "entity": str?}], "keywords": [str]}
+{"mentions": [{"surface": str, "type": "person|place|organization|project|event|topic|equipment",
+  "line": int, "hints": [str], "entity": str?}], "keywords": [str],
+ "loans": [{"line": int, "borrower": str?, "purpose": "class|lab|take-home|consultation"?, "topic": str?}]}
 Rules:
 - surface is copied exactly from that line (any language, keep the original script and case).
 - line is the number shown before the text.
 - hints: other forms the same name may take: full name, nickname or diminutive expansion,
   transliteration (e.g. "Катя" -> ["Екатерина", "Katya", "Katia"]). Never invent surnames.
 - entity: the id from KNOWN ENTITIES only when the text makes it certain; otherwise omit.
+- equipment: a physical lab item or kit a person borrowed, asked for or returned ("VR glasses no. 3",
+  "ESP32 board", "Equipment A"). Keep numbers in surface exactly as written ("VR glasses no. 3",
+  "VR-очки №3"); hints are other spellings/numbers/language of the same item ("VR glasses 3",
+  "VR-очки 3"). For "Equipment A and B" return two mentions, surfaces "Equipment A" and "B",
+  each copied from the line.
+- loans: only for a line where someone takes, books for, asks for, returns or is given lab equipment.
+  borrower is copied from that line (a name, "student", "студент", or a student number such as
+  "student 2031"). purpose: class = for a taught class/course, lab = working in the lab,
+  take-home = taken away, consultation = booked an appointment/help. topic is the problem or subject
+  in a few words, copied or shortened, in the line language. Omit unknown fields; never invent.
 - Only real named people, places, organizations, projects and events, plus at most a few
   topics the user clearly worked on. No pronouns, dates, times or generic nouns.
 - keywords: up to 8 short topic words for the whole day, in the journal's language.
@@ -398,9 +433,9 @@ def run_once(vault, *, chat=None, now=None, state_path=None, limit=20, clock=tim
         try:
             if lines:
                 reply, model, connection = chat(build_messages(lines, entities, markers))
-                mentions, keywords, marked = parse_reply(reply, lines, markers)
+                mentions, keywords, marked, loans = parse_reply(reply, lines, markers)
             else:
-                mentions, keywords, marked, model, connection = [], [], [], None, None
+                mentions, keywords, marked, loans, model, connection = [], [], [], [], None, None
         except Exception as error:
             failures[relative] = [sha, today]
             print(f"enrich: {relative}: {error}", file=sys.stderr)
@@ -410,7 +445,7 @@ def run_once(vault, *, chat=None, now=None, state_path=None, limit=20, clock=tim
         result = {"schema": 1, "prompt": PROMPT_VERSION, "note": relative, "content_sha": sha,
                   "extracted_at": now.astimezone(timezone.utc).isoformat(),
                   "model": model, "connection": connection,
-                  "mentions": mentions, "keywords": keywords, "markers": marked}
+                  "mentions": mentions, "keywords": keywords, "markers": marked, "loans": loans}
         target.parent.mkdir(parents=True, exist_ok=True)
         temporary = target.with_suffix(".json.tmp")
         temporary.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
