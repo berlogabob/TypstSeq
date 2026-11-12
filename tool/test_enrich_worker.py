@@ -265,14 +265,14 @@ def test_equipment_surface_must_exist_on_line():
     assert mentions == [] and loans == []
 
 
-def test_known_equipment_has_its_own_cap_and_no_aliases():
+def test_known_entities_are_complete_and_exclude_equipment():
     notes = ([{"id": f"p{i}", "title": f"P{i}", "kind": "person", "aliases": []} for i in range(205)]
              + [{"id": f"e{i}", "title": f"E{i}", "kind": "equipment", "aliases": ["alias"]} for i in range(160)])
     entities = enrich.known_entities({"notes": notes})
-    assert len(entities) == 350
-    assert [item["kind"] for item in entities[:200]] == ["person"] * 200
-    assert entities[200] == {"id": "e0", "title": "E0", "kind": "equipment"}
-    assert all(item["kind"] == "equipment" for item in entities[200:])
+    assert len(entities) == 205
+    assert entities[-1]["id"] == "p204"
+    assert all(item["kind"] != "equipment" for item in entities)
+    assert len(enrich.legacy_known_entities({"notes": notes})) == 350
 
 
 def test_run_once_writes_loans_and_preserves_content_sha(tmp_path):
@@ -288,7 +288,7 @@ def test_run_once_writes_loans_and_preserves_content_sha(tmp_path):
                                       "topic": "ESP32 library"}]}), "m", "c"
     assert enrich.run_once(vault, chat=chat, state_path=tmp_path / "s.json") == 1
     out = json.loads((vault / "_system/enrich/mentions/daily/2026/10/2026-10-22.json").read_text())
-    assert out["prompt"] == 6 and out["content_sha"] == expected_sha
+    assert out["prompt"] == 7 and out["content_sha"] == expected_sha
     assert out["loans"] == [{"line": 3, "borrower": "Student 2031", "purpose": "consultation",
                              "topic": "ESP32 library"}]
 
@@ -394,5 +394,5 @@ def test_chat_asks_for_short_json_without_thinking(monkeypatch):
 
 
 def test_prompt_keeps_distinguishing_words_in_equipment_surface():
-    assert enrich.PROMPT_VERSION == 6
+    assert enrich.PROMPT_VERSION == 7
     assert "yellow Quest 3" in enrich.SYSTEM_PROMPT and "bracket index" in enrich.SYSTEM_PROMPT

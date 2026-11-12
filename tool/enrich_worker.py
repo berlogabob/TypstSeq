@@ -29,7 +29,7 @@ MENTION_TYPES = ("person", "place", "organization", "project", "event", "topic",
 SETTLE_SECONDS = 300
 # Bump when the prompt or reply shape changes: older mentions files are
 # re-read once so every day carries the same fields.
-PROMPT_VERSION = 6
+PROMPT_VERSION = 7
 
 
 def content_sha(text):
@@ -71,8 +71,14 @@ def read_index(vault):
         return {}
 
 
-def known_entities(index, limit=200):
-    # ponytail: sends every entity note up to `limit`; prefilter by token overlap with the note when vaults grow past it.
+def known_entities(index):
+    return [{"id": note["id"], "title": note["title"], "kind": note["kind"],
+             "aliases": note.get("aliases") or []}
+            for note in index.get("notes", [])
+            if note.get("kind") in ENTITY_KINDS and note.get("kind") != "equipment"]
+
+
+def legacy_known_entities(index, limit=200):
     notes = index.get("notes", [])
     regular = [{"id": note["id"], "title": note["title"], "kind": note["kind"],
                 "aliases": note.get("aliases") or []}
@@ -85,6 +91,32 @@ def known_entities(index, limit=200):
 def _fold(text):
     return "".join(c for c in unicodedata.normalize("NFKD", text.casefold())
                    if not unicodedata.combining(c))
+
+
+def _tokens(text):
+    return {token for token in re.findall(r"\w+", _fold(text))
+            if len(token) >= 3 or any("\u4e00" <= c <= "\u9fff" for c in token)}
+
+
+def select_candidates(lines, entities, recent=(), limit=30):
+    day_tokens = set().union(*(_tokens(_plain(text)) for _, text in lines)) if lines else set()
+    ranked = []
+    for position, entity in enumerate(entities):
+        names = [entity.get("title", ""), *(entity.get("aliases") or [])]
+        shared = set().union(*(_tokens(name) for name in names)) & day_tokens
+        if shared:
+            ranked.append((sum(map(len, shared)), len(shared), position, entity))
+    ranked.sort(key=lambda row: (-row[0], -row[1], row[2]))
+    chosen = [row[3] for row in ranked[:limit]]
+    chosen_ids = {item["id"] for item in chosen}
+    by_id = {item["id"]: item for item in entities}
+    for entity_id in recent:
+        if len(chosen) >= limit:
+            break
+        if entity_id not in chosen_ids and entity_id in by_id:
+            chosen.append(by_id[entity_id])
+            chosen_ids.add(entity_id)
+    return chosen
 
 
 def _plain(line):
@@ -241,7 +273,7 @@ Rules:
 - line is the number shown before the text.
 - hints: other forms the same name may take: full name, nickname or diminutive expansion,
   transliteration (e.g. "Катя" -> ["Екатерина", "Katya", "Katia"]). Never invent surnames.
-- entity: the id from KNOWN ENTITIES only when the text makes it certain; otherwise omit.
+- entity: the id from CANDIDATE ENTITIES, a short list; omit entity when the text does not make it certain.
 - equipment: a physical lab item or kit a person borrowed, asked for or returned ("VR glasses no. 3",
   "ESP32 board", "Equipment A"). Keep numbers in surface exactly as written ("VR glasses no. 3",
   "VR-очки №3"); hints are other spellings/numbers/language of the same item ("VR glasses 3",
@@ -257,6 +289,9 @@ Rules:
 - Only real named people, places, organizations, projects and events, plus at most a few
   topics the user clearly worked on. No pronouns, dates, times or generic nouns.
 - keywords: up to 8 short topic words for the whole day, in the journal's language.
+- MARKERS: the user starts some lines with a marker page to file them (e.g. "fixit"). Return
+  marker assignments judging by the examples; skip lines already carrying it and counter-examples.
+  Return [] when none fit.
 No commentary."""
 
 
@@ -264,7 +299,7 @@ MAX_REPLY_TOKENS = 8000  # normal days stop at 100-600 tokens; 2022-07-19 needed
 MAX_CHARS = 30000  # ~12k tokens of Cyrillic: fits the 64k context with room to answer
 
 
-def build_messages(lines, entities, markers=()):
+def _numbered_lines(lines):
     # ponytail: long imported pages are cut at MAX_CHARS; chunk them if their
     # tails turn out to matter.
     numbered, size = [], 0
@@ -274,8 +309,32 @@ def build_messages(lines, entities, markers=()):
             break
         numbered.append(f"{number}: {line}")
     numbered = "\n".join(numbered)
+    return numbered
+
+
+def build_messages(lines, candidates, markers=()):
+    numbered = _numbered_lines(lines)
+    parts = []
+    if markers:
+        guide = json.dumps([{"id": m["id"], "title": m["title"], "examples": m["examples"],
+                             "counter_examples": m["not"]} for m in markers], ensure_ascii=False)
+        parts.append(f"MARKERS: {guide}")
+    parts.append(f"CANDIDATE ENTITIES: {json.dumps(candidates, ensure_ascii=False)}")
+    parts.append(f"JOURNAL:\n{numbered}")
+    return [{"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": "\n\n".join(parts)}]
+
+
+def build_messages_legacy(lines, entities, markers=()):
+    numbered = _numbered_lines(lines)
     known = json.dumps(entities, ensure_ascii=False)
-    system = SYSTEM_PROMPT
+    marker_rule = ('- MARKERS: the user starts some lines with a marker page to file them (e.g. "fixit"). Return\n'
+                   '  marker assignments judging by the examples; skip lines already carrying it and counter-examples.\n'
+                   '  Return [] when none fit.\n')
+    system = SYSTEM_PROMPT.replace(
+        '- entity: the id from CANDIDATE ENTITIES, a short list; omit entity when the text does not make it certain.\n',
+        '- entity: the id from KNOWN ENTITIES only when the text makes it certain; otherwise omit.\n')
+    system = system.replace(marker_rule, "")
     if markers:
         system += """
 MARKERS: the user starts some lines with a marker page to file them (e.g. "fixit" for a
@@ -371,6 +430,40 @@ def mentions_path(vault, note):
     return vault / "_system/enrich/mentions" / note.relative_to(vault).with_suffix(".json")
 
 
+def _entity_name_map(index):
+    result = {}
+    for entity in known_entities(index):
+        for name in (entity["id"], entity["title"], *(entity.get("aliases") or [])):
+            result[name] = entity["id"]
+    return result
+
+
+def recent_entity_ids(vault, index, day_iso, days=7):
+    vault = Path(vault)
+    try:
+        end = datetime.strptime(day_iso, "%Y-%m-%d").date()
+    except (TypeError, ValueError):
+        end = datetime.now().date()
+    names = _entity_name_map(index)
+    ordered, seen = [], set()
+    for offset in range(1, days + 1):
+        date = end - timedelta(days=offset)
+        relative = Path("daily") / f"{date:%Y}" / f"{date:%m}" / f"{date.isoformat()}.typ"
+        note = vault / relative
+        ids = []
+        sidecar = vault / "_system/enrich/mentions" / relative.with_suffix(".json")
+        data = tw._read_json(sidecar)
+        ids.extend(item.get("entity") for item in data.get("mentions", []) if isinstance(item, dict))
+        ids.extend(match.group(1) for match in re.finditer(r'#tylog\.ref-note\("([^"\\]+)"\)',
+                                                           note.read_text(encoding="utf-8") if note.exists() else ""))
+        for name in ids:
+            entity_id = names.get(name)
+            if entity_id and entity_id not in seen:
+                seen.add(entity_id)
+                ordered.append(entity_id)
+    return ordered
+
+
 def _write_json_atomic(path: Path, data) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
@@ -434,7 +527,9 @@ def run_once(vault, *, chat=None, now=None, state_path=None, limit=20, clock=tim
         lines = body_lines(text)
         try:
             if lines:
-                reply, model, connection = chat(build_messages(lines, entities, markers))
+                candidates = select_candidates(lines, entities,
+                                               recent_entity_ids(vault, index, note.stem))
+                reply, model, connection = chat(build_messages(lines, candidates, markers))
                 mentions, keywords, marked, loans = parse_reply(reply, lines, markers)
             else:
                 mentions, keywords, marked, loans, model, connection = [], [], [], [], None, None
