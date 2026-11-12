@@ -239,6 +239,30 @@ After the task.
       expect(taskClocked(written, 't2').single.end, isNull);
     },
   );
+  for (final (firstLoan, secondLoan) in [
+    (true, true),
+    (true, false),
+    (false, true),
+    (false, false),
+  ]) {
+    test('starting task (loan: $secondLoan) with running task (loan: $firstLoan)', () {
+      final firstProperties = firstLoan ? '"loan": true, ' : '';
+      final secondProperties = secondLoan ? '"loan": true, ' : '';
+      final first =
+          '#tylog.task(id: "t1", status: "doing", properties: ($firstProperties"clocked": (("2026-10-08T13:00:00.000Z", none),),))\n';
+      final second =
+          '#tylog.task(id: "t2", status: "todo", properties: (${secondProperties == '' ? ':' : secondProperties}))\n';
+      final firstExpected = firstLoan || secondLoan
+          ? first
+          : '#tylog.task(id: "t1", status: "todo", properties: ("clocked": (("2026-10-08T13:00:00.000Z", "$iso"),),))\n';
+        final secondExpected =
+            '#tylog.task(id: "t2", status: "doing", properties: (${secondProperties.trimRight()}"clocked": (("$iso", none),),))\n';
+      expect(
+        applyTaskStatus('$first$second', 't2', 'doing', now),
+        '$firstExpected$secondExpected',
+      );
+    });
+  }
   test('cancelled closes a clock even if status was todo', () {
     final running = startTaskClock(todo, 't1', '2026-10-08T13:00:00.000Z');
     expectCompiles(running);

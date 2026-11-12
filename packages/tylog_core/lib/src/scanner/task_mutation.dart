@@ -49,7 +49,9 @@ String applyTaskStatus(String source, String id, String next, DateTime now) {
   if (next == 'doing') {
     for (final other in locateTypstCalls(source, names: const {'tylog.task'})) {
       final otherId = taskField(other.source, 'id');
-      if (otherId == null ||
+      if (_parseProperties(call.source)['loan'] == true ||
+          _parseProperties(other.source)['loan'] == true ||
+          otherId == null ||
           otherId == id ||
           ClockEntry.latestRunning(parseClockedField(other.source)) == null) {
         continue;
