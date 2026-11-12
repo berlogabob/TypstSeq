@@ -942,7 +942,7 @@ Plan: `~/.claude/plans/perform-app-audit-create-reactive-lerdorf.md`. The techni
 - [ ] W34.B6 (terra) connector `tool/lab_sync.py` to OpenLabTwin movements, dry run by default — left for main session
 - [x] W34.B7 (luna) thesis measurements: `tool/loan_eval.py` over the feedback ledger + a tiny synthetic gold set; CSV output — codex luna, 3 min, extraction P/R per type + loan detection, resolver top-1 per ISO week (cumulative), shown->accept seconds vs `--form-seconds`; one end-to-end test on a synthetic vault; the real 30-50 line gold set is for the user to label
 - [x] W34.C1 (luna) smaller prompt: `select_candidates` (token overlap + recent links, cap 30), no equipment block, byte-stable system message, PROMPT_VERSION 7, `tool/enrich_prompt_stats.py` — codex luna; real vault 30 days: median 3263->2451 tokens (-25.7% total, the fixed system text dominates and now prefix-caches), recall@30 0.942 (65/69)
-- [ ] W34.C2 (terra) chooser also for LLM-only ambiguous equipment mentions
+- [x] W34.C2 (terra) chooser also for LLM-only ambiguous equipment mentions — codex terra; `_decide` sets choose + exact-only candidates; 3 lab tests (first fails pre-fix)
 - [ ] W34.C3 (terra) return date: deterministic en/pt/ru due-phrase parser sets the loan task `due` on "Track as loan"
 - [ ] W34.C4 (terra) double-loan warning on the "Track as loan" chip + confirm dialog; shared open-loans-by-equipment function
 - [ ] W34.C5 (Sonnet) final gates: analyze, full flutter test, make test-core, pytest tool

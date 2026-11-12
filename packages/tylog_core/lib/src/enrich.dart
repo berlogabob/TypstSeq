@@ -345,7 +345,7 @@ class EnrichDecision {
   });
   final EnrichMention mention;
 
-  /// An alias several equipment units share and nothing longer disambiguates:
+  /// A name several equipment units share and nothing longer disambiguates:
   /// shown as "Which ...?" with only [candidates] to pick from.
   final bool choose;
   final EnrichStatus status;
@@ -767,11 +767,22 @@ EnrichDecision _decide(
       !ambiguousEquipment &&
       (ranked.length == 1 || best.score - ranked[1].score >= _margin);
   final linked = best.strong && clear;
+  final llmEquipmentChoice = mention.candidateIds == null && ambiguousEquipment;
+  final exactEquipmentIds = llmEquipmentChoice
+      ? {
+          for (final (entity, exact) in found)
+            if (entity.kind == 'equipment' && exact) entity.id,
+        }
+      : <String>{};
   return EnrichDecision(
     mention,
     linked ? EnrichStatus.linked : EnrichStatus.review,
-    ranked,
-    choose: !linked && (mention.candidateIds?.length ?? 0) > 1,
+    llmEquipmentChoice
+        ? ranked.where((c) => exactEquipmentIds.contains(c.note.id)).toList()
+        : ranked,
+    choose:
+        !linked &&
+        (llmEquipmentChoice || (mention.candidateIds?.length ?? 0) > 1),
   );
 }
 

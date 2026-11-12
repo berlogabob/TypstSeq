@@ -125,6 +125,45 @@ void main() {
     expect(r.loans, isEmpty);
   });
 
+  test('an LLM-only exact equipment match chooses only exact matches', () {
+    final extraEquipment = files['notes/TL-0201.typ']!
+        .replaceAll('TL-0201', 'TL-0203')
+        .replaceAll('гарнитура', 'гарнитура запасная');
+    final r = resolveLines(
+      ['Student requested a гарни-тура'],
+      extra: [mention('гарни-тура', 3, 'equipment')],
+      more: {'notes/TL-0203.typ': extraEquipment},
+    );
+    final d = equipmentOf(r).single;
+    expect(d.mention.candidateIds, isNull);
+    expect(d.choose, isTrue);
+    expect(d.candidates.map((c) => c.note.id).toSet(), {'TL-0201', 'TL-0202'});
+    expect(d.candidates, hasLength(2));
+  });
+
+  test('an LLM-only unique equipment match does not choose', () {
+    final r = resolveLines(
+      ['Student requested TL0201'],
+      extra: [mention('TL0201', 3, 'equipment')],
+    );
+    final d = equipmentOf(r).single;
+    expect(d.mention.candidateIds, isNull);
+    expect(d.choose, isFalse);
+    expect(d.target?.id, 'TL-0201');
+  });
+
+  test('a longer scanned alias replaces the shorter LLM mention', () {
+    final r = resolveLines(
+      ['Student requested yellow Quest 3'],
+      extra: [mention('Quest 3', 3, 'equipment')],
+    );
+    final d = equipmentOf(r).single;
+    expect(d.mention.surface, 'yellow Quest 3');
+    expect(d.choose, isFalse);
+    expect(d.candidates, hasLength(1));
+    expect(d.target?.id, 'TL-0201');
+  });
+
   test('choosing records an accept and the loan offer appears', () {
     final chosen = EnrichFeedback(
       surface: 'Quest 3',
