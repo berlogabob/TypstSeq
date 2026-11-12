@@ -98,4 +98,62 @@ void main() {
     expect(find.text('Alex A'), findsOneWidget);
     expect(find.text('Not a person/ignore'), findsOneWidget);
   });
+
+  testWidgets('shared equipment name shows one chooser with only its units', (
+    tester,
+  ) async {
+    const quest = EnrichMention(
+      surface: 'Quest 3',
+      type: 'equipment',
+      line: 1,
+      candidateIds: ['q1', 'q2'],
+    );
+    const q1 = NoteRef(
+      id: 'q1',
+      path: 'q1.typ',
+      title: 'QUEST 3 [1]',
+      kind: 'equipment',
+      outgoingLinks: [],
+      properties: {'color': 'yellow'},
+    );
+    const q2 = NoteRef(
+      id: 'q2',
+      path: 'q2.typ',
+      title: 'QUEST 3 [2]',
+      kind: 'equipment',
+      outgoingLinks: [],
+      properties: {'color': 'blue'},
+    );
+    NoteRef? accepted;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: EnrichReview(
+            decisions: const [
+              EnrichDecision(quest, EnrichStatus.review, [
+                EnrichCandidate(q1, 0, strong: false),
+                EnrichCandidate(q2, 0, strong: false),
+              ], choose: true),
+            ],
+            pages: const [q1, q2, other],
+            onAccept: (_, target) => accepted = target,
+            onReject: (_, _) {},
+            onCreate: (_) {},
+            onIgnore: (_) {},
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Which \u201cQuest 3\u201d?'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('enrich-choose-Quest 3')));
+    await tester.pumpAndSettle();
+    expect(find.text('QUEST 3 [1] \u00b7 yellow'), findsOneWidget);
+    expect(find.text('QUEST 3 [2] \u00b7 blue'), findsOneWidget);
+    expect(find.text('Charlie'), findsNothing);
+    expect(find.text('Other page…'), findsNothing);
+    expect(find.text('New page'), findsNothing);
+    await tester.tap(find.text('QUEST 3 [2] \u00b7 blue'));
+    await tester.pumpAndSettle();
+    expect(accepted, q2);
+  });
 }

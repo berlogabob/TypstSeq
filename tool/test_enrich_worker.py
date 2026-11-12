@@ -288,7 +288,7 @@ def test_run_once_writes_loans_and_preserves_content_sha(tmp_path):
                                       "topic": "ESP32 library"}]}), "m", "c"
     assert enrich.run_once(vault, chat=chat, state_path=tmp_path / "s.json") == 1
     out = json.loads((vault / "_system/enrich/mentions/daily/2026/10/2026-10-22.json").read_text())
-    assert out["prompt"] == 5 and out["content_sha"] == expected_sha
+    assert out["prompt"] == 6 and out["content_sha"] == expected_sha
     assert out["loans"] == [{"line": 3, "borrower": "Student 2031", "purpose": "consultation",
                              "topic": "ESP32 library"}]
 
@@ -391,3 +391,8 @@ def test_chat_asks_for_short_json_without_thinking(monkeypatch):
     assert sent["chat_template_kwargs"] == {"enable_thinking": False}
     assert sent["response_format"] == {"type": "json_object"}
     assert sent["max_tokens"] == enrich.MAX_REPLY_TOKENS
+
+
+def test_prompt_keeps_distinguishing_words_in_equipment_surface():
+    assert enrich.PROMPT_VERSION == 6
+    assert "yellow Quest 3" in enrich.SYSTEM_PROMPT and "bracket index" in enrich.SYSTEM_PROMPT

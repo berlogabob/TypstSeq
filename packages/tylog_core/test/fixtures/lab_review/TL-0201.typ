@@ -6,7 +6,7 @@
   kind: "equipment",
   date: none,
   tags: ("equipment",),
-  aliases: ("TL-0201", "QUEST 3 [1]", "Quest 3 1", "Quest 3 num1", "Quest 3 no. 1", "Quest 3 #1", "yellow Quest 3", "yellow Quest", "Quest 3 yellow", "VR glasses 1", "VR headset 1", "VR-glasses num1",),
+  aliases: ("TL-0201", "QUEST 3 [1]", "Quest 3 1", "Quest 3 num1", "Quest 3 no. 1", "Quest 3 #1", "yellow Quest 3", "yellow Quest", "Quest 3 yellow", "VR glasses 1", "VR headset 1", "VR-glasses num1", "гарнитура",),
   project: none,
   properties: (part_of: ("LAB",), status: "good", tag: "TL-0201", item: "Quest 3", color: "yellow", source: "openlabtwin"),
 )

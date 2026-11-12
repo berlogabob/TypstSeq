@@ -173,10 +173,17 @@ void main() {
     ).loans;
     expect(rest.single.equipment.map((e) => e.id), ['TL-0007', 'TL-0008']);
     expect(trackAsLoan(tracked, rest.single, 'loan-en', now), isNot(tracked));
-    // Without the shift the second hint points into the task block.
+    // Without the shift the second hint points into the task block; the alias
+    // scan may still offer the real line, never the stale one.
     expect(
-      resolveEnrichDay(parse(mentionsJson), day, mem, index, tracked).loans,
-      isEmpty,
+      resolveEnrichDay(
+        parse(mentionsJson),
+        day,
+        mem,
+        index,
+        tracked,
+      ).loans.map((l) => l.line),
+      isNot(contains(4)),
     );
   });
 

@@ -29,7 +29,7 @@ MENTION_TYPES = ("person", "place", "organization", "project", "event", "topic",
 SETTLE_SECONDS = 300
 # Bump when the prompt or reply shape changes: older mentions files are
 # re-read once so every day carries the same fields.
-PROMPT_VERSION = 5
+PROMPT_VERSION = 6
 
 
 def content_sha(text):
@@ -246,7 +246,9 @@ Rules:
   "ESP32 board", "Equipment A"). Keep numbers in surface exactly as written ("VR glasses no. 3",
   "VR-очки №3"); hints are other spellings/numbers/language of the same item ("VR glasses 3",
   "VR-очки 3"). For "Equipment A and B" return two mentions, surfaces "Equipment A" and "B",
-  each copied from the line.
+  each copied from the line. Keep every distinguishing word in the equipment surface exactly as
+  written: colour ("the yellow Quest 3" -> "yellow Quest 3", "синюю гарнитуру"), unit number and
+  bracket index ("QUEST 3 [2]"); never shorten it to the bare model name.
 - loans: only for a line where someone takes, books for, asks for, returns or is given lab equipment.
   borrower is copied from that line (a name, "student", "студент", or a student number such as
   "student 2031"). purpose: class = for a taught class/course, lab = working in the lab,

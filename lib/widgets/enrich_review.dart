@@ -197,7 +197,11 @@ class EnrichReview extends StatelessWidget {
               child: Column(
                 children: [
                   ListTile(
-                    title: Text('Who is ${mention.surface}?'),
+                    title: Text(
+                      decision.choose
+                          ? 'Which \u201c${mention.surface}\u201d?'
+                          : 'Who is ${mention.surface}?',
+                    ),
                     subtitle: mention.line > 0 && mention.line <= lines.length
                         ? Text(lines[mention.line - 1])
                         : null,
@@ -232,7 +236,7 @@ class EnrichReview extends StatelessWidget {
                     child: ListView(
                       children: [
                         for (final page
-                            in searching
+                            in searching && !decision.choose
                                 ? pages.where(
                                     (page) =>
                                         isEnrichTarget(page) &&
@@ -255,15 +259,25 @@ class EnrichReview extends StatelessWidget {
                               'event' => Icons.event_outlined,
                               _ => iconForKind(page.kind),
                             }),
-                            title: Text(page.title),
+                            title: Text(
+                              decision.choose
+                                  ? [
+                                      page.title,
+                                      if (page.properties['color']
+                                          case final String color)
+                                        color,
+                                    ].join(' \u00b7 ')
+                                  : page.title,
+                            ),
                             subtitle: _candidateDetails(page, decision),
                             onTap: () => Navigator.pop(context, page),
                           ),
-                        if (searching && query.isEmpty)
+                        if (searching && !decision.choose && query.isEmpty)
                           const ListTile(
                             title: Text('Search by page title or alias'),
                           ),
                         if (searching &&
+                            !decision.choose &&
                             query.isNotEmpty &&
                             !pages.any(
                               (page) =>
@@ -278,12 +292,12 @@ class EnrichReview extends StatelessWidget {
                                       )),
                             ))
                           const ListTile(title: Text('No matching pages')),
-                        if (!searching)
+                        if (!searching && !decision.choose)
                           ListTile(
                             title: const Text('Other page…'),
                             onTap: () => setState(() => searching = true),
                           ),
-                        if (!searching)
+                        if (!searching && !decision.choose)
                           ListTile(
                             title: const Text('Not a person/ignore'),
                             onTap: () {
@@ -291,7 +305,7 @@ class EnrichReview extends StatelessWidget {
                               onIgnore(mention);
                             },
                           ),
-                        if (!searching)
+                        if (!searching && !decision.choose)
                           ListTile(
                             title: const Text('New page'),
                             onTap: () {
@@ -324,6 +338,16 @@ class EnrichReview extends StatelessWidget {
   Widget _chip(BuildContext context, EnrichDecision decision) {
     final mention = decision.mention;
     final target = decision.target;
+    // One chip for a name several units share ("Quest 3"): pick the unit.
+    if (decision.choose) {
+      return ActionChip(
+        key: ValueKey('enrich-choose-${mention.surface}'),
+        avatar: const Icon(Icons.help_outline, size: 16),
+        label: Text('Which \u201c${mention.surface}\u201d?'),
+        tooltip: 'Choose which one you mean',
+        onPressed: () => _choose(context, decision),
+      );
+    }
     return switch (decision.status) {
       EnrichStatus.linked => InputChip(
         key: ValueKey('enrich-linked-${mention.surface}'),

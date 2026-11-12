@@ -13,6 +13,7 @@ import 'dart:math' as math;
 import 'package:crypto/crypto.dart';
 import 'package:unorm_dart/unorm_dart.dart' as unorm;
 
+import 'enrich_alias.dart';
 import 'loan.dart';
 import 'models.dart';
 import 'scanner.dart';
@@ -109,7 +110,12 @@ class EnrichMention {
     required this.line,
     this.hints = const [],
     this.entity,
+    this.candidateIds,
   });
+
+  /// Set by the alias scan ([EnrichAliasIndex]): the equipment ids the text
+  /// names. One id is a unique alias, several ask the user to choose.
+  final List<String>? candidateIds;
 
   final String surface;
   final String type;
@@ -331,8 +337,17 @@ class EnrichCandidate {
 }
 
 class EnrichDecision {
-  const EnrichDecision(this.mention, this.status, this.candidates);
+  const EnrichDecision(
+    this.mention,
+    this.status,
+    this.candidates, {
+    this.choose = false,
+  });
   final EnrichMention mention;
+
+  /// An alias several equipment units share and nothing longer disambiguates:
+  /// shown as "Which ...?" with only [candidates] to pick from.
+  final bool choose;
   final EnrichStatus status;
   final List<EnrichCandidate> candidates;
   NoteRef? get target => candidates.firstOrNull?.note;
@@ -445,6 +460,11 @@ class EnrichMemory {
 
   Map<String, String> get entityIdByTarget => _idByTarget;
 
+  /// Equipment titles and aliases for the deterministic body scan.
+  late final EnrichAliasIndex aliasIndex = EnrichAliasIndex.build(
+    entities.values,
+  );
+
   /// entity id -> (folded names, folded single words). Folding (NFD) is the
   /// expensive part, so it runs once per memory, not per mention.
   late final Map<String, (Set<String>, Set<String>)> nameKeys = {
@@ -545,7 +565,8 @@ List<EnrichDecision> resolveMentions(
       if (!memory.isRejected(mention.surface, enrichIgnoreEntity))
         if (_decide(mention, candidates[i], context, memory) case final decision
             when decision.status != EnrichStatus.propose ||
-                (_pageTypes.contains(mention.type) &&
+                (mention.candidateIds == null &&
+                    _pageTypes.contains(mention.type) &&
                     _keys(mention).every(proposed.add)))
           decision,
   ];
@@ -561,6 +582,12 @@ Set<String> _keys(EnrichMention mention) => {
 
 /// Entity notes a mention could mean, with whether the name matches exactly.
 List<(NoteRef, bool)> _candidates(EnrichMention mention, EnrichMemory memory) {
+  if (mention.candidateIds case final ids?) {
+    return [
+      for (final id in ids)
+        if (memory.entities[id] case final entity?) (entity, ids.length == 1),
+    ];
+  }
   final keys = {..._keys(mention), for (final k in _keys(mention)) _latin(k)};
   final surfaceKey = enrichKey(mention.surface);
   final ids = <String>{
@@ -739,10 +766,12 @@ EnrichDecision _decide(
   final clear =
       !ambiguousEquipment &&
       (ranked.length == 1 || best.score - ranked[1].score >= _margin);
+  final linked = best.strong && clear;
   return EnrichDecision(
     mention,
-    best.strong && clear ? EnrichStatus.linked : EnrichStatus.review,
+    linked ? EnrichStatus.linked : EnrichStatus.review,
     ranked,
+    choose: !linked && (mention.candidateIds?.length ?? 0) > 1,
   );
 }
 
@@ -779,6 +808,7 @@ EnrichDayResolution resolveEnrichDay(
 ) {
   final typed = scanNote(note.path, stripAutoEntities(source)).outgoingLinks;
   final lines = source.split('\n');
+  mentions = applyAliasHits(mentions, memory.aliasIndex.scan(source), lines);
   final allDecisions = resolveMentions(mentions, note, memory);
   return (
     decisions: [
