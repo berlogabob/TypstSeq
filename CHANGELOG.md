@@ -5,6 +5,13 @@ their history is in the commit log and the GitHub release notes.
 
 ## Unreleased
 
+## 0.23.3+174
+
+### Changed
+
+- Built with Flutter 3.50 (Material imports moved to `material_ui`), file_picker 12.3, Gradle 9.3.1 and Android Gradle Plugin 9.1.1.
+- CI pins the Flutter version so a new stable cannot break builds unreviewed.
+
 ## 0.23.2+173
 
 ### Fixed
