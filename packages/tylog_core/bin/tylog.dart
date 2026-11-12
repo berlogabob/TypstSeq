@@ -79,9 +79,10 @@ Future<int> _loans(List<String> args) async {
 
   final from = date('--from');
   final toDate = date('--to');
-  final to = toDate == null ? null : toDate.add(const Duration(days: 1));
-  if (from != null && to != null && !from.isBefore(to))
+  final to = toDate?.add(const Duration(days: 1));
+  if (from != null && to != null && !from.isBefore(to)) {
     throw _UsageException('--from must not be after --to');
+  }
   final root = Directory(vault).absolute;
   final csvPath = options['--csv'];
   if (csvPath != null) {
@@ -132,8 +133,7 @@ Future<int> _loans(List<String> args) async {
   if (options['--csv'] case final path?) {
     String quote(String value) => '"${value.replaceAll('"', '""')}"';
     await File(path).writeAsString(
-      ([header, ...rows].map((row) => row.map(quote).join(',')).join('\n')) +
-          '\n',
+      '${[header, ...rows].map((row) => row.map(quote).join(',')).join('\n')}\n',
     );
   }
   stdout.writeln(header.join('\t'));

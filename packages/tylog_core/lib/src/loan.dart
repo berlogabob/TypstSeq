@@ -341,8 +341,9 @@ Map<String, EquipmentUsage> equipmentUsage(
       if (start == null || end == null) continue;
       final clippedStart = start.isBefore(startLimit) ? startLimit : start;
       final clippedEnd = end.isAfter(endLimit) ? endLimit : end;
-      if (clippedEnd.isAfter(clippedStart))
+      if (clippedEnd.isAfter(clippedStart)) {
         taskIntervals.add((clippedStart, clippedEnd));
+      }
       if (clock.end != null && !isOpenLoan(task)) {
         final actualEnd = DateTime.tryParse(clock.end!);
         if (actualEnd != null &&
