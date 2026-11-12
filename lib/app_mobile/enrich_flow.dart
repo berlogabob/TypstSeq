@@ -690,9 +690,36 @@ extension _EnrichFlow on _HomeScreenState {
     await _refreshEnrichDay(path);
   }
 
-  Future<void> _acceptEnrichLoan(String path, EnrichLoanOffer offer) async {
+  Future<bool> _acceptEnrichLoan(String path, EnrichLoanOffer offer) async {
     final v = vault;
-    if (v == null) return;
+    if (v == null) return false;
+    final currentIndex = index;
+    final conflict = currentIndex == null
+        ? null
+        : openLoanFor(offer, openLoansByEquipment(currentIndex));
+    if (conflict != null) {
+      if (!mounted) return false;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Already out'),
+          content: Text(
+            '${loanOutSinceText(conflict)}\n\nTrack another loan for the same equipment?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Track anyway'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted || !identical(vault, v)) return false;
+    }
     await _recordEnrichFeedback(
       EnrichMention(
         surface: offer.ledgerSurface,
@@ -733,6 +760,7 @@ extension _EnrichFlow on _HomeScreenState {
       await v.storage.writeText(file, '${jsonEncode(shifted)}\n');
     }
     await _refreshEnrichDay(path);
+    return true;
   }
 
   Future<void> _rejectEnrichLoan(String path, EnrichLoanOffer offer) async {
@@ -1232,9 +1260,19 @@ extension _EnrichIncoming on _HomeScreenState {
                                   tags: entry.value.tags,
                                   markers: entry.value.markers,
                                   loans: entry.value.loans,
-                                  onAcceptLoan: (offer) => decide(
-                                    () => _acceptEnrichLoan(entry.key, offer),
-                                    path: entry.key,
+                                  openLoans: openLoansByEquipment(currentIndex),
+                                  onAcceptLoan: (offer) => unawaited(
+                                    _enrichOnce(() async {
+                                      final accepted = await _acceptEnrichLoan(
+                                        entry.key,
+                                        offer,
+                                      );
+                                      if (accepted && context.mounted) {
+                                        setSheetState(() {
+                                          future = loadQueue(refreshPath: entry.key);
+                                        });
+                                      }
+                                    }),
                                   ),
                                   onRejectLoan: (offer) => decide(
                                     () => _rejectEnrichLoan(entry.key, offer),

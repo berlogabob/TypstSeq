@@ -16,6 +16,7 @@ class EnrichReview extends StatelessWidget {
     this.tags = const [],
     this.markers = const [],
     this.loans = const [],
+    this.openLoans = const {},
     this.onAcceptLoan,
     this.onRejectLoan,
     this.onAcceptMarker,
@@ -44,6 +45,7 @@ class EnrichReview extends StatelessWidget {
   final Set<String> appliedTags;
 
   final List<EnrichLoanOffer> loans;
+  final Map<String, List<TaskRef>> openLoans;
   final ValueChanged<EnrichLoanOffer>? onAcceptLoan;
   final ValueChanged<EnrichLoanOffer>? onRejectLoan;
 
@@ -99,27 +101,38 @@ class EnrichReview extends StatelessWidget {
               deleteButtonTooltipMessage: 'Not ${offer.marker.title}',
             ),
           for (final offer in loans)
-            InputChip(
-              key: ValueKey('enrich-loan-${offer.line}'),
-              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-              avatar: const Icon(Icons.outbox_outlined, size: 16),
-              label: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 240),
-                child: Text(
-                  'Track as loan: ${offer.equipment.map((e) => e.title).join(', ')}',
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              tooltip:
-                  'Rewrite this line as a task: issued now, mark it Done when returned',
-              onPressed: onAcceptLoan == null
-                  ? null
-                  : () => onAcceptLoan!(offer),
-              deleteIcon: const Icon(Icons.close, size: 16),
-              onDeleted: onRejectLoan == null
-                  ? null
-                  : () => onRejectLoan!(offer),
-              deleteButtonTooltipMessage: 'Not a loan',
+            Builder(
+              builder: (context) {
+                final conflict = openLoanFor(offer, openLoans);
+                return InputChip(
+                  key: ValueKey('enrich-loan-${offer.line}'),
+                  backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                  avatar: Icon(
+                    conflict == null
+                        ? Icons.outbox_outlined
+                        : Icons.warning_amber_outlined,
+                    size: 16,
+                  ),
+                  label: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 240),
+                    child: Text(
+                      'Track as loan: ${offer.equipment.map((e) => e.title).join(', ')}',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  tooltip: conflict == null
+                      ? 'Rewrite this line as a task: issued now, mark it Done when returned'
+                      : loanOutSinceText(conflict),
+                  onPressed: onAcceptLoan == null
+                      ? null
+                      : () => onAcceptLoan!(offer),
+                  deleteIcon: const Icon(Icons.close, size: 16),
+                  onDeleted: onRejectLoan == null
+                      ? null
+                      : () => onRejectLoan!(offer),
+                  deleteButtonTooltipMessage: 'Not a loan',
+                );
+              },
             ),
           for (final tag in tags)
             InputChip(

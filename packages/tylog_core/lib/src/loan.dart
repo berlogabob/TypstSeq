@@ -226,6 +226,49 @@ int _loanOrder(TaskRef a, TaskRef b) {
 List<TaskRef> openLoanTasks(VaultIndex index) =>
     index.tasks.where(isOpenLoan).toList()..sort(_loanOrder);
 
+Map<String, List<TaskRef>> openLoansByEquipment(VaultIndex index) {
+  final grouped = <String, List<TaskRef>>{};
+  for (final task in openLoanTasks(index)) {
+    for (final id in loanEquipmentIds(task).toSet()) {
+      (grouped[id] ??= []).add(task);
+    }
+  }
+  return grouped;
+}
+
+TaskRef? openLoanFor(
+  EnrichLoanOffer offer,
+  Map<String, List<TaskRef>> byEquipment,
+) {
+  TaskRef? oldest;
+  DateTime? oldestStart;
+  for (final equipment in offer.equipment) {
+    for (final task in byEquipment[equipment.id] ?? const <TaskRef>[]) {
+      final start = task.clocked.isEmpty
+          ? null
+          : DateTime.tryParse(task.clocked.first.start);
+      if (oldest == null ||
+          (start != null &&
+              (oldestStart == null || start.isBefore(oldestStart)))) {
+        oldest = task;
+        oldestStart = start;
+      }
+    }
+  }
+  return oldest;
+}
+
+String loanOutSinceText(TaskRef task) {
+  final date = task.clocked.isEmpty
+      ? 'unknown'
+      : task.clocked.first.start.split('T').first;
+  final borrower = task.properties['borrower'];
+  final name = borrower is String && borrower.trim().isNotEmpty
+      ? borrower
+      : (task.assignees.isEmpty ? null : task.assignees.first);
+  return 'Already out since $date${name == null || name.isEmpty ? '' : ' ($name)'}';
+}
+
 List<TaskRef> loanHistoryFor(VaultIndex index, String equipmentId) =>
     index.tasks
         .where(
