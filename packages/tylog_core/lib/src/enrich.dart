@@ -962,8 +962,30 @@ List<EnrichMarkerOffer> enrichMarkerOffers(
 ) {
   if (mentions.markers.isEmpty) return const [];
   final lines = source.split('\n');
+  final code = enrichCodeLines(source);
+  return [
+    for (final (line, id) in mentions.markers)
+      // A marker with no page yet ("Купить") links by name, as the user does.
+      if (memory.markerNotes[id] ??
+              NoteRef(id: id, path: '', title: id, outgoingLinks: const [])
+          case final marker)
+        if (line >= 1 && line <= lines.length && !code.contains(line))
+          if (!_carries(lines[line - 1], marker))
+            if (enrichPlainLine(lines[line - 1]) case final text
+                when text.isNotEmpty &&
+                    !text.startsWith('#') &&
+                    !memory.isRejected(text, enrichMarkerEntity(id)))
+              EnrichMarkerOffer(marker, line, text),
+  ];
+}
+
+/// Lines occupied by multi-line Typst calls, shared by enrichment writers.
+Set<int> enrichCodeLines(String source) => _enrichCodeLines(source);
+
+Set<int> _enrichCodeLines(String source) {
   // Lines inside a multi-line call (`#tylog.task(` ... `)`) are code: showing
   // them reads as raw Typst, and filing one would put a link inside the call.
+  final lines = source.split('\n');
   final code = <int>{};
   var offset = 0;
   final starts = <int>[];
@@ -981,20 +1003,7 @@ List<EnrichMarkerOffer> enrichMarkerOffers(
       }
     }
   }
-  return [
-    for (final (line, id) in mentions.markers)
-      // A marker with no page yet ("Купить") links by name, as the user does.
-      if (memory.markerNotes[id] ??
-              NoteRef(id: id, path: '', title: id, outgoingLinks: const [])
-          case final marker)
-        if (line >= 1 && line <= lines.length && !code.contains(line))
-          if (!_carries(lines[line - 1], marker))
-            if (enrichPlainLine(lines[line - 1]) case final text
-                when text.isNotEmpty &&
-                    !text.startsWith('#') &&
-                    !memory.isRejected(text, enrichMarkerEntity(id)))
-              EnrichMarkerOffer(marker, line, text),
-  ];
+  return code;
 }
 
 bool _carries(String line, NoteRef marker) =>
