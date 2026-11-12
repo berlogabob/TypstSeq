@@ -234,7 +234,7 @@ jobs:
       # a bootable app with three frameworks and no engine.
       - run: |
           APP=$(ls -d build/macos/Build/Products/Release/*.app | head -1)
-          for fw in typst_flutter file_picker share_plus; do
+          for fw in typst_flutter file_picker_darwin share_plus; do
             test -d "$APP/Contents/Frameworks/$fw.framework" \
               || { echo "FAIL: $fw.framework missing from bundle"; exit 1; }
           done
