@@ -5,6 +5,7 @@ typedef _EnrichView = ({
   List<EnrichDecision> decisions,
   List<String> tags,
   List<EnrichMarkerOffer> markers,
+  List<EnrichLoanOffer> loans,
   String source,
 });
 
@@ -12,6 +13,7 @@ const _EnrichView _noEnrich = (
   decisions: [],
   tags: [],
   markers: [],
+  loans: [],
   source: '',
 );
 
@@ -295,6 +297,7 @@ extension _EnrichFlow on _HomeScreenState {
       decisions: resolution.decisions,
       tags: resolution.tags,
       markers: resolution.markers,
+      loans: resolution.loans,
       source: source,
     );
     _enrichMemo = (memoKey, result);
@@ -372,6 +375,7 @@ extension _EnrichFlow on _HomeScreenState {
         decisions: resolution.decisions,
         tags: resolution.tags,
         markers: resolution.markers,
+        loans: resolution.loans,
         source: work.source,
       );
       final memoKey = (
@@ -437,6 +441,7 @@ extension _EnrichFlow on _HomeScreenState {
         if (d.status == EnrichStatus.review || d.status == EnrichStatus.propose)
           (d.mention.surface, d.target?.id ?? ''),
       for (final m in view.markers) (m.text, enrichMarkerEntity(m.marker.id)),
+      for (final offer in view.loans) (offer.ledgerSurface, enrichLoanEntity),
     ];
     final events = <EnrichFeedback>[];
     for (final (surface, entity) in offers) {
@@ -685,6 +690,60 @@ extension _EnrichFlow on _HomeScreenState {
     await _refreshEnrichDay(path);
   }
 
+  Future<void> _acceptEnrichLoan(String path, EnrichLoanOffer offer) async {
+    final v = vault;
+    if (v == null) return;
+    await _recordEnrichFeedback(
+      EnrichMention(
+        surface: offer.ledgerSurface,
+        type: 'topic',
+        line: offer.line,
+      ),
+      enrichLoanEntity,
+      path: path,
+      accepted: true,
+    );
+    final source = path == note
+        ? workspace.source
+        : await v.storage.readText(path);
+    final mentions = await _readMentions(v, path);
+    final tracked = trackAsLoan(
+      source,
+      offer,
+      loanTaskId(index?.notesByPath[path]?.id ?? path, offer),
+      DateTime.now(),
+    );
+    if (tracked != source &&
+        await workspace.mutateNote(
+          path,
+          (current) => current == source ? tracked : current,
+        ) &&
+        (path != note || workspace.source == tracked) &&
+        mentions != null &&
+        enrichContentSha(source) == mentions.contentSha) {
+      final file = enrichMentionsPath(path);
+      final json = (jsonDecode(await v.storage.readText(file)) as Map)
+          .cast<String, Object?>();
+      json['content_sha'] = enrichContentSha(tracked);
+      await v.storage.writeText(file, '${jsonEncode(json)}\n');
+    }
+    await _refreshEnrichDay(path);
+  }
+
+  Future<void> _rejectEnrichLoan(String path, EnrichLoanOffer offer) async {
+    await _recordEnrichFeedback(
+      EnrichMention(
+        surface: offer.ledgerSurface,
+        type: 'topic',
+        line: offer.line,
+      ),
+      enrichLoanEntity,
+      path: path,
+      accepted: false,
+    );
+    await _refreshEnrichDay(path);
+  }
+
   /// One decision at a time: a second tap while the first is still writing
   /// recorded the same accept twice.
   Future<void> _enrichOnce(Future<void> Function() action) async {
@@ -766,7 +825,8 @@ extension _EnrichIncoming on _HomeScreenState {
         final view = pageViews[path] ?? _noEnrich;
         if (view.decisions.isEmpty &&
             view.tags.isEmpty &&
-            view.markers.isEmpty) {
+            view.markers.isEmpty &&
+            view.loans.isEmpty) {
           continue;
         }
         views[path] = view;
@@ -1133,6 +1193,15 @@ extension _EnrichIncoming on _HomeScreenState {
                                       .toList(),
                                   tags: entry.value.tags,
                                   markers: entry.value.markers,
+                                  loans: entry.value.loans,
+                                  onAcceptLoan: (offer) => decide(
+                                    () => _acceptEnrichLoan(entry.key, offer),
+                                    path: entry.key,
+                                  ),
+                                  onRejectLoan: (offer) => decide(
+                                    () => _rejectEnrichLoan(entry.key, offer),
+                                    path: entry.key,
+                                  ),
                                   onAcceptMarker: (offer) => decide(
                                     () => _acceptEnrichMarker(entry.key, offer),
                                     path: entry.key,

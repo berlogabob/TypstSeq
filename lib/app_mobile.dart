@@ -3122,7 +3122,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ? 0
         : enrichView.decisions.length +
               enrichView.tags.length +
-              enrichView.markers.length;
+              enrichView.markers.length +
+              enrichView.loans.length;
     if (documentModes.contains(mode) &&
         currentNote != null &&
         currentNote.kind == 'idea' &&

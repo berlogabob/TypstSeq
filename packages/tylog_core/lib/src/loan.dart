@@ -14,6 +14,7 @@ class EnrichLoanOffer {
     required this.line,
     required this.text,
     required this.equipment,
+    required this.ledgerSurface,
     this.person,
     this.borrower,
     this.purpose,
@@ -22,6 +23,7 @@ class EnrichLoanOffer {
 
   final int line;
   final String text;
+  final String ledgerSurface;
   final List<NoteRef> equipment;
   final NoteRef? person;
   final String? borrower;
@@ -93,6 +95,7 @@ List<EnrichLoanOffer> enrichLoanOffers(
         EnrichLoanOffer(
           line: hint.line,
           text: _taskText(line),
+          ledgerSurface: enrichPlainLine(line),
           equipment: equipment,
           person: person,
           borrower: hint.borrower,

@@ -13,6 +13,7 @@ import 'dart:math' as math;
 import 'package:crypto/crypto.dart';
 import 'package:unorm_dart/unorm_dart.dart' as unorm;
 
+import 'loan.dart';
 import 'models.dart';
 import 'scanner.dart';
 import 'storage.dart';
@@ -341,6 +342,7 @@ typedef EnrichDayResolution = ({
   List<EnrichDecision> decisions,
   List<String> tags,
   List<EnrichMarkerOffer> markers,
+  List<EnrichLoanOffer> loans,
 });
 
 /// Everything learned so far. Rebuilt from the vault and the ledgers on
@@ -777,9 +779,10 @@ EnrichDayResolution resolveEnrichDay(
 ) {
   final typed = scanNote(note.path, stripAutoEntities(source)).outgoingLinks;
   final lines = source.split('\n');
+  final allDecisions = resolveMentions(mentions, note, memory);
   return (
     decisions: [
-      for (final decision in resolveMentions(mentions, note, memory))
+      for (final decision in allDecisions)
         if ((decision.status != EnrichStatus.linked ||
                 !typed.contains(decision.target!.id)) &&
             !enrichLinkedOnLine(decision.mention, lines))
@@ -787,6 +790,7 @@ EnrichDayResolution resolveEnrichDay(
     ],
     tags: enrichTags(mentions.keywords, index, memory: memory),
     markers: enrichMarkerOffers(mentions, source, memory),
+    loans: enrichLoanOffers(mentions, source, memory, allDecisions),
   );
 }
 

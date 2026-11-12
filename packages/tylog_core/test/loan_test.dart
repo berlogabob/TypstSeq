@@ -105,6 +105,31 @@ void main() {
     expect(compiled.exitCode, 0, reason: '${compiled.stderr}');
   });
 
+  test('day resolution includes loans until the line is converted', () {
+    const source = '$header$ru\n';
+    const mentions = EnrichMentions(
+      note: 'day',
+      contentSha: '',
+      loans: [EnrichLoanHint(line: 3, borrower: 'студент', purpose: 'class')],
+    );
+    final index = VaultIndex(
+      notesByPath: {for (final n in notes) n.path: n},
+      backlinksByTarget: const {},
+    );
+    final mem = memory();
+    final offer = resolveEnrichDay(
+      mentions,
+      day,
+      mem,
+      index,
+      source,
+    ).loans.single;
+    expect(offer.equipment.single.id, 'TL-0003');
+    expect(offer.ledgerSurface, enrichPlainLine(ru));
+    final tracked = trackAsLoan(source, offer, 'loan-ru', now);
+    expect(resolveEnrichDay(mentions, day, mem, index, tracked).loans, isEmpty);
+  });
+
   test('English loan resolves both equipment links', () {
     const source = '$header$en\n';
     const hints = EnrichMentions(
@@ -173,6 +198,7 @@ void main() {
     final offer = EnrichLoanOffer(
       line: 4,
       text: '  text: "Equipment A",',
+      ledgerSurface: 'text: "Equipment A",',
       equipment: [notes[2]],
     );
     expect(trackAsLoan(source, offer, 'new', now), source);
