@@ -232,24 +232,45 @@ class _EnrichReviewState extends State<EnrichReview> {
                 await _choose(context, row.decision!);
               }
             },
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: kMinTapTarget),
-        child: Wrap(
-          spacing: kSpace8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            Tooltip(
-              message: row.surface,
-              child: Text(ellipsizeMiddle(row.surface, 28)),
-            ),
-            const Text('→'),
-            Text(label),
-            if (row.state == EnrichRowState.linked)
-              Text(
-                '✓ linked',
-                style: TextStyle(color: scheme.onSurfaceVariant),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: kSpace4),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            minHeight: kMinTapTarget - 2 * kSpace4,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Tooltip(
+                  message: row.surface,
+                  child: Text(
+                    ellipsizeMiddle(row.surface, 28),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ),
-          ],
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: kSpace8),
+                child: Text('→'),
+              ),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (row.state == EnrichRowState.linked)
+                Padding(
+                  padding: const EdgeInsets.only(left: kSpace8),
+                  child: Text(
+                    '✓ linked',
+                    style: TextStyle(color: scheme.onSurfaceVariant),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
