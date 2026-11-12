@@ -70,6 +70,15 @@ def test_parse_reply_drops_hallucinated_surfaces():
     assert keywords == ["метро"]
 
 
+def test_parse_reply_requires_whole_surface():
+    reply = json.dumps({"mentions": [
+        {"surface": "Андрей", "type": "person", "line": 1},
+        {"surface": "ANGELA", "type": "person", "line": 2},
+    ]})
+    mentions, _, _, _ = enrich.parse_reply(reply, [(1, "Андрейб"), (2, "Angela!")])
+    assert [m["surface"] for m in mentions] == ["ANGELA"]
+
+
 def test_run_once_writes_mentions_and_is_idempotent(tmp_path):
     vault, note = vault_with(tmp_path)
     calls = []

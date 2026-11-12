@@ -47,6 +47,47 @@ EnrichMentions mentionsOf(
 );
 
 void main() {
+  test('Russian name endings match but arbitrary suffixes do not', () {
+    final memory = EnrichMemory.build(indexOf([entity('andrey', 'Андрей')]));
+    EnrichDecision resolve(String surface) => resolveMentions(
+      mentionsOf([EnrichMention(surface: surface, type: 'person', line: 1)]),
+      day('2026-11-04'),
+      memory,
+    ).single;
+    for (final form in ['Андрея', 'Андрею', 'Андреем', 'Андрее', 'Андрей']) {
+      expect(resolve(form).target?.id, 'andrey', reason: form);
+    }
+    expect(resolve('Андрейб').target, isNull);
+  });
+
+  test('day resolution discards a sidecar surface inside a word', () {
+    final person = entity('andrey', 'Андрей');
+    final note = day('2026-11-04');
+    final index = indexOf([person, note]);
+    final result = resolveEnrichDay(
+      mentionsOf([
+        const EnrichMention(surface: 'Андрей', type: 'person', line: 1),
+      ]),
+      note,
+      EnrichMemory.build(index),
+      index,
+      '14:27 Андрейб соберись',
+    );
+    expect(result.decisions, isEmpty);
+  });
+
+  test('Angelas matches Angela through the existing Latin suffix rule', () {
+    final memory = EnrichMemory.build(indexOf([entity('angela', 'Angela')]));
+    final decision = resolveMentions(
+      mentionsOf([
+        const EnrichMention(surface: 'Angelas', type: 'person', line: 1),
+      ]),
+      day('2026-11-04'),
+      memory,
+    ).single;
+    expect(decision.target?.id, 'angela');
+  });
+
   test(
     'day resolution filters typed links and returns matching tags/markers',
     () {

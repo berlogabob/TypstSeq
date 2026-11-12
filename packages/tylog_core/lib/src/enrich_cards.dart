@@ -148,9 +148,7 @@ List<EnrichLineCard> enrichLineCards({
           List<EnrichCandidate> candidates,
           EnrichDecision? decision,
         ) {
-          final start = surface.isEmpty
-              ? -1
-              : text.toLowerCase().indexOf(surface.toLowerCase());
+          final start = enrichSurfaceIndex(text, surface);
           rows.add(
             EnrichCardRow(
               state: state,

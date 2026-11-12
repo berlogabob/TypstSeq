@@ -5,6 +5,22 @@ import 'package:test/test.dart';
 import 'package:tylog_core/tylog_core.dart';
 
 void main() {
+  test('highlight skips partial words and finds a later whole word', () {
+    const decision = EnrichDecision(
+      EnrichMention(surface: 'Андрей', type: 'person', line: 1),
+      EnrichStatus.review,
+      [],
+    );
+    EnrichCardRow row(String line) => enrichLineCards(
+      decisions: [decision],
+      loans: [],
+      lines: [line],
+    ).single.rows.single;
+    expect(row('14:27 Андрейб соберись').highlightStart, -1);
+    final whole = row('Андрейб, АНДРЕЙ!');
+    expect(whole.highlightStart, 9);
+    expect(whole.highlightEnd, 15);
+  });
   test('task text cards show safe mentions only', () {
     const source = '#tylog.task(\n  id: "t",\n  text: "Angela at Lisbon",\n)';
     const person = EnrichDecision(

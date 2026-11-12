@@ -653,10 +653,22 @@ bool? _match(
           ? exact
           : null;
     }
-    final prefix = equipmentKeys.any(
-      (key) => key.length >= 4 && names.any((name) => name.startsWith(key)),
-    );
-    return prefix || exact || accepted ? exact : null;
+    return equipmentKeys.any(
+              (key) =>
+                  key.isNotEmpty &&
+                  names.any(
+                    (name) =>
+                        name == key ||
+                        (name.startsWith(key) &&
+                            RegExp(
+                              r'^\p{N}',
+                              unicode: true,
+                            ).hasMatch(name.substring(key.length))),
+                  ),
+            ) ||
+            accepted
+        ? exact
+        : null;
   }
   // Exact only on the user's own words: hints are the model's guesses
   // ("Катя" came back hinted with the surname of a known Катя), so they
@@ -668,11 +680,12 @@ bool? _match(
       names.any(keys.contains) ||
       words.any(keys.contains) ||
       names.any(
-        (name) => keys.any(
-          (key) =>
-              (key.length >= 4 && name.startsWith(key)) || _sameStem(name, key),
-        ),
-      );
+        (name) => mention.hints.any((hint) {
+          final key = enrichKey(hint);
+          return key.length >= 4 && name.startsWith(key);
+        }),
+      ) ||
+      names.any((name) => keys.any((key) => _sameStem(name, key)));
   return prefix || (memory._accepted[surfaceKey]?[entity.id] ?? 0) > 0
       ? exact
       : null;
@@ -680,14 +693,52 @@ bool? _match(
 
 /// Russian case forms of one name: "Настей", "Насте" ~ "Настя". Only finds
 /// a candidate (review), never proves one.
-// ponytail: last-two-letters heuristic, real stemmer if false matches show up.
 bool _sameStem(String a, String b) {
   if (a.length < 4 || b.length < 4) return false;
   var i = 0;
   while (i < a.length && i < b.length && a[i] == b[i]) {
     i++;
   }
-  return i >= 3 && a.length - i <= 2 && b.length - i <= 2;
+  final endings = {
+    '',
+    'й',
+    'а',
+    'я',
+    'у',
+    'ю',
+    'е',
+    'ой',
+    'ей',
+    'ою',
+    'ею',
+    'ом',
+    'ем',
+    'ами',
+    'ям',
+    'ях',
+    'ы',
+    'и',
+    'ь',
+    's',
+    'a',
+    'o',
+    'as',
+    'os',
+  }.map(enrichKey).toSet();
+  return i >= 3 &&
+      endings.contains(a.substring(i)) &&
+      endings.contains(b.substring(i));
+}
+
+/// Finds a surface surrounded by non-letter, non-digit characters.
+int enrichSurfaceIndex(String text, String surface, [int start = 0]) {
+  if (surface.isEmpty) return -1;
+  final pattern = RegExp(
+    '(?<![\\p{L}\\p{N}])${RegExp.escape(surface)}(?![\\p{L}\\p{N}])',
+    unicode: true,
+    caseSensitive: false,
+  );
+  return pattern.allMatches(text, start).firstOrNull?.start ?? -1;
 }
 
 const _cyrLatin = {
@@ -820,6 +871,21 @@ EnrichDayResolution resolveEnrichDay(
 ) {
   final typed = scanNote(note.path, stripAutoEntities(source)).outgoingLinks;
   final lines = source.split('\n');
+  mentions = EnrichMentions(
+    note: mentions.note,
+    contentSha: mentions.contentSha,
+    model: mentions.model,
+    mentions: [
+      for (final mention in mentions.mentions)
+        if (mention.line > 0 &&
+            mention.line <= lines.length &&
+            enrichSurfaceIndex(lines[mention.line - 1], mention.surface) >= 0)
+          mention,
+    ],
+    keywords: mentions.keywords,
+    markers: mentions.markers,
+    loans: mentions.loans,
+  );
   mentions = applyAliasHits(mentions, memory.aliasIndex.scan(source), lines);
   final allDecisions = resolveMentions(mentions, note, memory);
   return (
@@ -934,21 +1000,15 @@ String linkMentionInline(String source, EnrichMention mention, NoteRef target) {
   // URL and the note stops compiling).
   int at = -1;
   for (var from = 0; ;) {
-    final hit = line.indexOf(mention.surface, from);
+    final hit = enrichSurfaceIndex(line, mention.surface, from);
     if (hit < 0) break;
     final end = hit + mention.surface.length;
     final start = line.lastIndexOf(RegExp(r'\s'), hit) + 1;
     final stop = line.indexOf(RegExp(r'\s'), end);
     final token = line.substring(start, stop < 0 ? line.length : stop);
-    final word = RegExp(r'[\p{L}\p{N}_]', unicode: true);
-    final bounded =
-        (hit == 0 || !word.hasMatch(line[hit - 1])) &&
-        (end == line.length || !word.hasMatch(line[end]));
     // A token starting with `#` is Typst code (`#tylog.task(`): a link there
     // breaks the call and the whole note stops compiling.
-    if (bounded &&
-        !token.startsWith('#') &&
-        !RegExp(r'[/@]|://|www\.').hasMatch(token)) {
+    if (!token.startsWith('#') && !RegExp(r'[/@]|://|www\.').hasMatch(token)) {
       at = hit;
       break;
     }
@@ -976,7 +1036,7 @@ String linkMentionInline(String source, EnrichMention mention, NoteRef target) {
   }
   lines[i] =
       '$before#tylog.ref-note(${typstString(target.id)})'
-      '[${mention.surface}]${line.substring(at + mention.surface.length)}';
+      '[${line.substring(at, at + mention.surface.length)}]${line.substring(at + mention.surface.length)}';
   return lines.join('\n');
 }
 

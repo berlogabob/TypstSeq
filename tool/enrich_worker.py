@@ -205,7 +205,8 @@ def parse_reply(reply, lines, markers=()):
         surface, line = item.get("surface"), item.get("line")
         if not isinstance(surface, str) or not surface.strip() or not isinstance(line, int):
             continue
-        if line not in by_number or _fold(surface) not in _fold(by_number[line]):
+        pattern = r"(?<![^\W_])" + re.escape(_fold(surface.strip())) + r"(?![^\W_])"
+        if line not in by_number or not re.search(pattern, _fold(by_number[line])):
             continue  # hallucinated or mis-numbered
         kind = item.get("type") if item.get("type") in MENTION_TYPES else "topic"
         hints = [hint for hint in item.get("hints") or [] if isinstance(hint, str) and hint.strip()]
