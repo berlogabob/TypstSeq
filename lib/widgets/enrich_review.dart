@@ -431,132 +431,155 @@ class _EnrichReviewState extends State<EnrichReview> {
               (_rows(card).isNotEmpty || card.loan != null),
         )
         .toList();
-    if (cards.isEmpty && widget.tags.isEmpty && widget.markers.isEmpty) {
-      return const SizedBox.shrink();
-    }
     final count = visible.length;
     final header =
         '${widget.dayLabel == null ? '' : '${widget.dayLabel!} · '}$count ${count == 1 ? 'line' : 'lines'} to review';
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(kSpace16, kSpace4, kSpace16, kSpace8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (visible.isNotEmpty ||
-              widget.tags.isNotEmpty ||
-              widget.markers.isNotEmpty)
-            Row(
-              children: [
-                Expanded(child: Text(header)),
-                if (visible.any((card) => _label(card) != null))
-                  TextButton(
-                    key: const ValueKey('enrich-accept-all'),
-                    style: TextButton.styleFrom(
-                      minimumSize: const Size(0, kMinTapTarget),
-                    ),
-                    onPressed: () async => await _acceptAll(visible),
-                    child: const Text('Accept all'),
-                  ),
-              ],
-            ),
-          for (final card in cards)
-            AnimatedSize(
-              key: ValueKey('enrich-card-animation-${card.line}'),
-              duration: kMotionStatus,
-              alignment: Alignment.topCenter,
-              child: visible.contains(card)
-                  ? _card(card)
-                  : const SizedBox.shrink(),
-            ),
-          if (widget.markers.isNotEmpty)
-            Wrap(
-              spacing: kSpace8,
-              runSpacing: kSpace4,
-              children: [
-                for (final offer in widget.markers)
-                  InputChip(
-                    key: ValueKey(
-                      'enrich-marker-${offer.marker.id}-${offer.line}',
-                    ),
-                    backgroundColor: Theme.of(
-                      context,
-                    ).colorScheme.primaryContainer,
-                    avatar: const Icon(Icons.bookmark_add_outlined, size: 16),
-                    label: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 240),
-                      child: Text(
-                        'Tap to link as ${offer.marker.title}: ${offer.text}',
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    tooltip:
-                        'Tap to file this line under ${offer.marker.title}',
-                    onPressed: widget.onAcceptMarker == null
-                        ? null
-                        : () async {
-                            await widget.batch(
-                              () async => await widget.onAcceptMarker!(offer),
-                            );
-                          },
-                    deleteIcon: const Icon(Icons.close, size: 16),
-                    onDeleted: widget.onRejectMarker == null
-                        ? null
-                        : () async {
-                            await widget.batch(
-                              () async => await widget.onRejectMarker!(offer),
-                            );
-                          },
-                    deleteButtonTooltipMessage: 'Not ${offer.marker.title}',
-                  ),
-              ],
-            ),
-          if (widget.tags.isNotEmpty)
-            Row(
-              key: const ValueKey('enrich-tags'),
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Tags'),
-                const SizedBox(width: kSpace8),
-                Expanded(
-                  child: Wrap(
-                    spacing: kSpace8,
-                    runSpacing: kSpace4,
-                    children: [
-                      for (final tag in widget.tags)
-                        InputChip(
-                          key: ValueKey('enrich-tag-$tag'),
-                          avatar: Icon(
-                            widget.appliedTags.contains(tag)
-                                ? Icons.check
-                                : Icons.tag,
-                            size: 16,
+    final empty =
+        visible.isEmpty && widget.tags.isEmpty && widget.markers.isEmpty;
+    return AnimatedSize(
+      duration: kMotionStatus,
+      alignment: Alignment.topCenter,
+      child: empty
+          ? const SizedBox.shrink()
+          : Padding(
+              padding: const EdgeInsets.fromLTRB(
+                kSpace16,
+                kSpace4,
+                kSpace16,
+                kSpace8,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (visible.isNotEmpty ||
+                      ((widget.tags.isNotEmpty || widget.markers.isNotEmpty) &&
+                          widget.dayLabel != null))
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            visible.isNotEmpty ? header : widget.dayLabel!,
                           ),
-                          label: Text(tag),
-                          tooltip: widget.appliedTags.contains(tag)
-                              ? 'Tag added to this day'
-                              : 'Suggested tag: tap to add or remove',
-                          onPressed:
-                              widget.onRejectTag == null &&
-                                  widget.onAcceptTag == null
-                              ? null
-                              : () async =>
-                                    await _confirmRemoveTag(context, tag),
-                          deleteIcon: const Icon(Icons.close, size: 16),
-                          onDeleted: widget.onRejectTag == null
-                              ? null
-                              : () async {
-                                  await widget.batch(
-                                    () async => await widget.onRejectTag!(tag),
-                                  );
-                                },
                         ),
-                    ],
-                  ),
-                ),
-              ],
+                        if (visible.any((card) => _label(card) != null))
+                          TextButton(
+                            key: const ValueKey('enrich-accept-all'),
+                            style: TextButton.styleFrom(
+                              minimumSize: const Size(0, kMinTapTarget),
+                            ),
+                            onPressed: () async => await _acceptAll(visible),
+                            child: const Text('Accept all'),
+                          ),
+                      ],
+                    ),
+                  for (final card in cards)
+                    AnimatedSize(
+                      key: ValueKey('enrich-card-animation-${card.line}'),
+                      duration: kMotionStatus,
+                      alignment: Alignment.topCenter,
+                      child: visible.contains(card)
+                          ? _card(card)
+                          : const SizedBox.shrink(),
+                    ),
+                  if (widget.markers.isNotEmpty)
+                    Wrap(
+                      spacing: kSpace8,
+                      runSpacing: kSpace4,
+                      children: [
+                        for (final offer in widget.markers)
+                          InputChip(
+                            key: ValueKey(
+                              'enrich-marker-${offer.marker.id}-${offer.line}',
+                            ),
+                            backgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.primaryContainer,
+                            avatar: const Icon(
+                              Icons.bookmark_add_outlined,
+                              size: 16,
+                            ),
+                            label: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 240),
+                              child: Text(
+                                'Tap to link as ${offer.marker.title}: ${offer.text}',
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            tooltip:
+                                'Tap to file this line under ${offer.marker.title}',
+                            onPressed: widget.onAcceptMarker == null
+                                ? null
+                                : () async {
+                                    await widget.batch(
+                                      () async =>
+                                          await widget.onAcceptMarker!(offer),
+                                    );
+                                  },
+                            deleteIcon: const Icon(Icons.close, size: 16),
+                            onDeleted: widget.onRejectMarker == null
+                                ? null
+                                : () async {
+                                    await widget.batch(
+                                      () async =>
+                                          await widget.onRejectMarker!(offer),
+                                    );
+                                  },
+                            deleteButtonTooltipMessage:
+                                'Not ${offer.marker.title}',
+                          ),
+                      ],
+                    ),
+                  if (widget.tags.isNotEmpty)
+                    Row(
+                      key: const ValueKey('enrich-tags'),
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Tags'),
+                        const SizedBox(width: kSpace8),
+                        Expanded(
+                          child: Wrap(
+                            spacing: kSpace8,
+                            runSpacing: kSpace4,
+                            children: [
+                              for (final tag in widget.tags)
+                                InputChip(
+                                  key: ValueKey('enrich-tag-$tag'),
+                                  avatar: Icon(
+                                    widget.appliedTags.contains(tag)
+                                        ? Icons.check
+                                        : Icons.tag,
+                                    size: 16,
+                                  ),
+                                  label: Text(tag),
+                                  tooltip: widget.appliedTags.contains(tag)
+                                      ? 'Tag added to this day'
+                                      : 'Suggested tag: tap to add or remove',
+                                  onPressed:
+                                      widget.onRejectTag == null &&
+                                          widget.onAcceptTag == null
+                                      ? null
+                                      : () async => await _confirmRemoveTag(
+                                          context,
+                                          tag,
+                                        ),
+                                  deleteIcon: const Icon(Icons.close, size: 16),
+                                  onDeleted: widget.onRejectTag == null
+                                      ? null
+                                      : () async {
+                                          await widget.batch(
+                                            () async =>
+                                                await widget.onRejectTag!(tag),
+                                          );
+                                        },
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
             ),
-        ],
-      ),
     );
   }
 
