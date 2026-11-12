@@ -948,7 +948,7 @@ Plan: `~/.claude/plans/perform-app-audit-create-reactive-lerdorf.md`. The techni
 - [x] W34.C5 (Sonnet) final gates: analyze 0 issues; flutter test 2206 pass / 10 skipped (whiteboard_test flaked under load, passes alone); make test-core ok; pytest tool 384 pass after fixing enrich_report.py call to the removed known_entities `limit`
 - [x] W34.D1 (terra) enrich review as one card per line: `enrichLineCards` view model (enrich_cards.dart), EnrichReview rewritten (rows with text states, one primary action, Skip line, Accept all bottom-up, tags row), sheet section "Review", Today row "N lines to review" opens the sheet in one tap; Skip line = in-memory per-note set of card keys (`_enrichSkipped` in HomeScreen state; keys embed line text + suggestions so skips lapse on change; never touches the feedback ledger); marker offers keep chips - codex terra + Sonnet
 - [x] W34.E1 (luna) card row spacing: equal compact row heights, 48 px touch target inside the InkWell - rows had uneven padding; 4 px padding inside InkWell, 48 px target; row-height test fails pre-fix
-- [ ] W34.E2 (luna) target row shows " · colour" from the equipment note's `color` property
+- [x] W34.E2 (luna) target row shows " · colour" from the equipment note's `color` property - shared enrichTargetLabel helper used by row and chooser; core + widget tests
 - [ ] W34.E3 (terra) "Skip line" persisted per note in device-local enrich state, pruned on change, capped
 - [ ] W34.E4 (terra) loan accept / double-loan / Accept all decision logic extracted and unit-tested
 - [ ] W34.E8 (terra) loan conversion consumes the line's sidecar mentions; alias scan and enrichLineCards skip multi-line function calls; optimistic card removal on accept

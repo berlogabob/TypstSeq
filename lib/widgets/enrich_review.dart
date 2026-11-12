@@ -212,6 +212,11 @@ class _EnrichReviewState extends State<EnrichReview> {
 
   Widget _row(EnrichLineCard card, EnrichCardRow row) {
     final scheme = Theme.of(context).colorScheme;
+    final target = row.target;
+    final fullTarget = target == null
+        ? null
+        : widget.pages.where((page) => page.id == target.id).firstOrNull ??
+              target;
     final label = switch (row.state) {
       EnrichRowState.ambiguous => 'choose…',
       EnrichRowState.propose =>
@@ -219,7 +224,10 @@ class _EnrichReviewState extends State<EnrichReview> {
                 row.decision!.mention.type == 'professor'
             ? 'new person?'
             : 'new page?',
-      _ => enrichShortTarget(row.surface, row.target!),
+      _ => enrichTargetLabel(
+        enrichShortTarget(row.surface, target!),
+        fullTarget?.properties['color'],
+      ),
     };
     return InkWell(
       key: ValueKey('enrich-row-${card.line}-${row.surface}'),
@@ -613,12 +621,10 @@ class _EnrichReviewState extends State<EnrichReview> {
                             }),
                             title: Text(
                               decision.choose
-                                  ? [
+                                  ? enrichTargetLabel(
                                       page.title,
-                                      if (page.properties['color']
-                                          case final String color)
-                                        color,
-                                    ].join(' \u00b7 ')
+                                      page.properties['color'],
+                                    )
                                   : page.title,
                             ),
                             subtitle: _candidateDetails(page, decision),

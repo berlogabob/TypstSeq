@@ -22,9 +22,10 @@ void main() {
     const linkedEquipment = NoteRef(
       id: 'equipment',
       path: 'equipment.typ',
-      title: 'yellow Quest 3',
+      title: 'QUEST 3 [1]',
       kind: 'equipment',
       outgoingLinks: [],
+      properties: {'color': 'yellow'},
     );
     const ambiguousA = NoteRef(
       id: 'ambiguous-a',
@@ -74,6 +75,7 @@ void main() {
               EnrichReview(
                 source:
                     'José Graça yellow Quest 3 A very long ambiguous surface that wraps A very long proposed surface that wraps',
+                pages: const [linkedEquipment],
                 decisions: const [
                   willLink,
                   ambiguousDecision,
@@ -92,9 +94,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.text('QUEST 3 [1] · yellow'), findsOneWidget);
+
     final rowSizes = [
       tester
-          .getSize(find.byKey(const ValueKey('enrich-row-1-yellow Quest 3')))
+          .getSize(find.byKey(const ValueKey('enrich-row-1-QUEST 3 [1]')))
           .height,
       for (final surface in [
         'José Graça',

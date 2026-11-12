@@ -4,6 +4,9 @@ import 'models.dart';
 
 enum EnrichRowState { linked, willLink, ambiguous, propose }
 
+String enrichTargetLabel(String shortTitle, Object? color) =>
+    color is String && color.isNotEmpty ? '$shortTitle · $color' : shortTitle;
+
 class EnrichCardRow {
   const EnrichCardRow({
     required this.state,

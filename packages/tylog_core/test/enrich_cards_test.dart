@@ -5,6 +5,12 @@ import 'package:test/test.dart';
 import 'package:tylog_core/tylog_core.dart';
 
 void main() {
+  test('enrichTargetLabel appends a string color', () {
+    expect(enrichTargetLabel('QUEST 3 [1]', 'yellow'), 'QUEST 3 [1] · yellow');
+    expect(enrichTargetLabel('QUEST 3 [1]', null), 'QUEST 3 [1]');
+    expect(enrichTargetLabel('QUEST 3 [1]', 42), 'QUEST 3 [1]');
+  });
+
   final dir = Directory('test/fixtures/lab_review');
   final files = {
     for (final f in dir.listSync().whereType<File>())
