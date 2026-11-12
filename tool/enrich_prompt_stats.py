@@ -20,6 +20,22 @@ def _truth(note, vault, index):
     return {entity_id for entity_id in found if entity_id in {e["id"] for e in enrich.known_entities(index)}}
 
 
+def _linked_lines(lines, entity, vault, note):
+    """Journal lines (plain text) that mention the entity by id or title."""
+    needles = {entity["id"].lower(), entity.get("title", "").lower(),
+               *(a.lower() for a in entity.get("aliases") or [])} - {""}
+    found = [text for _, text in lines
+             if any(f'"{needle}"' in text.lower() for needle in needles)]
+    if found:
+        return [enrich._plain(text) for text in found]
+    relative = note.relative_to(vault)
+    data = enrich.tw._read_json(vault / "_system/enrich/mentions" / relative.with_suffix(".json"))
+    by_line = dict(lines)
+    return [f'{item.get("surface", "")!r} (sidecar) in: ' + enrich._plain(by_line.get(item.get("line"), ""))
+            for item in data.get("mentions", [])
+            if isinstance(item, dict) and item.get("entity") == entity["id"]]
+
+
 def collect(vault, days=30):
     vault = Path(vault).resolve()
     index = enrich.read_index(vault)
@@ -44,9 +60,17 @@ def collect(vault, days=30):
         old_chars = sum(len(m["content"]) for m in old)
         new_chars = sum(len(m["content"]) for m in new)
         truth = _truth(note, vault, index)
-        hits = len(truth & {entity["id"] for entity in candidates})
+        chosen = {entity["id"] for entity in candidates}
+        hits = len(truth & chosen)
+        by_id = {entity["id"]: entity for entity in entities}
+        missed = [{"date": note.stem, "id": entity_id,
+                   "title": by_id[entity_id].get("title", ""),
+                   "aliases": by_id[entity_id].get("aliases") or [],
+                   "lines": _linked_lines(lines, by_id[entity_id], vault, note)}
+                  for entity_id in sorted(truth - chosen)]
         rows.append({"date": note.stem, "old_tokens": old_chars / 3, "new_tokens": new_chars / 3,
-                     "candidates": len(candidates), "truth": len(truth), "hits": hits})
+                     "candidates": len(candidates), "truth": len(truth), "hits": hits,
+                     "_missed": missed})
     return rows
 
 
@@ -55,6 +79,8 @@ def main(argv=None):
     parser.add_argument("--vault", required=True, type=Path)
     parser.add_argument("--days", type=int, default=30)
     parser.add_argument("--csv", type=Path)
+    parser.add_argument("--misses", action="store_true",
+                        help="print each entity missed by recall@30 with its note date, aliases and linked line")
     args = parser.parse_args(argv)
     rows = collect(args.vault, args.days)
     old = [row["old_tokens"] for row in rows]
@@ -76,11 +102,17 @@ def main(argv=None):
     print(f"reduction              {summary['reduction_percent']:.1f}%")
     print(f"mean candidates        {summary['mean_candidates']:.2f}")
     print(f"recall@30 micro        {hits_total}/{truth_total} = {summary['recall_at_30_micro']:.3f}; days counted {recall_days}")
+    if args.misses:
+        for row in rows:
+            for miss in row["_missed"]:
+                print(f'MISS {miss["date"]} {miss["title"]!r} aliases={miss["aliases"]}')
+                for text in miss["lines"] or ["(no line found)"]:
+                    print(f"     line: {text}")
     if args.csv:
         import csv
         with args.csv.open("w", newline="", encoding="utf-8") as stream:
-            writer = csv.DictWriter(stream, fieldnames=rows[0].keys() if rows else
-                                    ("date", "old_tokens", "new_tokens", "candidates", "truth", "hits"))
+            fields = ("date", "old_tokens", "new_tokens", "candidates", "truth", "hits")
+            writer = csv.DictWriter(stream, fieldnames=fields, extrasaction="ignore")
             writer.writeheader()
             writer.writerows(rows)
     return summary

@@ -84,3 +84,22 @@ def test_stats_recall_and_read_only_main(tmp_path, capsys):
     assert "recall@30 micro" in capsys.readouterr().out
     after = sorted(str(p.relative_to(vault)) for p in vault.rglob("*"))
     assert before == after
+
+
+def test_misses_flag_prints_entity_and_line(tmp_path, capsys):
+    vault, day, index = _vault(tmp_path)
+    target = stats.date.today() - stats.timedelta(days=1)
+    moved = vault / "daily" / f"{target:%Y/%m}/{target.isoformat()}.typ"
+    moved.parent.mkdir(parents=True, exist_ok=True)
+    moved.write_text("- Went to the Mar today\n", encoding="utf-8")
+    day.unlink()
+    index["notes"].append({"id": "ocean", "title": "Ocean", "kind": "place", "aliases": ["Sea"]})
+    (vault / "_index/index.json").write_text(json.dumps(index), encoding="utf-8")
+    side = vault / "_system/enrich/mentions" / moved.relative_to(vault).with_suffix(".json")
+    side.parent.mkdir(parents=True, exist_ok=True)
+    side.write_text(json.dumps({"mentions": [{"entity": "ocean", "surface": "Mar", "line": 1}]}))
+    summary = stats.main(["--vault", str(vault), "--days", "30", "--misses"])
+    out = capsys.readouterr().out
+    assert summary["recall_at_30_micro"] == 0
+    assert f"MISS {target.isoformat()} 'Ocean' aliases=['Sea']" in out
+    assert "'Mar' (sidecar) in: Went to the Mar today" in out
