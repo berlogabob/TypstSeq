@@ -166,3 +166,40 @@ bool isOpenLoan(TaskRef task) =>
     task.properties['loan'] == true &&
     task.status != 'done' &&
     task.status != 'cancelled';
+
+int _loanOrder(TaskRef a, TaskRef b) {
+  final aStart = a.clocked.isEmpty
+      ? null
+      : DateTime.tryParse(a.clocked.first.start);
+  final bStart = b.clocked.isEmpty
+      ? null
+      : DateTime.tryParse(b.clocked.first.start);
+  final byStart = aStart == null
+      ? (bStart == null ? 0 : 1)
+      : (bStart == null ? -1 : bStart.compareTo(aStart));
+  if (byStart != 0) return byStart;
+  final byPath = b.notePath.compareTo(a.notePath);
+  return byPath != 0 ? byPath : b.id.compareTo(a.id);
+}
+
+List<TaskRef> openLoanTasks(VaultIndex index) =>
+    index.tasks.where(isOpenLoan).toList()..sort(_loanOrder);
+
+List<TaskRef> loanHistoryFor(VaultIndex index, String equipmentId) =>
+    index.tasks
+        .where(
+          (task) =>
+              task.properties['loan'] == true &&
+              loanEquipmentIds(task).contains(equipmentId),
+        )
+        .toList()
+      ..sort(_loanOrder);
+
+Duration? loanOutFor(TaskRef task, DateTime now) {
+  if (task.clocked.isEmpty) return null;
+  final start = DateTime.tryParse(task.clocked.first.start);
+  final endStamp = task.clocked.last.end;
+  final end = endStamp == null ? now : DateTime.tryParse(endStamp);
+  if (start == null || end == null) return null;
+  return end.difference(start);
+}

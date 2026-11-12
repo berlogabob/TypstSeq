@@ -78,6 +78,7 @@ import 'widgets/date_format.dart';
 import 'widgets/note_picker_sheet.dart';
 import 'widgets/share_from_sheet.dart';
 import 'widgets/entity_header.dart';
+import 'widgets/loan_list.dart';
 import 'widgets/unified_board.dart';
 import 'github/send_issue.dart';
 import 'widgets/kind_icon_picker.dart';
@@ -2312,6 +2313,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final current = v == null || note == null ? null : note;
     final currentTitle = _currentTitle(current);
     final currentNote = current == null ? null : index?.notesByPath[current];
+    String loanTitle(String id) =>
+        index?.notesByPath.values
+            .where((note) => note.id == id)
+            .firstOrNull
+            ?.title ??
+        id;
+    void openLoan(TaskRef task) {
+      Navigator.pop(context);
+      _openPath(task.notePath);
+    }
+
     if (mode == 'read') {
       if (currentNote?.kind == 'screenshot' && !_editScreenshot) {
         return _screenshotView(
@@ -2983,6 +2995,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           if (isEntity)
             EntityHeader(
               note: currentNote,
+              onOpenLoans: currentNote.kind == 'equipment' && index != null
+                  ? () => showLoanSheet(
+                      context,
+                      title: '${currentNote.title}: loans',
+                      loans: loanHistoryFor(index!, currentNote.id),
+                      titleOf: loanTitle,
+                      onOpen: openLoan,
+                    )
+                  : null,
               onOpenTimeline: index == null
                   ? null
                   : () => showModalBottomSheet<void>(
@@ -3202,6 +3223,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
       final incomingCount = incomingOnDay(index, day).length + external.length;
       final referenceCount = dailyMore.isEmpty ? 0 : backlinks.length;
+      final loans = index == null ? <TaskRef>[] : openLoanTasks(index!);
+      if (loans.isNotEmpty) {
+        dailyMore.insert(
+          0,
+          ListTile(
+            key: const ValueKey('loans-out-now'),
+            title: const Text('Out now'),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('${loans.length}'),
+                const Icon(Icons.chevron_right),
+              ],
+            ),
+            onTap: () => showLoanSheet(
+              context,
+              title: 'Out now',
+              loans: loans,
+              titleOf: loanTitle,
+              onOpen: openLoan,
+            ),
+          ),
+        );
+      }
       dailyMore.insert(
         0,
         ListTile(

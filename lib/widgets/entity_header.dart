@@ -21,6 +21,7 @@ class EntityHeader extends StatefulWidget {
     this.onChangeKindIcon,
     this.onOpenBoard,
     this.onOpenTimeline,
+    this.onOpenLoans,
     this.relationships,
     this.onGithubChanged,
     this.onFillInfo,
@@ -37,6 +38,7 @@ class EntityHeader extends StatefulWidget {
   final VoidCallback? onChangeKindIcon;
   final VoidCallback? onOpenBoard;
   final VoidCallback? onOpenTimeline;
+  final VoidCallback? onOpenLoans;
   final NoteRef note;
   final void Function(String url) onOpenUrl;
   final Future<Uint8List?> Function(String path)? imageResolver;
@@ -56,6 +58,7 @@ class _EntityHeaderState extends State<EntityHeader> {
   VoidCallback? get onChangeKindIcon => widget.onChangeKindIcon;
   VoidCallback? get onOpenBoard => widget.onOpenBoard;
   VoidCallback? get onOpenTimeline => widget.onOpenTimeline;
+  VoidCallback? get onOpenLoans => widget.onOpenLoans;
   VoidCallback? get onFillInfo => widget.onFillInfo;
   VoidCallback? get onEditDetails => widget.onEditDetails;
   void Function(String url) get onOpenUrl => widget.onOpenUrl;
@@ -124,6 +127,13 @@ class _EntityHeaderState extends State<EntityHeader> {
                         label: Text(label),
                       );
                 final actions = <Widget>[
+                  if (onOpenLoans != null)
+                    action(
+                      'entity-loans',
+                      Icons.outbox_outlined,
+                      'Loans',
+                      onOpenLoans!,
+                    ),
                   if (onOpenTimeline != null)
                     action(
                       'entity-timeline',
