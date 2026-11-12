@@ -1,5 +1,32 @@
 part of '../app_mobile.dart';
 
+String _enrichDayLabel(String path) {
+  final name = path.split('/').last.replaceFirst(RegExp(r'\.typ$'), '');
+  final match = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(name);
+  if (match == null) return name;
+  final year = int.parse(match[1]!);
+  final month = int.parse(match[2]!);
+  final day = int.parse(match[3]!);
+  final date = DateTime(year, month, day);
+  if (date.year != year || date.month != month || date.day != day) return name;
+  const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  return '${weekdays[date.weekday - 1]} $day ${months[month - 1]}';
+}
+
 /// What the Mentions strip shows for one day.
 typedef _EnrichView = ({
   List<EnrichDecision> decisions,
@@ -1242,17 +1269,10 @@ extension _EnrichIncoming on _HomeScreenState {
                             if (type == ReviewQueueType.mentions &&
                                 views != null &&
                                 views.isNotEmpty) ...[
-                              ListTile(title: Text(type.label)),
-                              for (final entry in views.entries) ...[
-                                ListTile(
-                                  title: Text(
-                                    entry.key
-                                        .split('/')
-                                        .last
-                                        .replaceFirst('.typ', ''),
-                                  ),
-                                ),
+                              const ListTile(title: Text('Review')),
+                              for (final entry in views.entries)
                                 EnrichReview(
+                                  dayLabel: _enrichDayLabel(entry.key),
                                   decisions: entry.value.decisions,
                                   source: entry.value.source,
                                   pages: currentIndex.notesByPath.values
@@ -1261,69 +1281,49 @@ extension _EnrichIncoming on _HomeScreenState {
                                   markers: entry.value.markers,
                                   loans: entry.value.loans,
                                   openLoans: openLoansByEquipment(currentIndex),
-                                  onAcceptLoan: (offer) => unawaited(
-                                    _enrichOnce(() async {
-                                      final accepted = await _acceptEnrichLoan(
-                                        entry.key,
-                                        offer,
-                                      );
-                                      if (accepted && context.mounted) {
-                                        setSheetState(() {
-                                          future = loadQueue(refreshPath: entry.key);
-                                        });
-                                      }
-                                    }),
-                                  ),
-                                  onRejectLoan: (offer) => decide(
-                                    () => _rejectEnrichLoan(entry.key, offer),
-                                    path: entry.key,
-                                  ),
-                                  onAcceptMarker: (offer) => decide(
-                                    () => _acceptEnrichMarker(entry.key, offer),
-                                    path: entry.key,
-                                  ),
-                                  onRejectMarker: (offer) => decide(
-                                    () => _rejectEnrichMarker(entry.key, offer),
-                                    path: entry.key,
-                                  ),
-                                  onRejectTag: (tag) => decide(
-                                    () => _rejectEnrichTag(entry.key, tag),
-                                    path: entry.key,
-                                  ),
-                                  onAcceptTag: (tag) => decide(
-                                    () => _acceptEnrichTag(entry.key, tag),
-                                    path: entry.key,
-                                  ),
+                                  skipped:
+                                      _enrichSkipped[entry.key] ?? const {},
+                                  onSkipLine: (key) => _rebuild(() {
+                                    _enrichSkipped
+                                        .putIfAbsent(entry.key, () => {})
+                                        .add(key);
+                                  }),
+                                  batch: (body) => _enrichOnce(() async {
+                                    await body();
+                                    if (context.mounted) {
+                                      setSheetState(() {
+                                        future = loadQueue(
+                                          refreshPath: entry.key,
+                                        );
+                                      });
+                                    }
+                                  }),
+                                  onAcceptLoan: (offer) async {
+                                    await _acceptEnrichLoan(entry.key, offer);
+                                  },
+                                  onRejectLoan: (offer) =>
+                                      _rejectEnrichLoan(entry.key, offer),
+                                  onAcceptMarker: (offer) =>
+                                      _acceptEnrichMarker(entry.key, offer),
+                                  onRejectMarker: (offer) =>
+                                      _rejectEnrichMarker(entry.key, offer),
+                                  onRejectTag: (tag) =>
+                                      _rejectEnrichTag(entry.key, tag),
+                                  onAcceptTag: (tag) =>
+                                      _acceptEnrichTag(entry.key, tag),
                                   appliedTags:
                                       currentIndex.notesByPath[entry.key]?.tags
                                           .toSet() ??
                                       const {},
-                                  onAccept: (mention, target) => decide(
-                                    () => _acceptEnrich(
-                                      entry.key,
-                                      mention,
-                                      target,
-                                    ),
-                                    path: entry.key,
-                                  ),
-                                  onReject: (mention, target) => decide(
-                                    () => _rejectEnrich(
-                                      entry.key,
-                                      mention,
-                                      target,
-                                    ),
-                                    path: entry.key,
-                                  ),
-                                  onIgnore: (mention) => decide(
-                                    () => _ignoreEnrich(entry.key, mention),
-                                    path: entry.key,
-                                  ),
-                                  onCreate: (mention) => decide(
-                                    () => _createFromEnrich(entry.key, mention),
-                                    path: entry.key,
-                                  ),
+                                  onAccept: (mention, target) =>
+                                      _acceptEnrich(entry.key, mention, target),
+                                  onReject: (mention, target) =>
+                                      _rejectEnrich(entry.key, mention, target),
+                                  onIgnore: (mention) =>
+                                      _ignoreEnrich(entry.key, mention),
+                                  onCreate: (mention) =>
+                                      _createFromEnrich(entry.key, mention),
                                 ),
-                              ],
                             ],
                             if (type == ReviewQueueType.audio &&
                                 audio.isNotEmpty) ...[

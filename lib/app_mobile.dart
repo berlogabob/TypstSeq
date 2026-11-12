@@ -846,6 +846,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   (String, _EnrichView)? _enrichDecisions;
   bool _enrichBusy = false;
   final _enrichShown = <(Vault, String, String, String)>{};
+  // Keys include line text and suggestions, so skips lapse on changes; they
+  // live only in memory and never touch the feedback ledger.
+  final _enrichSkipped = <String, Set<String>>{};
   Future<void> _enrichLedgerWrite = Future.value();
   final _enrichRetry = EnrichLedgerRetry();
   DateTime? _articleRelinkAt;
@@ -3139,12 +3142,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final enrichView = mode == 'normal' && enrichDay?.$1 == current
         ? enrichDay?.$2
         : null;
-    final suggestionCount = enrichView == null
+    final reviewCount = enrichView == null
         ? 0
-        : enrichView.decisions.length +
-              enrichView.tags.length +
-              enrichView.markers.length +
-              enrichView.loans.length;
+        : enrichLineCards(
+                decisions: enrichView.decisions,
+                loans: enrichView.loans,
+                lines: enrichView.source.split('\n'),
+                openLoans: const {},
+              )
+              .where(
+                (card) =>
+                    !(_enrichSkipped[current]?.contains(card.key) ?? false),
+              )
+              .length;
     if (documentModes.contains(mode) &&
         currentNote != null &&
         currentNote.kind == 'idea' &&
@@ -3281,24 +3291,39 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   maxHeight: constraints.maxHeight * 0.5,
                 ),
                 child: SingleChildScrollView(
-                  child: ExpansionTile(
-                    key: const ValueKey('daily-more'),
-                    initiallyExpanded: _dailyMoreExpanded,
-                    onExpansionChanged: (value) => _dailyMoreExpanded = value,
-                    title: Text(
-                      [
-                        'More',
-                        if (incomingCount > 0) '$incomingCount incoming',
-                        if (suggestionCount > 0)
-                          '$suggestionCount suggestion${suggestionCount == 1 ? '' : 's'}',
-                        if (referenceCount > 0)
-                          '$referenceCount reference${referenceCount == 1 ? '' : 's'}',
-                      ].join(' · '),
-                      style: Theme.of(context).textTheme.titleSmall,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    children: dailyMore,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (reviewCount > 0)
+                        ListTile(
+                          key: const ValueKey('review-lines'),
+                          dense: true,
+                          minTileHeight: 48,
+                          title: Text(
+                            '$reviewCount ${reviewCount == 1 ? 'line' : 'lines'} to review',
+                          ),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () => _showEnrichIncoming(),
+                        ),
+                      ExpansionTile(
+                        key: const ValueKey('daily-more'),
+                        initiallyExpanded: _dailyMoreExpanded,
+                        onExpansionChanged: (value) =>
+                            _dailyMoreExpanded = value,
+                        title: Text(
+                          [
+                            'More',
+                            if (incomingCount > 0) '$incomingCount incoming',
+                            if (referenceCount > 0)
+                              '$referenceCount reference${referenceCount == 1 ? '' : 's'}',
+                          ].join(' · '),
+                          style: Theme.of(context).textTheme.titleSmall,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        children: dailyMore,
+                      ),
+                    ],
                   ),
                 ),
               ),

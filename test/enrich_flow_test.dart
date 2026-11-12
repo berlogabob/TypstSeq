@@ -134,7 +134,14 @@ Future<(dynamic, _MemoryStorage)> _mount(
   await _pump(tester);
   expect(find.byType(EnrichReview), findsNothing);
   expect(find.byKey(const ValueKey('enrich-day-chip')), findsNothing);
-  expect(find.text('More · 5 suggestions'), findsOneWidget);
+  expect(find.text('1 line to review'), findsOneWidget);
+  expect(
+    find.descendant(
+      of: find.byKey(const ValueKey('daily-more')),
+      matching: find.text('More'),
+    ),
+    findsOneWidget,
+  );
   await _openIncoming(tester);
   return (home, storage);
 }
@@ -161,7 +168,8 @@ Future<void> _reveal(WidgetTester tester, Finder finder) async {
   final title = find.text('Incoming');
   if (title.hitTestable().evaluate().isNotEmpty) {
     await tester.drag(title, const Offset(0, -800));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
   }
   await tester.scrollUntilVisible(
     finder,
@@ -174,12 +182,38 @@ Future<void> _reveal(WidgetTester tester, Finder finder) async {
   await tester.ensureVisible(finder);
 }
 
-Future<void> _openIncoming(WidgetTester tester) async {
-  if (find.byKey(const ValueKey('incoming-open')).evaluate().isEmpty) {
-    await tester.tap(find.textContaining('More ·').first);
-    await tester.pumpAndSettle();
+/// Row tap -> menu (will-link rows) -> "Other page…" chooser.
+Future<void> _openChooser(WidgetTester tester, String surface) async {
+  await tester.tap(find.byKey(ValueKey('enrich-row-7-$surface')));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
+  final other = find.byKey(const ValueKey('enrich-menu-other'));
+  if (other.evaluate().isNotEmpty) {
+    await tester.tap(other);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
   }
-  await tester.tap(find.byKey(const ValueKey('incoming-open')));
+}
+
+Future<void> _openIncoming(WidgetTester tester) async {
+  final review = find.byKey(const ValueKey('review-lines'));
+  if (review.evaluate().isNotEmpty) {
+    await tester.tap(review);
+  } else {
+    if (find.byKey(const ValueKey('incoming-open')).evaluate().isEmpty) {
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const ValueKey('daily-more')),
+          matching: find.textContaining('More'),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+    await tester.tap(find.byKey(const ValueKey('incoming-open')));
+  }
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 400));
   await _pump(tester);
 }
 
@@ -195,17 +229,19 @@ void main() {
     Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
     await _pump(tester);
     expect(find.byKey(const ValueKey('enrich-day-chip')), findsNothing);
-    expect(find.text('More · 5 suggestions'), findsOneWidget);
+    expect(find.text('1 line to review'), findsOneWidget);
     tester.view.viewInsets = const FakeViewPadding(bottom: 300);
     await tester.pump();
-    expect(find.textContaining('More ·'), findsNothing);
+    expect(find.byKey(const ValueKey('daily-more')), findsNothing);
+    expect(find.byKey(const ValueKey('review-lines')), findsNothing);
     expect(find.byKey(const ValueKey('enrich-day-chip')), findsNothing);
     expect(
       tester.getRect(find.byKey(const Key('rich-journal-editor'))).height,
       greaterThan(0),
     );
     tester.view.resetViewInsets();
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     await _openIncoming(tester);
     expect(find.byType(EnrichReview), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -231,7 +267,8 @@ void main() {
     final before = tester.getTopLeft(body).dy;
     expect(before, closeTo(800 * .25, 1));
     await tester.drag(find.text('Incoming'), const Offset(0, -600));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
     // Full height, below the status bar (useSafeArea).
     expect(tester.getTopLeft(body).dy, lessThan(before / 2));
     expect(tester.takeException(), isNull);
@@ -276,10 +313,10 @@ void main() {
     await _pump(tester);
     await _openIncoming(tester);
     final proposal = find.text('Send the meeting notes to the whole team');
-    await tester.ensureVisible(proposal);
+    await _reveal(tester, proposal);
     expect(tester.getSize(proposal).width, greaterThanOrEqualTo(250));
     final reject = find.byTooltip('Reject audio proposal');
-    await tester.ensureVisible(reject);
+    await _reveal(tester, reject);
     await tester.tap(reject);
     await _pump(tester);
     expect(find.text('Send the meeting notes to the whole team'), findsNothing);
@@ -575,14 +612,13 @@ void main() {
     // Opening a day leaves the source untouched.
     expect(home.workspace.source, _day);
     // Prefix-only nickname: asked, not linked. Unknown person: proposed.
-    expect(find.byKey(const ValueKey('enrich-review-Катя')), findsOneWidget);
-    expect(find.byKey(const ValueKey('enrich-new-Рома')), findsOneWidget);
-    expect(find.byKey(const ValueKey('enrich-linked-IADE')), findsOneWidget);
+    expect(find.byKey(const ValueKey('enrich-row-7-Катя')), findsOneWidget);
+    expect(find.byKey(const ValueKey('enrich-row-7-Рома')), findsOneWidget);
+    expect(find.byKey(const ValueKey('enrich-row-7-IADE')), findsOneWidget);
 
     expect(find.byKey(const ValueKey('enrich-tag-design')), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('enrich-review-Катя')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('katiazhavoronkova'));
+    await _openChooser(tester, 'Катя');
+    await tester.tap(find.widgetWithText(ListTile, 'katiazhavoronkova'));
     await _pump(tester);
     final ledger = await storage.readText('$enrichFeedbackDir/dev1.jsonl');
     expect(jsonDecode(ledger.trim()), containsPair('decision', 'accept'));
@@ -591,9 +627,8 @@ void main() {
       home.workspace.source,
       contains('#tylog.ref-note("kz")[Катя] приехала'),
     );
-    // Now a link in the user's text: no chip offers to unlink it.
-    expect(find.byKey(const ValueKey('enrich-linked-Катя')), findsNothing);
-    expect(find.byKey(const ValueKey('enrich-review-Катя')), findsNothing);
+    // Now a link in the user's text: no row offers to unlink it.
+    expect(find.byKey(const ValueKey('enrich-row-7-Катя')), findsNothing);
     expect(
       await storage.readText('notes/kz.typ'),
       contains('aliases: ("Катя",)'),
@@ -617,8 +652,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     final (home, storage) = await _mount(tester);
     final before = home.workspace.source as String;
-    await tester.tap(find.byKey(const ValueKey('enrich-review-Катя')));
-    await tester.pumpAndSettle();
+    await _openChooser(tester, 'Катя');
     await tester.tap(find.text('Not a person/ignore'));
     await _pump(tester);
     final events = EnrichFeedback.parseLedger(
@@ -630,7 +664,7 @@ void main() {
       stripAutoEntities(home.workspace.source as String).trim(),
       stripAutoEntities(before).trim(),
     );
-    expect(find.byKey(const ValueKey('enrich-review-Катя')), findsNothing);
+    expect(find.byKey(const ValueKey('enrich-row-7-Катя')), findsNothing);
     await tester.pumpWidget(const SizedBox());
   }, variant: phone);
 
@@ -653,9 +687,8 @@ void main() {
     expect(events.every((e) => e.note == _dayPath && e.shown), isTrue);
     expect(await storage.exists('$enrichFeedbackDir/dev1.jsonl'), isFalse);
     // A tap recomputes the view without re-logging the remaining offers.
-    await tester.tap(find.byKey(const ValueKey('enrich-review-Катя')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('katiazhavoronkova'));
+    await _openChooser(tester, 'Катя');
+    await tester.tap(find.widgetWithText(ListTile, 'katiazhavoronkova'));
     await _pump(tester);
     expect(await shown(), hasLength(3));
     final feedback = await storage.readText('$enrichFeedbackDir/dev1.jsonl');
@@ -677,7 +710,10 @@ void main() {
   testWidgets('a confident suggestion can be linked inline', (tester) async {
     final (home, _) = await _mount(tester);
     expect(home.workspace.source, _day);
-    await tester.tap(find.byKey(const ValueKey('enrich-linked-IADE')));
+    await tester.tap(find.byKey(const ValueKey('enrich-row-7-IADE')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.byKey(const ValueKey('enrich-menu-link')));
     await _pump(tester);
     expect(home.workspace.source, contains('#tylog.ref-note("iade")[IADE]'));
     expect(home.workspace.source, isNot(contains(autoEntitiesMarker)));
@@ -705,10 +741,9 @@ void main() {
   testWidgets('a phone leaves confident mentions for review', (tester) async {
     final (home, storage) = await _mount(tester);
     expect(home.workspace.source, _day);
-    expect(find.byKey(const ValueKey('enrich-review-Катя')), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('enrich-review-Катя')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('katiazhavoronkova'));
+    expect(find.byKey(const ValueKey('enrich-row-7-Катя')), findsOneWidget);
+    await _openChooser(tester, 'Катя');
+    await tester.tap(find.widgetWithText(ListTile, 'katiazhavoronkova'));
     await _pump(tester);
     expect(home.workspace.source, contains('#tylog.ref-note("kz")[Катя]'));
     expect(home.workspace.source, isNot(contains(autoEntitiesMarker)));
@@ -723,10 +758,9 @@ void main() {
         '${now.year}-${two(now.month)}-${two(now.day)}.typ';
     final (home, _) = await _mount(tester, dayPath: today);
     expect(home.workspace.source, _day);
-    expect(find.byKey(const ValueKey('enrich-review-Катя')), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('enrich-review-Катя')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('katiazhavoronkova'));
+    expect(find.byKey(const ValueKey('enrich-row-7-Катя')), findsOneWidget);
+    await _openChooser(tester, 'Катя');
+    await tester.tap(find.widgetWithText(ListTile, 'katiazhavoronkova'));
     await _pump(tester);
     expect(home.workspace.source, isNot(contains(autoEntitiesMarker)));
     await tester.pumpWidget(const SizedBox());
@@ -797,10 +831,8 @@ void main() {
     tester,
   ) async {
     final (home, storage) = await _mount(tester);
-    final chip = find.byKey(const ValueKey('enrich-review-Катя'));
-    await tester.tap(chip);
-    await tester.pumpAndSettle();
-    final candidate = find.text('katiazhavoronkova');
+    await _openChooser(tester, 'Катя');
+    final candidate = find.widgetWithText(ListTile, 'katiazhavoronkova');
     await tester.tap(candidate);
     await tester.tap(candidate, warnIfMissed: false);
     await _pump(tester);
@@ -812,10 +844,31 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   }, variant: desktop);
 
+  testWidgets('skipping a line hides the daily count without feedback', (
+    tester,
+  ) async {
+    final (_, storage) = await _mount(tester);
+    await tester.tap(find.byKey(const ValueKey('enrich-skip-7')));
+    await _pump(tester);
+    expect(await storage.exists('$enrichFeedbackDir/dev1.jsonl'), isFalse);
+    Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
+    await _pump(tester);
+    expect(find.byKey(const ValueKey('review-lines')), findsNothing);
+    await _openIncoming(tester);
+    expect(find.byKey(const ValueKey('enrich-row-7-Катя')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  }, variant: desktop);
+
   testWidgets('day chip opens Incoming filtered to that day', (tester) async {
     await _mount(tester);
     expect(find.text('Incoming'), findsOneWidget);
-    expect(find.text('2026-10-22'), findsWidgets);
+    expect(
+      find.descendant(
+        of: find.byType(EnrichReview),
+        matching: find.textContaining('Thu 22 Oct'),
+      ),
+      findsOneWidget,
+    );
     expect(find.byType(EnrichReview), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   }, variant: desktop);
@@ -884,19 +937,30 @@ void main() {
       Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
       await _pump(tester);
       await _openIncoming(tester);
-      expect(find.text('2026-10-21'), findsOneWidget);
+      await _reveal(tester, find.textContaining('Wed 21 Oct'));
+      expect(find.textContaining('Wed 21 Oct'), findsOneWidget);
       Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
       await _pump(tester);
       await _openIncoming(tester);
-      final newest = tester.getTopLeft(find.text('2026-10-22').last).dy;
-      final oldest = tester.getTopLeft(find.text('2026-10-21')).dy;
-      expect(newest, lessThan(oldest));
-      final reviews = find.byKey(const ValueKey('enrich-review-Катя'));
+      final newest = tester
+          .getTopLeft(find.textContaining('Thu 22 Oct').last)
+          .dy;
+      // The list is lazy: the older day is either below or not built yet.
+      final wed = find.textContaining('Wed 21 Oct');
+      if (wed.evaluate().isNotEmpty) {
+        expect(newest, lessThan(tester.getTopLeft(wed).dy));
+      }
+      await _reveal(tester, wed);
+      final reviews = find.byKey(const ValueKey('enrich-row-7-Катя'));
       expect(reviews, findsNWidgets(2));
       await tester.ensureVisible(reviews.last);
       await tester.tap(reviews.last);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('katiazhavoronkova'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.byKey(const ValueKey('enrich-menu-other')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.widgetWithText(ListTile, 'katiazhavoronkova'));
       await _pump(tester);
       final olderSource = await tester.runAsync(() => storage.readText(older));
       expect(olderSource, contains('#tylog.ref-note("kz")[Катя]'));
@@ -947,7 +1011,7 @@ void main() {
     Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
     await _pump(tester);
     await _openIncoming(tester);
-    await tester.ensureVisible(find.text('Add to agenda'));
+    await _reveal(tester, find.text('Add to agenda'));
     await tester.tap(find.text('Add to agenda'));
     await _pump(tester);
     final saved = await tester.runAsync(() => storage.readText(path));
@@ -971,7 +1035,7 @@ void main() {
       expect(result.exitCode, 0, reason: result.stderr.toString());
     });
     final reject = find.byTooltip('Reject audio proposal');
-    await tester.ensureVisible(reject);
+    await _reveal(tester, reject);
     await tester.tap(reject);
     await _pump(tester);
     final ledger = await tester.runAsync(
@@ -1026,8 +1090,9 @@ void main() {
     Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
     await _pump(tester);
     await _openIncoming(tester);
+    await _reveal(tester, find.text('Jantar 20:30 · Tomar'));
     expect(find.text('Jantar 20:30 · Tomar'), findsOneWidget);
-    await tester.ensureVisible(find.text('Add to agenda'));
+    await _reveal(tester, find.text('Add to agenda'));
     await tester.tap(find.text('Add to agenda'));
     await _pump(tester);
     final event = await tester.runAsync(
@@ -1098,8 +1163,9 @@ void main() {
     Navigator.of(tester.element(find.byType(EnrichReview).first)).pop();
     await _pump(tester);
     await _openIncoming(tester);
+    await _reveal(tester, find.text('Info for Castle'));
     expect(find.text('Info for Castle'), findsOneWidget);
-    await tester.ensureVisible(find.text('Add to page'));
+    await _reveal(tester, find.text('Add to page'));
     await tester.tap(find.text('Add to page'));
     String? saved;
     for (var i = 0; i < 50; i++) {
