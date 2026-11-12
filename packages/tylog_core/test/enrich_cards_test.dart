@@ -5,6 +5,27 @@ import 'package:test/test.dart';
 import 'package:tylog_core/tylog_core.dart';
 
 void main() {
+  test('task text cards show safe mentions only', () {
+    const source = '#tylog.task(\n  id: "t",\n  text: "Angela at Lisbon",\n)';
+    const person = EnrichDecision(
+      EnrichMention(surface: 'Angela', type: 'person', line: 3),
+      EnrichStatus.review,
+      [],
+    );
+    const place = EnrichDecision(
+      EnrichMention(surface: 'Lisbon', type: 'place', line: 3),
+      EnrichStatus.review,
+      [],
+    );
+    final card = enrichLineCards(
+      decisions: [person, place],
+      loans: [],
+      lines: source.split('\n'),
+    ).single;
+    expect(card.taskId, 't');
+    expect(card.text, 'Angela at Lisbon');
+    expect(card.rows.map((r) => r.surface), ['Angela']);
+  });
   test('enrichTargetLabel appends a string color', () {
     expect(enrichTargetLabel('QUEST 3 [1]', 'yellow'), 'QUEST 3 [1] · yellow');
     expect(enrichTargetLabel('QUEST 3 [1]', null), 'QUEST 3 [1]');

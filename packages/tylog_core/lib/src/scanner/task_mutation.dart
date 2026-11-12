@@ -83,6 +83,60 @@ String applyTaskStatus(String source, String id, String next, DateTime now) {
 String replaceTaskStatus(String source, String id, String status) =>
     setTaskFields(source, id, status: status);
 
+String addTaskAssignee(String source, String id, String personId) {
+  final call = _locateTaskCall(source, id);
+  final field = _locateTopLevelField(call.source, 'assignees');
+  final value = field == null
+      ? '()'
+      : call.source.substring(field.valueStart, field.valueEnd);
+  final next = _appendTaskStringList(value, personId);
+  if (next == value) return source;
+  final replacement = field == null
+      ? _appendCallField(
+          call.source,
+          'assignees',
+          next,
+          allowed: writableTaskFields,
+        )
+      : call.source.replaceRange(field.valueStart, field.valueEnd, next);
+  return source.replaceRange(call.start, call.end, replacement);
+}
+
+String addTaskEquipment(String source, String id, String equipmentId) {
+  final call = _locateTaskCall(source, id);
+  if (_parseProperties(call.source)['loan'] == true) return source;
+  final field = _locateTopLevelField(call.source, 'properties');
+  final dict = field == null
+      ? '(:)'
+      : call.source.substring(field.valueStart, field.valueEnd);
+  if (!dict.startsWith('(') || !dict.endsWith(')')) {
+    throw StateError('Task properties must be a literal dictionary');
+  }
+  final entry = _locateDictEntry(dict, 'equipment');
+  final value = entry == null
+      ? '()'
+      : dict.substring(entry.valueStart, entry.end).trim();
+  final next = _appendTaskStringList(value, equipmentId);
+  if (next == value) return source;
+  return source.replaceRange(
+    call.start,
+    call.end,
+    _setTaskProperty(call.source, 'equipment', next),
+  );
+}
+
+String _appendTaskStringList(String value, String id) {
+  if (!RegExp(r'^\(\s*(?:"(?:\\.|[^"\\])*"\s*,\s*)*\)$').hasMatch(value)) {
+    throw StateError('Task list must be a literal string array');
+  }
+  final ids = _quoted
+      .allMatches(value)
+      .map((m) => m.group(1)!.replaceAllMapped(RegExp(r'\\(.)'), (m) => m[1]!));
+  if (ids.contains(id)) return value;
+  final close = value.lastIndexOf(')');
+  return value.replaceRange(close, close, '${typstString(id)},');
+}
+
 String completeTaskOccurrence(String source, String id, String timestamp) {
   final call = _locateTaskCall(source, id);
   final field = _locateTopLevelField(call.source, 'completed');
@@ -113,6 +167,7 @@ String completeTaskOccurrence(String source, String id, String timestamp) {
 /// Adding a field here without adding it to the package fails the test. Adding
 /// it to neither means the writer cannot emit it at all.
 const writableTaskFields = {
+  'assignees',
   'status',
   'priority',
   'scheduled',

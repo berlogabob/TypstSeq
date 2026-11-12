@@ -4,6 +4,25 @@ import 'package:tylog/widgets/enrich_review.dart';
 import 'package:tylog_core/tylog_core.dart';
 
 void main() {
+  testWidgets('task cards show a task label', (tester) async {
+    const mention = EnrichMention(surface: 'Alex', type: 'person', line: 3);
+    const decision = EnrichDecision(mention, EnrichStatus.propose, []);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: EnrichReview(
+            source: '#tylog.task(\n  id: "t",\n  text: "Alex",\n)',
+            decisions: const [decision],
+            onAccept: (_, _) {},
+            onReject: (_, _) {},
+            onCreate: (_) {},
+            onIgnore: (_) {},
+          ),
+        ),
+      ),
+    );
+    expect(find.text('task'), findsOneWidget);
+  });
   const mention = EnrichMention(surface: 'Alex', type: 'person', line: 1);
   const first = NoteRef(
     id: 'a',

@@ -50,6 +50,18 @@ void main() {
     );
   }
 
+  test('task assignee writer preserves text and compiles', () {
+    const source = '#tylog.task(\n  id: "t1",\n  text: "Angela is here",\n)';
+    final result = addTaskAssignee(source, 't1', 'angela');
+    expect(
+      result,
+      '#tylog.task(\n  id: "t1",\n  text: "Angela is here",\n  assignees: ("angela",),\n)',
+    );
+    expect(addTaskAssignee(result, 't1', 'angela'), result);
+    expectCompiles('task-assignee', result);
+    expectCompiles('task-equipment', addTaskEquipment(result, 't1', 'TL-0201'));
+  });
+
   test('inline issue status metadata compiles', () {
     const line =
         '- #tylog.ref-note("project")[Project] '

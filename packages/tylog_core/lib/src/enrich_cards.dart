@@ -1,7 +1,7 @@
 import 'enrich.dart';
 import 'loan.dart';
 import 'models.dart';
-import 'scanner.dart' show locateTypstCalls;
+import 'scanner.dart' show locateTypstCalls, taskField;
 
 enum EnrichRowState { linked, willLink, ambiguous, propose }
 
@@ -31,6 +31,7 @@ class EnrichCardRow {
 class EnrichLineCard {
   const EnrichLineCard({
     required this.line,
+    this.taskId,
     required this.text,
     required this.rows,
     required this.loan,
@@ -42,6 +43,7 @@ class EnrichLineCard {
   });
 
   final int line;
+  final String? taskId;
   final String text;
   final List<EnrichCardRow> rows;
   final EnrichLoanOffer? loan;
@@ -84,16 +86,43 @@ List<EnrichLineCard> enrichLineCards({
   required List<String> lines,
   Map<String, List<TaskRef>> openLoans = const {},
 }) {
+  final source = lines.join('\n');
+  final taskLines = <int, (String?, String?, bool)>{};
+  for (final call in locateTypstCalls(source, names: const {'tylog.task'})) {
+    final first = '\n'.allMatches(source.substring(0, call.start)).length + 1;
+    final parts = call.source.split('\n');
+    for (var i = 0; i < parts.length; i++) {
+      final textLine = RegExp(
+        r'^\s*text\s*:\s*"(?:\\.|[^"\\])*"\s*,?\s*$',
+      ).hasMatch(parts[i]);
+      taskLines[first + i] = (
+        taskField(call.source, 'id'),
+        textLine ? taskField(call.source, 'text') : null,
+        RegExp(r'"loan"\s*:\s*true').hasMatch(call.source),
+      );
+    }
+  }
   final byLine = <int, List<EnrichDecision>>{};
   final loansByLine = <int, EnrichLoanOffer>{};
   for (final decision in decisions) {
     final line = decision.mention.line;
+    final task = taskLines[line];
+    if (task != null &&
+        (task.$1 == null ||
+            task.$2 == null ||
+            (decision.mention.type.toLowerCase() != 'person' &&
+                !(decision.mention.type.toLowerCase() == 'equipment' &&
+                    !task.$3)))) {
+      continue;
+    }
     if (line >= 1 && line <= lines.length) {
       (byLine[line] ??= []).add(decision);
     }
   }
   for (final loan in loans) {
-    if (loan.line >= 1 && loan.line <= lines.length) {
+    if (!taskLines.containsKey(loan.line) &&
+        loan.line >= 1 &&
+        loan.line <= lines.length) {
       loansByLine[loan.line] = loan;
     }
   }
@@ -106,9 +135,11 @@ List<EnrichLineCard> enrichLineCards({
       (() {
         final source = lines[line - 1];
         final matches = markup.allMatches(source).toList();
-        final text = source
-            .replaceAllMapped(markup, (match) => match[2]!)
-            .replaceFirst(RegExp(r'^\s*[-+*] '), '');
+        final text =
+            taskLines[line]?.$2 ??
+            source
+                .replaceAllMapped(markup, (match) => match[2]!)
+                .replaceFirst(RegExp(r'^\s*[-+*] '), '');
         final rows = <EnrichCardRow>[];
         void add(
           EnrichRowState state,
@@ -192,6 +223,7 @@ List<EnrichLineCard> enrichLineCards({
         final conflict = loan == null ? null : openLoanFor(loan, openLoans);
         return EnrichLineCard(
           line: line,
+          taskId: taskLines[line]?.$1,
           text: text,
           rows: sorted,
           loan: loan,
@@ -199,7 +231,8 @@ List<EnrichLineCard> enrichLineCards({
           warning: conflict == null ? null : loanOutSinceText(conflict),
           willLinkCount: count,
           primaryLabel: enrichPrimaryLabel(count, loan),
-          key: '$line|$text|${signatures.join('|')}|${loan != null}',
+          key:
+              '$line|${source.replaceAllMapped(markup, (match) => match[2]!).replaceFirst(RegExp(r'^\s*[-+*] '), '')}|${signatures.join('|')}|${loan != null}',
         );
       })(),
   ];

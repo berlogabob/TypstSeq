@@ -586,7 +586,35 @@ extension _EnrichFlow on _HomeScreenState {
         ? workspace.source
         : await v.storage.readText(path);
     if (mentions != null && enrichContentSha(source) == mentions.contentSha) {
-      final linked = linkMentionInline(source, mention, target);
+      final lines = source.split('\n');
+      final offset = mention.line < 1 || mention.line > lines.length
+          ? -1
+          : lines
+                .take(mention.line - 1)
+                .fold<int>(0, (n, line) => n + line.length + 1);
+      final calls = locateTypstCalls(
+        source,
+        names: const {'tylog.task'},
+      ).where((call) => offset >= call.start && offset < call.end);
+      var linked = source;
+      if (calls.isNotEmpty) {
+        final call = calls.first;
+        final id = taskField(call.source, 'id');
+        final isText = RegExp(
+          r'^\s*text\s*:\s*"(?:\\.|[^"\\])*"\s*,?\s*$',
+        ).hasMatch(lines[mention.line - 1]);
+        if (id != null && isText) {
+          if (mention.type.toLowerCase() == 'person' &&
+              target.kind == 'person') {
+            linked = addTaskAssignee(source, id, target.id);
+          } else if (mention.type.toLowerCase() == 'equipment' &&
+              target.kind == 'equipment') {
+            linked = addTaskEquipment(source, id, target.id);
+          }
+        }
+      } else {
+        linked = linkMentionInline(source, mention, target);
+      }
       // Only over the text we linked: anything typed since wins.
       if (linked != source &&
           await workspace.mutateNote(

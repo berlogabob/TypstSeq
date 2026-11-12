@@ -347,7 +347,16 @@ class _EnrichReviewState extends State<EnrichReview> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _lineText(card),
+          if (card.taskId == null)
+            _lineText(card)
+          else
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: _lineText(card)),
+                Text('task', style: Theme.of(context).textTheme.labelSmall),
+              ],
+            ),
           for (final row in _rows(card)) _row(card, row),
           if (card.warning != null)
             Wrap(
