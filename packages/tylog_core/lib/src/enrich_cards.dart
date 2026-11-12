@@ -51,6 +51,23 @@ class EnrichLineCard {
   final String key;
 }
 
+List<EnrichLineCard> acceptAllOrder(List<EnrichLineCard> cards) =>
+    cards.reversed.toList();
+
+Future<void> acceptCard(
+  EnrichLineCard card,
+  Iterable<EnrichCardRow> rows, {
+  required Future<void> Function(EnrichMention, NoteRef) acceptLink,
+  required Future<void> Function(EnrichLoanOffer) acceptLoan,
+}) async {
+  for (final row in rows) {
+    if (row.state == EnrichRowState.willLink) {
+      await acceptLink(row.decision!.mention, row.target!);
+    }
+  }
+  if (card.loan != null) await acceptLoan(card.loan!);
+}
+
 String? enrichPrimaryLabel(int willLinkCount, EnrichLoanOffer? loan) {
   if (willLinkCount == 0 && loan == null) return null;
   final link = willLinkCount > 0 ? 'Link $willLinkCount' : '';

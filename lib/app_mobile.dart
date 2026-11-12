@@ -26,6 +26,7 @@ import 'package:tylog_core/enrich.dart';
 import 'package:tylog_core/tylog_core.dart'
     show
         Decision,
+        acceptLoan,
         EnrichSkipped,
         decisionsDir,
         encodeDecisions,

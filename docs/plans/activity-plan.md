@@ -950,7 +950,7 @@ Plan: `~/.claude/plans/perform-app-audit-create-reactive-lerdorf.md`. The techni
 - [x] W34.E1 (luna) card row spacing: equal compact row heights, 48 px touch target inside the InkWell - rows had uneven padding; 4 px padding inside InkWell, 48 px target; row-height test fails pre-fix
 - [x] W34.E2 (luna) target row shows " · colour" from the equipment note's `color` property - shared enrichTargetLabel helper used by row and chooser; core + widget tests
 - [x] W34.E3 (terra) "Skip line" persisted per note in device-local enrich state, pruned on change, capped - EnrichSkipped (enrich_skipped.dart), _system/enrich/skipped/<device>.json atomic, cap 200/500; 4 core tests; widget wiring not mounted
-- [ ] W34.E4 (terra) loan accept / double-loan / Accept all decision logic extracted and unit-tested
+- [x] W34.E4 (terra) loan accept / double-loan / Accept all decision logic extracted and unit-tested - loan_accept.dart (acceptLoan with ports, acceptAllOrder); handlers are thin callers; core tests cover exact task string, sidecar shift, bottom-up three tasks, double-loan decline
 - [ ] W34.E8 (terra) loan conversion consumes the line's sidecar mentions; alias scan and enrichLineCards skip multi-line function calls; optimistic card removal on accept
 - [ ] W34.E5 (Sonnet + luna) flaky whiteboard_test + today_issue_menu_test: find timing assumption, fix
 - [ ] W34.E6 (luna) `--misses` in enrich_prompt_stats.py, classify recall@30 misses, cheap rule if any

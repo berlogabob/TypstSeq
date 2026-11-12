@@ -768,70 +768,62 @@ extension _EnrichFlow on _HomeScreenState {
     final conflict = currentIndex == null
         ? null
         : openLoanFor(offer, openLoansByEquipment(currentIndex));
-    if (conflict != null) {
-      if (!mounted) return false;
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Already out'),
-          content: Text(
-            '${loanOutSinceText(conflict)}\n\nTrack another loan for the same equipment?',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Track anyway'),
-            ),
-          ],
-        ),
-      );
-      if (confirmed != true || !mounted || !identical(vault, v)) return false;
-    }
-    await _recordEnrichFeedback(
-      EnrichMention(
-        surface: offer.ledgerSurface,
-        type: 'topic',
-        line: offer.line,
-      ),
-      enrichLoanEntity,
+    final accepted = await acceptLoan(
       path: path,
-      accepted: true,
+      offer: offer,
+      conflict: conflict,
+      noteId: () => index?.notesByPath[path]?.id ?? path,
+      now: DateTime.now,
+      confirmDouble: (conflict) async {
+        if (!mounted) return false;
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Already out'),
+            content: Text(
+              '${loanOutSinceText(conflict)}\n\nTrack another loan for the same equipment?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Track anyway'),
+              ),
+            ],
+          ),
+        );
+        return confirmed == true && mounted && identical(vault, v);
+      },
+      recordFeedback: () => _recordEnrichFeedback(
+        EnrichMention(
+          surface: offer.ledgerSurface,
+          type: 'topic',
+          line: offer.line,
+        ),
+        enrichLoanEntity,
+        path: path,
+        accepted: true,
+      ),
+      readSource: () async =>
+          path == note ? workspace.source : await v.storage.readText(path),
+      readMentions: () => _readMentions(v, path),
+      mutateNote: (transform) => workspace.mutateNote(path, transform),
+      mutationIsCurrent: (tracked) =>
+          path != note || workspace.source == tracked,
+      readSidecar: () async =>
+          (jsonDecode(await v.storage.readText(enrichMentionsPath(path)))
+                  as Map)
+              .cast<String, Object?>(),
+      writeSidecar: (json) => v.storage.writeText(
+        enrichMentionsPath(path),
+        '${jsonEncode(json)}\n',
+      ),
     );
-    final source = path == note
-        ? workspace.source
-        : await v.storage.readText(path);
-    final mentions = await _readMentions(v, path);
-    final tracked = trackAsLoan(
-      source,
-      offer,
-      loanTaskId(index?.notesByPath[path]?.id ?? path, offer),
-      DateTime.now(),
-    );
-    if (tracked != source &&
-        await workspace.mutateNote(
-          path,
-          (current) => current == source ? tracked : current,
-        ) &&
-        (path != note || workspace.source == tracked) &&
-        mentions != null &&
-        enrichContentSha(source) == mentions.contentSha) {
-      final file = enrichMentionsPath(path);
-      final json = (jsonDecode(await v.storage.readText(file)) as Map)
-          .cast<String, Object?>();
-      final shifted = shiftEnrichLines(
-        json,
-        offer.line,
-        tracked.split('\n').length - source.split('\n').length,
-      );
-      shifted['content_sha'] = enrichContentSha(tracked);
-      await v.storage.writeText(file, '${jsonEncode(shifted)}\n');
-    }
-    await _refreshEnrichDay(path);
-    return true;
+    if (accepted) await _refreshEnrichDay(path);
+    return accepted;
   }
 
   Future<void> _rejectEnrichLoan(String path, EnrichLoanOffer offer) async {

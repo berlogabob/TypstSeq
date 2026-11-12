@@ -83,16 +83,13 @@ class _EnrichReviewState extends State<EnrichReview> {
     card.loan,
   );
 
-  Future<void> _cardBody(EnrichLineCard card) async {
-    for (final row in _rows(card)) {
-      if (row.state == EnrichRowState.willLink) {
-        await widget.onAccept(row.decision!.mention, row.target!);
-      }
-    }
-    if (card.loan != null && widget.onAcceptLoan != null) {
-      await widget.onAcceptLoan!(card.loan!);
-    }
-  }
+  Future<void> _cardBody(EnrichLineCard card) => acceptCard(
+    card,
+    _rows(card),
+    acceptLink: (mention, target) async =>
+        await widget.onAccept(mention, target),
+    acceptLoan: (loan) async => await widget.onAcceptLoan?.call(loan),
+  );
 
   Future<void> _runCard(EnrichLineCard card) =>
       widget.batch(() async => await _cardBody(card));
@@ -133,7 +130,7 @@ class _EnrichReviewState extends State<EnrichReview> {
     );
     if (confirmed == true) {
       await widget.batch(() async {
-        for (final card in cards.reversed) {
+        for (final card in acceptAllOrder(cards)) {
           await _cardBody(card);
         }
       });
