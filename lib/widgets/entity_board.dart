@@ -104,9 +104,11 @@ class _EntityBoardState extends State<EntityBoard> {
       if (task.status != column) {
         final stopped =
             column == 'doing' &&
+            task.properties['loan'] != true &&
             index.tasks.any(
               (other) =>
                   (other.id != task.id || other.notePath != task.notePath) &&
+                  other.properties['loan'] != true &&
                   other.runningClock != null,
             );
         await widget.setStatus(task, column);

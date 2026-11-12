@@ -28,6 +28,7 @@ import 'package:tylog_core/tylog_core.dart'
         Decision,
         acceptLoan,
         equipmentUsage,
+        runningWorkTask,
         loanHistoryFor,
         EnrichSkipped,
         decisionsDir,
@@ -463,19 +464,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _clockMutation = Future<void>.value();
 
-  TaskRef? get _runningTask {
-    final tasks =
-        (index?.tasks ?? const <TaskRef>[])
-            .where((task) => task.runningClock != null)
-            .toList()
-          ..sort(
-            (a, b) => (DateTime.tryParse(a.runningClock!.start) ?? DateTime(0))
-                .compareTo(
-                  DateTime.tryParse(b.runningClock!.start) ?? DateTime(0),
-                ),
-          );
-    return tasks.lastOrNull;
-  }
+  TaskRef? get _runningTask => runningWorkTask(index?.tasks ?? const []);
 
   /// The day the arrows have stepped to but not opened yet. The header reads
   /// this first so a tap moves the date immediately.
@@ -936,11 +925,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       beforeTaskDoing: (id) async {
         final opened = vault;
         final file = note!;
+        final source = richController.document.toSource();
+        final task = locateTypstCalls(
+          source,
+          names: const {'tylog.task'},
+        ).where((call) => taskField(call.source, 'id') == id).firstOrNull;
+        if (task != null && taskProperties(task.source)['loan'] == true) return;
         await _queueClockMutation(() => _stopOtherDoingTasks(file));
         if (!identical(vault, opened) ||
             note != file ||
             (index?.tasks.any(
-                  (t) => t.notePath != file && t.runningClock != null,
+                  (t) =>
+                      t.notePath != file &&
+                      t.properties['loan'] != true &&
+                      t.runningClock != null,
                 ) ??
                 false)) {
           throw StateError('Could not stop the previous task');
@@ -1557,7 +1555,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _stopOtherDoingTasks(String file) async {
     final now = DateTime.now().toUtc();
     for (final running
-        in index?.tasks.where((t) => t.runningClock != null).toList() ??
+        in index?.tasks
+                .where(
+                  (t) => t.properties['loan'] != true && t.runningClock != null,
+                )
+                .toList() ??
             <TaskRef>[]) {
       // Same-note transitions are atomic inside applyTaskStatus.
       if (running.notePath == file) continue;
@@ -1576,11 +1578,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (vault == null) return;
     final file = task.notePath;
     try {
-      if (nextStatus == 'doing') await _stopOtherDoingTasks(file);
+      if (nextStatus == 'doing' && task.properties['loan'] != true) {
+        await _stopOtherDoingTasks(file);
+      }
       final current = index?.tasks
           .where((t) => t.id == task.id && t.notePath == file)
           .firstOrNull;
-      if (nextStatus == 'todo' && current?.runningClock != null) {
+      if (nextStatus == 'todo' &&
+          current?.properties['loan'] != true &&
+          current?.runningClock != null) {
         await _leaveRunningTask(current!, nextStatus);
         return;
       }

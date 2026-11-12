@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:material_ui/material_ui.dart';
+import 'package:tylog_core/tylog_core.dart' show isOpenLoan, loanOutFor;
 import 'app_icons.dart';
 import 'constants.dart';
 import '../models.dart';
@@ -28,7 +29,7 @@ class _TaskChipStripState extends State<TaskChipStrip> {
     _ticker?.cancel();
     if (_task.status == 'doing' && _task.runningClock != null) {
       _ticker = Timer.periodic(
-        const Duration(seconds: 1),
+        Duration(seconds: isOpenLoan(_task) ? 60 : 1),
         (_) => setState(() {}),
       );
     }
@@ -52,14 +53,17 @@ class _TaskChipStripState extends State<TaskChipStrip> {
     super.dispose();
   }
 
-  String _date(String value, DateTime now) {
+  String _date(String value, DateTime now, {bool absolute = false}) {
     final date = DateTime.tryParse(value);
     if (date == null) return value;
     final day = DateTime(date.year, date.month, date.day);
     final today = DateTime(now.year, now.month, now.day);
-    if (day == today) return 'Today';
-    if (day == DateTime(now.year, now.month, now.day + 1)) return 'Tomorrow';
-    if (day.isAfter(today) &&
+    if (!absolute && day == today) return 'Today';
+    if (!absolute && day == DateTime(now.year, now.month, now.day + 1)) {
+      return 'Tomorrow';
+    }
+    if (!absolute &&
+        day.isAfter(today) &&
         day.isBefore(DateTime(now.year, now.month, now.day + 7))) {
       return const [
         'Mon',
@@ -135,6 +139,7 @@ class _TaskChipStripState extends State<TaskChipStrip> {
       ),
     );
 
+    final loanDuration = isOpenLoan(_task) ? loanOutFor(_task, now) : null;
     final start = DateTime.tryParse(_task.runningClock?.start ?? '');
     final elapsed = _task.status == 'doing' && start != null
         ? now.difference(start)
@@ -165,7 +170,11 @@ class _TaskChipStripState extends State<TaskChipStrip> {
                   flex: date == null ? 0 : 1,
                   child: chip(
                     field,
-                    date == null ? '' : _date(date, now),
+                    date == null
+                        ? ''
+                        : isOpenLoan(_task) && field == 'due'
+                        ? 'due ${_date(date, now, absolute: true)}'
+                        : _date(date, now),
                     '${field == 'due' ? 'Due' : 'Scheduled'}${date == null ? '' : ': $date'}',
                     icon: field == 'due'
                         ? AppIcons.calendarDate
@@ -187,7 +196,19 @@ class _TaskChipStripState extends State<TaskChipStrip> {
               ),
           ],
         ),
-        if (total > Duration.zero || _task.status == 'doing' && start != null)
+        if (loanDuration case final Duration out)
+          SizedBox(
+            key: Key('task-chip-${_task.id}-time'),
+            width: 88,
+            child: Text(
+              _loanDuration(out),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+          )
+        else if (!isOpenLoan(_task) &&
+            (total > Duration.zero || _task.status == 'doing' && start != null))
           SizedBox(
             key: Key('task-chip-${_task.id}-time'),
             width: 88,
@@ -202,4 +223,10 @@ class _TaskChipStripState extends State<TaskChipStrip> {
       ],
     );
   }
+}
+
+String _loanDuration(Duration value) {
+  if (value.inDays > 0) return 'out ${value.inDays} d';
+  if (value.inHours > 0) return 'out ${value.inHours} h';
+  return 'out ${value.inMinutes.clamp(0, 59)} min';
 }

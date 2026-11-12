@@ -20,6 +20,7 @@ TaskRef taskFromSource(String source, {String notePath = ''}) {
     scheduled: taskField(source, 'scheduled'),
     recurrence: taskField(source, 'recurrence'),
     clocked: taskClocked(source, id),
+    properties: taskProperties(source),
   );
 }
 

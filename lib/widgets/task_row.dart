@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:material_ui/material_ui.dart';
+import 'package:tylog_core/tylog_core.dart' show isOpenLoan;
 import '../models.dart';
 import 'task_chip_strip.dart';
 import 'task_fields.dart';
@@ -92,7 +93,7 @@ class _TaskRowState extends State<TaskRow> {
   }
 
   Widget _status(BuildContext context) => Tooltip(
-    message: 'Task status',
+    message: isOpenLoan(task) ? 'Returned' : 'Task status',
     triggerMode: TooltipTriggerMode.manual,
     child: GestureDetector(
       onLongPressStart: onSetStatus == null

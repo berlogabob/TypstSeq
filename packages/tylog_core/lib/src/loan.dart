@@ -421,3 +421,16 @@ Duration? loanOutFor(TaskRef task, DateTime now) {
   if (start == null || end == null) return null;
   return end.difference(start);
 }
+
+/// The most recently started work timer; loan intervals run independently.
+TaskRef? runningWorkTask(Iterable<TaskRef> tasks) {
+  TaskRef? latest;
+  for (final task in tasks) {
+    if (task.properties['loan'] == true || task.runningClock == null) continue;
+    final start = DateTime.tryParse(task.runningClock!.start) ?? DateTime(0);
+    final previous =
+        DateTime.tryParse(latest?.runningClock?.start ?? '') ?? DateTime(0);
+    if (latest == null || !start.isBefore(previous)) latest = task;
+  }
+  return latest;
+}

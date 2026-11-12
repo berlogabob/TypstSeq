@@ -106,23 +106,40 @@ void main() {
   });
 
   test('English loan writes and scans its return date', () async {
-    const source = '$header- 14:05 Borrowed #tylog.ref-note("TL-0007")[Equipment A] until Friday\n';
+    const source =
+        '$header- 14:05 Borrowed #tylog.ref-note("TL-0007")[Equipment A] until Friday\n';
     const mentions = EnrichMentions(
-      note: 'day', contentSha: '', loans: [EnrichLoanHint(line: 3)],
+      note: 'day',
+      contentSha: '',
+      loans: [EnrichLoanHint(line: 3)],
     );
     final mem = memory();
     final offer = enrichLoanOffers(
-      mentions, source, mem, resolveMentions(mentions, day, mem), noteDate: now,
+      mentions,
+      source,
+      mem,
+      resolveMentions(mentions, day, mem),
+      noteDate: now,
     ).single;
     expect(
-      trackAsLoan(source, EnrichLoanOffer(
-        line: offer.line, text: offer.text, ledgerSurface: offer.ledgerSurface,
-        equipment: offer.equipment, person: notes.first, due: offer.due,
-      ), 'with-person', now),
+      trackAsLoan(
+        source,
+        EnrichLoanOffer(
+          line: offer.line,
+          text: offer.text,
+          ledgerSurface: offer.ledgerSurface,
+          equipment: offer.equipment,
+          person: notes.first,
+          due: offer.due,
+        ),
+        'with-person',
+        now,
+      ),
       contains('  assignees: ("lab-person-4",),\n  due: "2026-11-13",\n'),
     );
     final result = trackAsLoan(source, offer, 'loan-en', now);
-    expect(result,
+    expect(
+      result,
       '$header#tylog.task(\n'
       '  id: "loan-en",\n'
       '  text: "14:05 Borrowed Equipment A until Friday",\n'
@@ -131,10 +148,13 @@ void main() {
       '  status: "doing",\n'
       ')\n',
     );
-    final vault = Directory('${tmp.path}/due-vault')..createSync(recursive: true);
+    final vault = Directory('${tmp.path}/due-vault')
+      ..createSync(recursive: true);
     final daily = Directory('${vault.path}/daily')..createSync(recursive: true);
     File('${daily.path}/day.typ').writeAsStringSync(result);
-    final task = (await scanVaultStorage(LocalVaultStorage(vault))).tasks.single;
+    final task = (await scanVaultStorage(
+      LocalVaultStorage(vault),
+    )).tasks.single;
     expect(task.due, '2026-11-13');
     if (Process.runSync('which', ['typst']).exitCode != 0) {
       markTestSkipped('typst not on PATH');
@@ -143,26 +163,48 @@ void main() {
     final file = File('${tmp.path}/loan-due.typ')
       ..writeAsStringSync('#import "/typst/tylog/lib.typ" as tylog\n$result');
     final compiled = Process.runSync('typst', [
-      'compile', '--root', repo, file.path, '${file.path}.pdf',
+      'compile',
+      '--root',
+      repo,
+      file.path,
+      '${file.path}.pdf',
     ]);
     expect(compiled.exitCode, 0, reason: '${compiled.stderr}');
   });
 
   test('day resolution carries the daily note return date', () {
-    const source = '$header- Borrowed #tylog.ref-note("TL-0007")[Equipment A] until Friday\n';
+    const source =
+        '$header- Borrowed #tylog.ref-note("TL-0007")[Equipment A] until Friday\n';
     const mentions = EnrichMentions(
-      note: 'day', contentSha: '', loans: [EnrichLoanHint(line: 3)],
+      note: 'day',
+      contentSha: '',
+      loans: [EnrichLoanHint(line: 3)],
     );
     const daily = NoteRef(
-      id: 'day', path: 'daily/2026/11/2026-11-12.typ', title: 'Day',
-      kind: 'daily', outgoingLinks: [],
+      id: 'day',
+      path: 'daily/2026/11/2026-11-12.typ',
+      title: 'Day',
+      kind: 'daily',
+      outgoingLinks: [],
     );
     final index = VaultIndex(
       notesByPath: {for (final n in notes) n.path: n},
       backlinksByTarget: const {},
     );
-    expect(resolveEnrichDay(mentions, daily, memory(), index, source).loans.single.due, '2026-11-13');
-    expect(resolveEnrichDay(mentions, day, memory(), index, source).loans.single.due, isNull);
+    expect(
+      resolveEnrichDay(
+        mentions,
+        daily,
+        memory(),
+        index,
+        source,
+      ).loans.single.due,
+      '2026-11-13',
+    );
+    expect(
+      resolveEnrichDay(mentions, day, memory(), index, source).loans.single.due,
+      isNull,
+    );
   });
 
   test('day resolution includes loans until the line is converted', () {
@@ -373,5 +415,53 @@ void main() {
       expect(taskField(call.source, 'status'), 'doing');
       expect(parseClockedField(call.source).single.isRunning, isTrue);
     }
+  });
+  test('return closes the loan interval and preserves the exact task', () {
+    const source =
+        '#tylog.task(id: "loan", text: "Equipment", status: "doing", properties: ("loan": true, "clocked": (("2026-11-12T10:00:00.000Z", none),),))';
+    expect(
+      applyTaskStatus(source, 'loan', 'done', DateTime.utc(2026, 11, 12, 11)),
+      '#tylog.task(id: "loan", text: "Equipment", status: "done", properties: ("loan": true, "clocked": (("2026-11-12T10:00:00.000Z", "2026-11-12T11:00:00.000Z"),),))',
+    );
+  });
+
+  test('work and loan clocks remain concurrent in either direction', () {
+    const source =
+        '#tylog.task(id: "work", text: "Work")\n#tylog.task(id: "loan", text: "Loan", properties: ("loan": true,))';
+    for (final ids in [
+      ['work', 'loan'],
+      ['loan', 'work'],
+    ]) {
+      var result = source;
+      for (final id in ids) {
+        result = applyTaskStatus(result, id, 'doing', now);
+      }
+      for (final call in locateTypstCalls(result, names: {'tylog.task'})) {
+        expect(taskField(call.source, 'status'), 'doing');
+        expect(parseClockedField(call.source).single.isRunning, isTrue);
+      }
+    }
+  });
+
+  test('running work selector ignores later loans', () {
+    final work = TaskRef(
+      id: 'work',
+      notePath: 'a',
+      text: 'Work',
+      status: 'doing',
+      clocked: [ClockEntry(start: now.toIso8601String())],
+    );
+    final loan = TaskRef(
+      id: 'loan',
+      notePath: 'b',
+      text: 'Loan',
+      status: 'doing',
+      properties: const {'loan': true},
+      clocked: [
+        ClockEntry(start: now.add(const Duration(hours: 1)).toIso8601String()),
+      ],
+    );
+    expect(runningWorkTask([work, loan]), same(work));
+    expect(runningWorkTask([loan]), isNull);
   });
 }

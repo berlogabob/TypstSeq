@@ -1667,6 +1667,8 @@ List<TaskRef> _taskRefs(String path, List<Map<String, Object?>> values) =>
         )
         .toList();
 
+Map<String, Object?> taskProperties(String source) => _parseProperties(source);
+
 List<TaskRef> _fallbackTasks(String path, List<TypstCall> calls) => calls
     .where((call) => call.name == 'tylog.task')
     .map(

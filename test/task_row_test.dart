@@ -13,6 +13,46 @@ import 'package:tylog/widgets/work_surface.dart';
 import 'package:tylog_core/search_index.dart';
 
 void main() {
+  testWidgets('open loan shows coarse time, overdue due date, and Returned', (
+    tester,
+  ) async {
+    final start = DateTime.now().subtract(const Duration(minutes: 38));
+    final due = DateTime.now().subtract(const Duration(days: 2));
+    String? status;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: TaskRow(
+            task: TaskRef(
+              id: 'loan',
+              notePath: 'loan.typ',
+              text: 'Equipment',
+              status: 'doing',
+              due: due.toIso8601String().split('T').first,
+              properties: const {'loan': true},
+              clocked: [ClockEntry(start: start.toIso8601String())],
+            ),
+            onOpenPath: (_) {},
+            onSetStatus: (_, value) async {
+              status = value;
+            },
+          ),
+        ),
+      ),
+    );
+    expect(find.text('out 38 min'), findsOneWidget);
+    expect(find.textContaining('due '), findsOneWidget);
+    final dueText = tester.widget<Text>(find.textContaining('due '));
+    expect(
+      dueText.style!.color,
+      Theme.of(tester.element(find.text('Equipment'))).colorScheme.error,
+    );
+    await tester.tap(find.byTooltip('Returned'));
+    await tester.pump();
+    expect(status, 'done');
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets('360dp task chips stay on one run in every state', (
     tester,
   ) async {
