@@ -945,4 +945,4 @@ Plan: `~/.claude/plans/perform-app-audit-create-reactive-lerdorf.md`. The techni
 - [x] W34.C2 (terra) chooser also for LLM-only ambiguous equipment mentions — codex terra; `_decide` sets choose + exact-only candidates; 3 lab tests (first fails pre-fix)
 - [x] W34.C3 (terra) return date: `parseLoanDue` (loan_due.dart) en/pt/ru, `EnrichLoanOffer.due` from the daily note date, `trackAsLoan` writes `due: "YYYY-MM-DD"` before properties — codex terra; phrase table, exact-string writer test, typst compile, scan test green
 - [x] W34.C4 (terra) double-loan warning: `openLoansByEquipment`/`openLoanFor`/`loanOutSinceText` in loan.dart, warning icon + tooltip on the chip, "Already out" confirm dialog in `_acceptEnrichLoan` — codex terra; core + chip widget tests green (dialog is in the HomeScreen flow, not widget-tested)
-- [ ] W34.C5 (Sonnet) final gates: analyze, full flutter test, make test-core, pytest tool
+- [x] W34.C5 (Sonnet) final gates: analyze 0 issues; flutter test 2206 pass / 10 skipped (whiteboard_test flaked under load, passes alone); make test-core ok; pytest tool 384 pass after fixing enrich_report.py call to the removed known_entities `limit`

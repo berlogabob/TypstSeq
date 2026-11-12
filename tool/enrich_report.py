@@ -63,7 +63,7 @@ def group_names(days):
 def report(vault):
     days = load(vault)
     index = enrich.read_index(vault)
-    pages = {key(name): note["title"] for note in enrich.known_entities(index, limit=10**6)
+    pages = {key(name): note["title"] for note in enrich.known_entities(index)
              for name in [note["title"], *note["aliases"]]}
     total_days = sum(1 for n in index.get("notes", []) if n.get("kind") == "daily")
     find = group_names(days)
