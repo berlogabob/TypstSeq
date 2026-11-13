@@ -1192,6 +1192,7 @@ class TyLogEditingController extends TextEditingController {
   }
 
   final taskStripHeights = <String, double>{};
+  final failedArticleStripHeights = <String, double>{};
 
   void refreshTaskStripLayout() => notifyListeners();
 
@@ -1741,9 +1742,12 @@ class TyLogEditingController extends TextEditingController {
     var global = firstBlock == 0 ? 0 : document.blockRanges[firstBlock].start;
     for (var i = firstBlock; i <= last; i++) {
       final block = document.blocks[i];
-      final stripHeight =
-          interactive && i > 0 && _taskHasStrip(document.blocks[i - 1])
-          ? (taskStripHeights[document.blocks[i - 1].id] ?? 0)
+      final previous = i > 0 ? document.blocks[i - 1] : null;
+      final stripHeight = interactive && previous != null
+          ? (_taskHasStrip(previous)
+                    ? taskStripHeights[previous.id] ?? 0.0
+                    : 0.0) +
+                (failedArticleStripHeights[previous.id] ?? 0.0)
           : 0.0;
       final reserveStrip = stripHeight > 0;
       if (taskBuilder != null && block.style == TyLogBlockStyle.taskLine) {

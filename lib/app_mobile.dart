@@ -2758,6 +2758,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         },
       ),
       'normal' => TyLogRichEditor(
+        processingJobs: _processingJobs,
+        notePath: current,
         issueAction:
             primaryDestination == 0 &&
                 currentDaily != null &&

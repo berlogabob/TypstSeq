@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:material_ui/material_ui.dart';
 
 import 'app_icons.dart';
+import 'failed_article_row.dart';
 import '../models.dart';
 import '../processing_jobs.dart';
 import '../rich_editor.dart';
@@ -394,7 +395,7 @@ class _JournalFeedState extends State<JournalFeed> {
                                   job.failed &&
                                   job.text('origin') == day.path,
                             ))
-                              _failedArticleRow(context, jobs, job),
+                              FailedArticleRow(jobs: jobs, job: job),
                           ],
                         ),
                       ),
@@ -405,36 +406,6 @@ class _JournalFeedState extends State<JournalFeed> {
           ),
         );
       },
-    );
-  }
-
-  Widget _failedArticleRow(
-    BuildContext context,
-    ProcessingJobs jobs,
-    ProcessingJob job,
-  ) {
-    final url = job.text('url') ?? '';
-    final host = Uri.tryParse(url)?.host.replaceFirst(RegExp(r'^www\.'), '');
-    final color = Theme.of(context).colorScheme.onSurfaceVariant;
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            "couldn't save ${host == null || host.isEmpty ? url : host}: ${job.failureReason ?? 'unknown error'}",
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: color),
-          ),
-        ),
-        TextButton(
-          onPressed: () async {
-            await jobs.retry(job);
-            await jobs.refresh(jobs.storage);
-          },
-          style: TextButton.styleFrom(foregroundColor: color),
-          child: const Text('Retry'),
-        ),
-      ],
     );
   }
 }

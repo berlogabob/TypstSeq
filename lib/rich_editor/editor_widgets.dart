@@ -16,8 +16,12 @@ class TyLogRichEditor extends StatefulWidget {
     this.revealGeneration = 0,
     this.readOnly = false,
     this.issueAction,
+    this.processingJobs,
+    this.notePath,
   });
 
+  final ProcessingJobs? processingJobs;
+  final String? notePath;
   final VoidCallback? Function(int line)? issueAction;
   final double? Function()? popupBottomY;
   final bool readOnly;
@@ -1150,6 +1154,33 @@ class _TyLogRichEditorState extends State<TyLogRichEditor>
     );
   }
 
+  Map<String, ProcessingJob> _failedArticleJobs() {
+    final jobs = widget.processingJobs;
+    if (jobs == null || widget.notePath == null) return {};
+    final byUrl = <String, ProcessingJob>{};
+    for (final job in jobs.jobs) {
+      if (job.kind == 'articles' &&
+          job.failed &&
+          job.text('origin') == widget.notePath &&
+          job.text('url') != null) {
+        byUrl.putIfAbsent(job.text('url')!, () => job);
+      }
+    }
+    if (byUrl.isEmpty) return {};
+    final result = <String, ProcessingJob>{};
+    for (final block in widget.controller.document.blocks) {
+      if (block.style != TyLogBlockStyle.paragraph ||
+          block.parts.any((p) => p.isAtom)) {
+        continue;
+      }
+      final text = block.visibleText.trim();
+      if (RegExp(r'^https?://[^\s]+$').hasMatch(text) && byUrl[text] != null) {
+        result[block.id] = byUrl[text]!;
+      }
+    }
+    return result;
+  }
+
   Widget _field(
     TextEditingController controller,
     TextStyle? textStyle, {
@@ -1179,17 +1210,23 @@ class _TyLogRichEditorState extends State<TyLogRichEditor>
                 kEditorInset,
                 kEditorInset,
                 kEditorInset,
-                widget.controller.document.blocks.isNotEmpty &&
-                        _taskHasStrip(widget.controller.document.blocks.last)
+                widget.controller.document.blocks.isNotEmpty
                     ? math.max(
                         18.0,
-                        widget.controller.taskStripHeights[widget
-                                .controller
-                                .document
-                                .blocks
-                                .last
-                                .id] ??
-                            0,
+                        (widget.controller.taskStripHeights[widget
+                                    .controller
+                                    .document
+                                    .blocks
+                                    .last
+                                    .id] ??
+                                0) +
+                            (widget.controller.failedArticleStripHeights[widget
+                                    .controller
+                                    .document
+                                    .blocks
+                                    .last
+                                    .id] ??
+                                0),
                       )
                     : 18,
               ),
@@ -1537,89 +1574,108 @@ class _TyLogRichEditorState extends State<TyLogRichEditor>
                 widget.controller.imageContentWidth =
                     constraints.maxWidth - (_window == null ? 36 : 0);
                 Widget editorBody() => ListenableBuilder(
-                  listenable: widget.controller,
-                  builder: (context, _) => Stack(
-                    clipBehavior: Clip.hardEdge,
-                    children: [
-                      Positioned.fill(
-                        child: SizedBox(
-                          key: _editorKey,
-                          child: _window == null
-                              ? _field(
-                                  widget.controller,
-                                  textStyle,
-                                  expands: true,
-                                )
-                              : _windowedField(textStyle),
-                        ),
-                      ),
-                      Positioned.fill(
-                        child: Flow(
-                          delegate: _TaskStripFlow(
-                            controller: widget.controller,
-                            window: _window,
-                            editable: () =>
-                                _editableIn(_editorKey.currentContext),
-                            origin: () =>
-                                _editorKey.currentContext?.findRenderObject()
-                                    as RenderBox?,
-                            repaint: Listenable.merge([
-                              widget.controller,
-                              _taskScroll,
-                            ]),
+                  listenable: Listenable.merge([
+                    widget.controller,
+                    widget.processingJobs,
+                  ]),
+                  builder: (context, _) {
+                    final failedJobs = _failedArticleJobs();
+                    widget.controller.failedArticleStripHeights.removeWhere(
+                      (id, _) => !failedJobs.containsKey(id),
+                    );
+                    return Stack(
+                      clipBehavior: Clip.hardEdge,
+                      children: [
+                        Positioned.fill(
+                          child: SizedBox(
+                            key: _editorKey,
+                            child: _window == null
+                                ? _field(
+                                    widget.controller,
+                                    textStyle,
+                                    expands: true,
+                                  )
+                                : _windowedField(textStyle),
                           ),
-                          children: [
-                            for (final range
-                                in widget.controller.document._ranges)
-                              if (widget
-                                      .controller
-                                      .document
-                                      .blocks[range.index]
-                                      .style ==
-                                  TyLogBlockStyle.taskLine) ...[
-                                Semantics(
-                                  label: 'Task status',
-                                  button: true,
-                                  child: GestureDetector(
-                                    behavior: HitTestBehavior.opaque,
-                                    onTap: () => widget.controller.toggleTask(
-                                      widget
-                                          .controller
-                                          .document
-                                          .blocks[range.index]
-                                          .id,
-                                    ),
-                                    onLongPress: () =>
-                                        _showTaskStatus(range.index),
-                                    child: const SizedBox(
-                                      width: 24,
-                                      height: 24,
-                                    ),
-                                  ),
-                                ),
-                                if (_taskHasStrip(
-                                  widget.controller.document.blocks[range
-                                      .index],
-                                ))
-                                  TaskChipStrip(
-                                    task: taskFromSource(
-                                      widget.controller.document.sourceFor(
+                        ),
+                        Positioned.fill(
+                          child: Flow(
+                            delegate: _TaskStripFlow(
+                              controller: widget.controller,
+                              failedJobs: failedJobs,
+                              window: _window,
+                              editable: () =>
+                                  _editableIn(_editorKey.currentContext),
+                              origin: () =>
+                                  _editorKey.currentContext?.findRenderObject()
+                                      as RenderBox?,
+                              repaint: Listenable.merge([
+                                widget.controller,
+                                _taskScroll,
+                              ]),
+                            ),
+                            children: [
+                              for (final range
+                                  in widget.controller.document._ranges)
+                                if (widget
+                                        .controller
+                                        .document
+                                        .blocks[range.index]
+                                        .style ==
+                                    TyLogBlockStyle.taskLine) ...[
+                                  Semantics(
+                                    label: 'Task status',
+                                    button: true,
+                                    child: GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onTap: () => widget.controller.toggleTask(
                                         widget
                                             .controller
                                             .document
                                             .blocks[range.index]
                                             .id,
                                       ),
+                                      onLongPress: () =>
+                                          _showTaskStatus(range.index),
+                                      child: const SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                      ),
                                     ),
-                                    onCommand: (command) =>
-                                        _openTaskChip(range.index, command),
                                   ),
-                              ],
-                          ],
+                                  if (_taskHasStrip(
+                                    widget.controller.document.blocks[range
+                                        .index],
+                                  ))
+                                    TaskChipStrip(
+                                      task: taskFromSource(
+                                        widget.controller.document.sourceFor(
+                                          widget
+                                              .controller
+                                              .document
+                                              .blocks[range.index]
+                                              .id,
+                                        ),
+                                      ),
+                                      onCommand: (command) =>
+                                          _openTaskChip(range.index, command),
+                                    ),
+                                ] else if (failedJobs[widget
+                                        .controller
+                                        .document
+                                        .blocks[range.index]
+                                        .id]
+                                    case final job?)
+                                  FailedArticleRow(
+                                    jobs: widget.processingJobs!,
+                                    job: job,
+                                  ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    );
+                  },
                 );
                 return ValueListenableBuilder<FoldStore?>(
                   valueListenable: FoldStore.current,
@@ -3456,12 +3512,14 @@ class _TaskStripFlow extends FlowDelegate {
   _TaskStripFlow({
     required this.controller,
     required this.window,
+    required this.failedJobs,
     required this.editable,
     required this.origin,
     required super.repaint,
   });
   final TyLogEditingController controller;
   final TyLogWindowController? window;
+  final Map<String, ProcessingJob> failedJobs;
   final RenderEditable? Function() editable;
   final RenderBox? Function() origin;
 
@@ -3479,7 +3537,35 @@ class _TaskStripFlow extends FlowDelegate {
     var child = 0;
     for (final range in controller.document._ranges) {
       final block = controller.document.blocks[range.index];
-      if (block.style != TyLogBlockStyle.taskLine) continue;
+      if (block.style != TyLogBlockStyle.taskLine) {
+        if (failedJobs.containsKey(block.id)) {
+          final offset = range.end - (window?.start ?? 0);
+          final current = child++;
+          if (offset >= 0 && offset <= field.plainText.length) {
+            final reservedHeight = context.getChildSize(current)!.height + 2;
+            if (controller.failedArticleStripHeights[block.id] !=
+                reservedHeight) {
+              controller.failedArticleStripHeights[block.id] = reservedHeight;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (box.attached) controller.refreshTaskStripLayout();
+              });
+            }
+            final caret = field.getLocalRectForCaret(
+              TextPosition(offset: offset),
+            );
+            final point = box.globalToLocal(
+              field.localToGlobal(caret.bottomLeft),
+            );
+            if (point.dy > 0 && point.dy - caret.height < context.size.height) {
+              context.paintChild(
+                current,
+                transform: Matrix4.translationValues(18, point.dy + 2, 0),
+              );
+            }
+          }
+        }
+        continue;
+      }
       final start = range.start - (window?.start ?? 0);
       final checkbox = child++;
       if (start >= 0 && start + 2 <= field.plainText.length) {

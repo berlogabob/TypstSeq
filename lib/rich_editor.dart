@@ -10,6 +10,8 @@ import 'package:tylog_core/tylog_core.dart' show parseDateWords;
 import 'package:tylog_core/values.dart';
 
 import 'controlled_editor.dart';
+import 'processing_jobs.dart';
+import 'widgets/failed_article_row.dart';
 import 'image_crop.dart';
 import 'widgets/app_icons.dart';
 import 'widgets/constants.dart';
