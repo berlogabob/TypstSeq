@@ -456,6 +456,31 @@ void main() {
     },
   );
 
+  test('a plain note whose title only starts like the name is not a match', () {
+    final purchase = entity(
+      'zakupka',
+      'Закупка на 2019 для Ивана',
+      kind: 'note',
+    );
+    final angela = entity(
+      'angela',
+      'Angela Silvestre',
+      kind: 'note',
+      aliases: ['Анжела'],
+    );
+    final andrey = entity('andrey', 'Андрей');
+    final memory = EnrichMemory.build(indexOf([purchase, angela, andrey]));
+    EnrichDecision resolve(String surface) => resolveMentions(
+      mentionsOf([EnrichMention(surface: surface, type: 'person', line: 1)]),
+      day('2026-11-04'),
+      memory,
+    ).single;
+    expect(resolve('Заку').candidates, isEmpty);
+    expect(resolve('Заку').target, isNull);
+    expect(resolve('Анжела').target?.id, 'angela');
+    expect(resolve('Андрея').target?.id, 'andrey');
+  });
+
   test('a hint that names a known alias finds her but does not prove it', () {
     // Real vault: the model hinted "Катя" with the alias of a known person.
     final katia = entity('kz', 'katiazhavoronkova', aliases: ['жаворонкова']);

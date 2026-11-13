@@ -664,13 +664,18 @@ bool? _match(
   // ("Sabino" in "André Sabino") find, never prove.
   final exact = names.contains(surfaceKey);
   // "Катя" for "Катя Жаворонкова", "Katia" for "katiazhavoronkova".
+  // Raw name-prefix matching is for typed entities: a plain note whose
+  // title merely starts with the same letters ("Заку" -> "Закупка на 2019")
+  // is not that person. Case endings still match via _sameStem.
+  final prefixOk = entity.kind != 'note';
   final prefix =
       names.any(keys.contains) ||
       words.any(keys.contains) ||
       names.any(
         (name) => keys.any(
           (key) =>
-              (key.length >= 4 && name.startsWith(key)) || _sameStem(name, key),
+              (prefixOk && key.length >= 4 && name.startsWith(key)) ||
+              _sameStem(name, key),
         ),
       );
   return prefix || (memory._accepted[surfaceKey]?[entity.id] ?? 0) > 0
