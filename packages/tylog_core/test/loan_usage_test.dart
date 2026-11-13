@@ -63,4 +63,35 @@ void main() {
     expect(usage.hoursOut, 1.5);
     expect(usage.hoursByPurpose, {'field': 1.5, 'lab': 0.5});
   });
+
+  test('a naive start (older loans) reads as device-local, Z end as UTC', () {
+    final startLocal = DateTime(2026, 11, 10, 9);
+    final naive = startLocal.toIso8601String();
+    expect(naive.endsWith('Z'), isFalse);
+    final end = startLocal.toUtc().add(const Duration(hours: 3));
+    final mixed = VaultIndex(
+      notesByPath: {},
+      backlinksByTarget: {},
+      tasks: [
+        TaskRef(
+          id: 'old',
+          notePath: 'day',
+          text: 'Old loan',
+          status: 'done',
+          clocked: [ClockEntry(start: naive, end: end.toIso8601String())],
+          properties: const {
+            'loan': true,
+            'equipment': ['cam'],
+          },
+        ),
+      ],
+    );
+    final usage = equipmentUsage(
+      mixed,
+      to: end.add(const Duration(hours: 1)),
+    )['cam']!;
+    expect(usage.hoursOut, 3);
+    final task = mixed.tasks.single;
+    expect(loanOutFor(task, end), const Duration(hours: 3));
+  });
 }

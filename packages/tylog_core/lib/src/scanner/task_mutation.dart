@@ -45,7 +45,7 @@ String setTaskFields(
 /// Records repeat completions and starts/stops the task clock on status transitions.
 String applyTaskStatus(String source, String id, String next, DateTime now) {
   final call = _locateTaskCall(source, id);
-  final timestamp = now.toIso8601String();
+  final timestamp = now.toUtc().toIso8601String();
   if (next == 'doing') {
     for (final other in locateTypstCalls(source, names: const {'tylog.task'})) {
       final otherId = taskField(other.source, 'id');

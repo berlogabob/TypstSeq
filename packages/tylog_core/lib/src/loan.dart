@@ -161,7 +161,10 @@ String trackAsLoan(
       '  properties: (${properties.join(', ')}),\n'
       ')';
   final updated = replaceTaskStatus(lines.join('\n'), id, 'doing');
-  return startTaskClock(updated, id, now.toIso8601String());
+  // UTC with a Z, like every other clock stamp (applyTaskStatus callers pass
+  // UTC). Readers parse with DateTime.tryParse, so older loans written with a
+  // naive stamp are read as device-local time; new ones are unambiguous.
+  return startTaskClock(updated, id, now.toUtc().toIso8601String());
 }
 
 /// Moves the line numbers a sidecar holds past [after] by [delta]. A tracked

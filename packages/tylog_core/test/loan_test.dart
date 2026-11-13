@@ -55,6 +55,22 @@ void main() {
   setUpAll(() => tmp.createSync(recursive: true));
   tearDownAll(() => tmp.deleteSync(recursive: true));
 
+  test('loan clock start is UTC with Z whatever zone `now` is in', () async {
+    const source = '$header$ru\n\nAfter.\n';
+    const mentions = EnrichMentions(
+      note: 'day',
+      contentSha: '',
+      loans: [EnrichLoanHint(line: 3, borrower: 'студент', purpose: 'class')],
+    );
+    final offer = offers(source, mentions, memory()).single;
+    final local = DateTime(2026, 11, 12, 21, 51, 31, 921);
+    final result = trackAsLoan(source, offer, 'loan-tz', local);
+    final stamp = local.toUtc().toIso8601String();
+    expect(stamp, endsWith('Z'));
+    expect(result, contains('"clocked": (("$stamp", none),)'));
+    expect(result, isNot(contains('T21:51:31.921"')));
+  });
+
   test('Russian loan preserves the note and scans as a running task', () async {
     const source = '$header$ru\n\nAfter.\n';
     const mentions = EnrichMentions(
