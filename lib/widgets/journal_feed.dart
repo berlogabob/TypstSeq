@@ -5,6 +5,7 @@ import 'package:material_ui/material_ui.dart';
 
 import 'app_icons.dart';
 import '../models.dart';
+import '../processing_jobs.dart';
 import '../rich_editor.dart';
 import '../vault.dart';
 import 'date_format.dart';
@@ -24,6 +25,7 @@ class JournalFeed extends StatefulWidget {
     this.onAtomTap,
     this.onSetStatus,
     this.onSetField,
+    this.processingJobs,
   });
 
   final Future<void> Function(TaskRef, String)? onSetStatus;
@@ -33,6 +35,7 @@ class JournalFeed extends StatefulWidget {
   final VaultIndex? index;
   final ValueChanged<String> onOpenPath;
   final ValueChanged<String>? onAtomTap;
+  final ProcessingJobs? processingJobs;
 
   /// Note kind behind a `#tylog.ref-note` target, for the chip icon. Supplied by
   /// the shell so it can use the retained [LinkResolver] — this used to be
@@ -376,12 +379,62 @@ class _JournalFeedState extends State<JournalFeed> {
                       );
                     },
                   ),
+                  if (widget.processingJobs case final jobs?)
+                    ListenableBuilder(
+                      listenable: jobs,
+                      builder: (context, _) => AnimatedSize(
+                        duration: kMotionDock,
+                        alignment: Alignment.topCenter,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            for (final job in jobs.jobs.where(
+                              (job) =>
+                                  job.kind == 'articles' &&
+                                  job.failed &&
+                                  job.text('origin') == day.path,
+                            ))
+                              _failedArticleRow(context, jobs, job),
+                          ],
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
           ),
         );
       },
+    );
+  }
+
+  Widget _failedArticleRow(
+    BuildContext context,
+    ProcessingJobs jobs,
+    ProcessingJob job,
+  ) {
+    final url = job.text('url') ?? '';
+    final host = Uri.tryParse(url)?.host.replaceFirst(RegExp(r'^www\.'), '');
+    final color = Theme.of(context).colorScheme.onSurfaceVariant;
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            "couldn't save ${host == null || host.isEmpty ? url : host}: ${job.failureReason ?? 'unknown error'}",
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: color),
+          ),
+        ),
+        TextButton(
+          onPressed: () async {
+            await jobs.retry(job);
+            await jobs.refresh(jobs.storage);
+          },
+          style: TextButton.styleFrom(foregroundColor: color),
+          child: const Text('Retry'),
+        ),
+      ],
     );
   }
 }

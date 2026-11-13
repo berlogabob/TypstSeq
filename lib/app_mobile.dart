@@ -2465,6 +2465,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ),
       ),
       'journal' => JournalFeed(
+        processingJobs: _processingJobs,
         onSetStatus: _setTaskStatus,
         onSetField: _setTaskField,
         events: workspace.calendar
