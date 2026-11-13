@@ -5,6 +5,21 @@ their history is in the commit log and the GitHub release notes.
 
 ## Unreleased
 
+## 0.24.1+176
+
+### New
+
+- Links that could not be saved are visible. Processing lists them with the reason (and the HTTP status and a short message when the site gave one) and a Retry button. The journal and the Today page show a muted "couldn't save <site>: <reason>" line with Retry under the link.
+- Reddit posts can be saved: the title, text, link and top comments are read from the post. If Reddit blocks the request the job says so instead of failing silently.
+
+### Fixed
+
+- Task lines no longer show a gap when the text wraps onto a second line.
+
+### Changed
+
+- Vault maintenance scripts for finding and cleaning junk articles.
+
 ## 0.24.0+175
 
 ### New
