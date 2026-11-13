@@ -25,6 +25,10 @@ def _unquote(s: str) -> str:
     return re.sub(r"\\(.)", r"\1", s)
 
 
+def _escape_typst_markup(s: str) -> str:
+    return "".join("\\" + char if char in r"[]#*_$@<>`~" else char for char in s)
+
+
 def _field(header: str, key: str) -> str | None:
     m = re.search(rf'(?m)^\s*{re.escape(key)}:\s*"((?:\\.|[^"\\])*)"', header)
     return _unquote(m.group(1)) if m else None
@@ -354,7 +358,7 @@ def apply_plan(vault, plan_file, backup, manifest, apply=False):
             if step["action"]=="append":
                 srcnote=parse_note(src); targetnote=parse_note(target)
                 date=dt.date.today().isoformat(); tags=re.search(r'(?m)^\s*tags:.*$',srcnote["header"]); aliases=re.search(r'(?m)^\s*aliases:.*$',srcnote["header"]); props=re.search(r'(?m)^\s*properties:.*$',srcnote["header"])
-                extra=f"\n// merged from {step['path']} id {step['id']} tags {tags.group(0).strip() if tags else '()'} aliases {aliases.group(0).strip() if aliases else '()'} properties {props.group(0).strip() if props else '(:)'}\n== Merged from {srcnote['title']} ({date})\n"+srcnote["body"]
+                extra=f"\n// merged from {step['path']} id {step['id']} tags {tags.group(0).strip() if tags else '()'} aliases {aliases.group(0).strip() if aliases else '()'} properties {props.group(0).strip() if props else '(:)'}\n== Merged from {_escape_typst_markup(srcnote['title'])} ({date})\n"+srcnote["body"]
                 atomic_write(target,targetnote["text"]+extra)
             mapping[step["id"]]=group["target"]["id"]
             src.unlink()

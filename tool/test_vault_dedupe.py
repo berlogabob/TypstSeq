@@ -1,5 +1,6 @@
 """Temporary-vault tests for vault_dedupe."""
 import hashlib
+import datetime as dt
 import json
 import os
 import sys
@@ -109,3 +110,15 @@ def test_junk_title_replaced_from_removed_duplicate(tmp_path, monkeypatch):
     assert not (vault / "b.typ").exists()
     assert 'title: "A Real Title: Quotes"' in text and "\n= A Real Title: Quotes\n" in text
     assert (tmp_path / "bk" / "a.typ").exists()
+
+
+def test_apply_plan_escapes_merged_title(tmp_path, monkeypatch):
+    monkeypatch.setenv("VAULT_DEDUPE_SKIP_APP_CHECK", "1")
+    vault = tmp_path / "v"; vault.mkdir()
+    put(vault, "target.typ", note("target", "Target", "project"))
+    put(vault, "source.typ", note("source", "Storyboarding]] in [[Blender", "note", body="merged\n"))
+    plan = {"groups": [{"target": {"path": "target.typ", "id": "target"}, "steps": [{"action": "append", "path": "source.typ", "id": "source", "sha256": vd._sha(vault / "source.typ")}]}]}
+    pp = tmp_path / "plan.json"; pp.write_text(json.dumps(plan))
+    vd.apply_plan(vault, pp, tmp_path / "backup", tmp_path / "manifest", True)
+    text = (vault / "target.typ").read_text()
+    assert r"== Merged from Storyboarding\]\] in \[\[Blender (" + dt.date.today().isoformat() + ")" in text.splitlines()
