@@ -1212,7 +1212,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor>
                 kEditorInset,
                 widget.controller.document.blocks.isNotEmpty
                     ? math.max(
-                        18.0,
+                        kEditorInset,
                         (widget.controller.taskStripHeights[widget
                                     .controller
                                     .document
@@ -1228,7 +1228,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor>
                                     .id] ??
                                 0),
                       )
-                    : 18,
+                    : kEditorInset,
               ),
             )
           // The windowed field has no decorator: InputDecorator asks for a
