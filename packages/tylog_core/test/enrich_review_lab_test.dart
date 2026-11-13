@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:test/test.dart';
 import 'package:tylog_core/tylog_core.dart';
+import 'package:tylog_core/src/enrich_alias.dart';
 
 // Fixture from the P30 report of 2026-11-12: three lab lines, two loan hints.
 void main() {
@@ -123,6 +124,70 @@ void main() {
       'TL-0202',
     });
     expect(r.loans, isEmpty);
+  });
+
+  test('unit suffix variants identify existing units', () {
+    for (final suffix in [
+      'unit 1',
+      '1',
+      '#1',
+      '№1',
+      'no 1',
+      'no. 1',
+      'nº 1',
+      'n.º 1',
+      'n1',
+      'num 1',
+      'num1',
+      'number 1',
+      'номер 1',
+      '[1]',
+      '(1)',
+      'first',
+      'primeiro',
+      'первого',
+    ]) {
+      final r = resolveLines(['Quest 3 $suffix']);
+      expect(equipmentOf(r).single.target?.id, 'TL-0201', reason: suffix);
+    }
+    for (final suffix in ['unit 2', 'second', 'segundo', 'второй']) {
+      expect(
+        equipmentOf(resolveLines(['Quest 3 $suffix'])).single.target?.id,
+        'TL-0202',
+        reason: suffix,
+      );
+    }
+    expect(equipmentOf(resolveLines(['Quest 3 3'])), isEmpty);
+  });
+
+  test('ordinals and metadata units work for all five numbers', () {
+    final notes = [
+      for (var i = 1; i <= 5; i++)
+        NoteRef(
+          id: 'u$i',
+          path: 'u$i.typ',
+          title: 'Camera unit $i',
+          kind: 'equipment',
+          outgoingLinks: const [],
+          properties: {'item': 'Camera', 'unit': i},
+          aliases: ['Photo device'],
+        ),
+    ];
+    final index = EnrichAliasIndex.build(notes);
+    final forms = [
+      ['first', 'primeiro', 'первый', 'первого'],
+      ['second', 'segundo', 'второй', 'второго'],
+      ['third', 'terceiro', 'третий', 'третьего'],
+      ['fourth', 'quarto', 'четвёртый', 'четвертого'],
+      ['fifth', 'quinto', 'пятый', 'пятого'],
+    ];
+    for (var i = 0; i < forms.length; i++) {
+      for (final form in forms[i]) {
+        expect(index.scan('Photo device $form').single.ids, [
+          'u${i + 1}',
+        ], reason: form);
+      }
+    }
   });
 
   test('an LLM-only exact equipment match chooses only exact matches', () {

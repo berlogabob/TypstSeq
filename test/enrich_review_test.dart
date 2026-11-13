@@ -188,12 +188,12 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('enrich-row-1-Quest 3')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
-    expect(find.text('QUEST 3 [1] \u00b7 yellow'), findsOneWidget);
-    expect(find.text('QUEST 3 [2] \u00b7 blue'), findsOneWidget);
+    expect(find.text('QUEST 3 unit 1 \u00b7 yellow'), findsOneWidget);
+    expect(find.text('QUEST 3 unit 2 \u00b7 blue'), findsOneWidget);
     expect(find.text('Charlie'), findsNothing);
     expect(find.text('Other page…'), findsNothing);
     expect(find.text('New page'), findsNothing);
-    await tester.tap(find.text('QUEST 3 [2] \u00b7 blue'));
+    await tester.tap(find.text('QUEST 3 unit 2 \u00b7 blue'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     expect(accepted, q2);

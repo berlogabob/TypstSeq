@@ -43,9 +43,12 @@ void main() {
     expect(card.rows.map((r) => r.surface), ['Angela']);
   });
   test('enrichTargetLabel appends a string color', () {
-    expect(enrichTargetLabel('QUEST 3 [1]', 'yellow'), 'QUEST 3 [1] · yellow');
-    expect(enrichTargetLabel('QUEST 3 [1]', null), 'QUEST 3 [1]');
-    expect(enrichTargetLabel('QUEST 3 [1]', 42), 'QUEST 3 [1]');
+    expect(
+      enrichTargetLabel('QUEST 3 [1]', 'yellow'),
+      'QUEST 3 unit 1 · yellow',
+    );
+    expect(enrichTargetLabel('QUEST 3 [1]', null), 'QUEST 3 unit 1');
+    expect(enrichTargetLabel('QUEST 3 [1]', 42), 'QUEST 3 unit 1');
   });
 
   final dir = Directory('test/fixtures/lab_review');

@@ -2,7 +2,7 @@
 
 #show: tylog.note.with(
   id: "TL-0201",
-  title: "QUEST 3 [1] TL-0201",
+  title: "QUEST 3 unit 1 TL-0201",
   kind: "equipment",
   date: none,
   tags: ("equipment",),
@@ -11,5 +11,5 @@
   properties: (part_of: ("LAB",), status: "good", tag: "TL-0201", item: "Quest 3", color: "yellow", source: "openlabtwin"),
 )
 
-= QUEST 3 [1] TL-0201
+= QUEST 3 unit 1 TL-0201
 

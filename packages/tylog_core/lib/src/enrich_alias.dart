@@ -74,7 +74,11 @@ class _Tok {
 }
 
 List<_Tok> _tokens(String text) => [
-  for (final m in RegExp(r'[\p{L}\p{N}]+', unicode: true).allMatches(text))
+  for (final m in RegExp(
+    r'n\.[º°]\.?|[\p{L}\p{N}]+',
+    unicode: true,
+    caseSensitive: false,
+  ).allMatches(text))
     // "no", "num", "nº" fold to nothing: they are unit-number markers.
     if (enrichEquipmentKey(m[0]!) case final key when key.isNotEmpty)
       _Tok(key, m.start, m.end),
@@ -147,13 +151,52 @@ class EnrichAliasIndex {
       for (final name in note.aliases) {
         final toks = _tokens(name);
         if (toks.any((t) => _colourClass(t.key) != null)) continue;
-        if (toks.length > 1 && RegExp(r'^\d+$').hasMatch(toks.last.key)) {
+        if (toks.length > 1 &&
+            RegExp(r'^\d+$').hasMatch(toks.last.key) &&
+            (item is! String ||
+                enrichEquipmentKey(name) != enrichEquipmentKey(item))) {
           toks.removeLast();
         }
         if (toks.isNotEmpty) bases.add(toks);
       }
+      final itemKey = item is String ? enrichEquipmentKey(item) : '';
+      final property = note.properties['unit'];
+      var unit = int.tryParse('$property');
+      if (unit == null) {
+        for (final name in [note.title, ...note.aliases]) {
+          final withoutTag = name.replaceFirst(
+            RegExp('\\s+${RegExp.escape(note.id)}\$'),
+            '',
+          );
+          final key = enrichEquipmentKey(withoutTag);
+          if (itemKey.isNotEmpty && key.startsWith(itemKey)) {
+            unit = int.tryParse(key.substring(itemKey.length));
+          } else if (name != note.id) {
+            final match = RegExp(
+              r'(?:\bunit\s*|[\[\(#№]\s*|\b(?:no\.?|n[.º°]?|num)\s*|\s+)(\d+)\s*[\])]?$',
+              caseSensitive: false,
+            ).firstMatch(withoutTag);
+            unit = int.tryParse(match?[1] ?? '');
+          }
+          if (unit != null) break;
+        }
+      }
+      if (unit != null) {
+        final title = note.title.replaceFirst(
+          RegExp('\\s+${RegExp.escape(note.id)}\$'),
+          '',
+        );
+        final titleTokens = _tokens(title);
+        if (titleTokens.length > 1 &&
+            titleTokens.last.key == '$unit' &&
+            (item is! String || enrichEquipmentKey(title) != itemKey)) {
+          titleTokens.removeLast();
+          bases.add(titleTokens);
+        }
+      }
       for (final base in bases) {
         if (base.isEmpty) continue;
+        if (unit != null) add([...words(base), _Elem.word('$unit')], note.id);
         add(words(base), note.id, specific: false);
         if (base.last.key.length >= 4 &&
             !RegExp(r'^\d+$').hasMatch(base.last.key)) {
@@ -199,6 +242,12 @@ class EnrichAliasIndex {
           for (var k = 0; k < elems.length && ok; k++) {
             ok = elems[k].matches(toks[s + k].key);
           }
+          if (ok &&
+              s + elems.length < toks.length &&
+              RegExp(r'^\d+$').hasMatch(toks[s + elems.length].key) &&
+              !specific) {
+            continue;
+          }
           if (ok) found.add((s, s + elems.length, ids));
         }
       }
@@ -222,8 +271,9 @@ class EnrichAliasIndex {
         var end = toks[h.$2 - 1].end;
         final start = toks[h.$1].start;
         if (end < line.length &&
-            line[end] == ']' &&
-            line.substring(start, end).contains('[')) {
+            (line[end] == ']' || line[end] == ')') &&
+            (line.substring(start, end).contains('[') ||
+                line.substring(start, end).contains('('))) {
           end++;
         }
         hits.add(

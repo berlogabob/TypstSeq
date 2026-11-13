@@ -5,8 +5,13 @@ import 'scanner.dart' show locateTypstCalls, taskField;
 
 enum EnrichRowState { linked, willLink, ambiguous, propose }
 
-String enrichTargetLabel(String shortTitle, Object? color) =>
-    color is String && color.isNotEmpty ? '$shortTitle · $color' : shortTitle;
+String enrichTargetLabel(String shortTitle, Object? color) {
+  final title = shortTitle.replaceFirstMapped(
+    RegExp(r'\s+\[(\d+)\](?=\s|$)'),
+    (m) => ' unit ${m[1]}',
+  );
+  return color is String && color.isNotEmpty ? '$title · $color' : title;
+}
 
 class EnrichCardRow {
   const EnrichCardRow({

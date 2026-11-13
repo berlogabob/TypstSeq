@@ -91,18 +91,39 @@ String enrichKey(String s) => unorm
     .replaceAll(RegExp(r'[^\p{L}\p{N}]', unicode: true), '');
 
 /// Normalizes equipment names while ignoring unit-number markers.
-String enrichEquipmentKey(String s) => unorm
-    .nfd(s)
-    .replaceAll(RegExp(r'\p{M}', unicode: true), '')
-    .toLowerCase()
-    .replaceAll(
+String enrichEquipmentKey(String s) {
+  var value = unorm
+      .nfd(s)
+      .replaceAll(RegExp(r'\p{M}', unicode: true), '')
+      .toLowerCase();
+  const ordinals = {
+    '1': r'first|primeir[oa]s?|перв(?:ыи|ого|ому|ым|ом|ая|ои|ую|ое|ые|ых|ыми)',
+    '2': r'second|segund[oa]s?|втор(?:ои|ого|ому|ым|ом|ая|ую|ое|ые|ых|ыми)',
+    '3':
+        r'third|terceir[oa]s?|трет(?:ии|ьего|ьему|ьим|ьем|ья|ью|ье|ьи|ьих|ьими)',
+    '4':
+        r'fourth|quart[oa]s?|четверт(?:ыи|ого|ому|ым|ом|ая|ои|ую|ое|ые|ых|ыми)',
+    '5': r'fifth|quint[oa]s?|пят(?:ыи|ого|ому|ым|ом|ая|ои|ую|ое|ые|ых|ыми)',
+  };
+  for (final entry in ordinals.entries) {
+    value = value.replaceAll(
       RegExp(
-        r'(?<![\p{L}\p{N}])(?:number|номер|num|nº|n°|no|nr|№|#)\.?(?=$|[^\p{L}\p{N}]|\p{N})',
+        '(?<![\\p{L}\\p{N}])(?:${entry.value})(?![\\p{L}\\p{N}])',
         unicode: true,
       ),
-      '',
-    )
-    .replaceAll(RegExp(r'[^\p{L}\p{N}]', unicode: true), '');
+      entry.key,
+    );
+  }
+  return value
+      .replaceAll(
+        RegExp(
+          r'(?<![\p{L}\p{N}])(?:unit|number|номер|num|no|nr|n\.?[°º]?|№|#)\.?(?=$|[^\p{L}\p{N}]|\p{N})',
+          unicode: true,
+        ),
+        '',
+      )
+      .replaceAll(RegExp(r'[^\p{L}\p{N}]', unicode: true), '');
+}
 
 class EnrichMention {
   const EnrichMention({

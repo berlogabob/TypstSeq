@@ -105,7 +105,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('QUEST 3 [1] · yellow'), findsOneWidget);
+      expect(find.text('QUEST 3 unit 1 · yellow'), findsOneWidget);
 
       final rowSizes = [
         tester
@@ -124,7 +124,7 @@ void main() {
         const ValueKey('enrich-row-1-QUEST 3 [1]'),
       );
       expect(
-        tester.getTopLeft(find.text('QUEST 3 [1] · yellow')).dy,
+        tester.getTopLeft(find.text('QUEST 3 unit 1 · yellow')).dy,
         greaterThan(tester.getTopLeft(equipmentRow).dy),
       );
       final rows =
@@ -150,6 +150,19 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+  test('equipment short target retains unit and omits the tag', () {
+    const target = NoteRef(
+      id: 'TL-0102',
+      path: 'item.typ',
+      title: 'QUEST 3 unit 1 TL-0102',
+      kind: 'equipment',
+      outgoingLinks: [],
+      properties: {'item': 'Quest 3'},
+    );
+    expect(enrichShortTarget('yellow Quest 3', target), 'unit 1');
+    expect(enrichShortTarget('headset', target), 'QUEST 3 unit 1');
+  });
+
   test('short target removes the repeated item name', () {
     const target = NoteRef(
       id: 'TL-0102',

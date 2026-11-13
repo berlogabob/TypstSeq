@@ -704,7 +704,12 @@ class _EnrichReviewState extends State<EnrichReview> {
                             title: Text(
                               decision.choose
                                   ? enrichTargetLabel(
-                                      page.title,
+                                      page.title.replaceFirst(
+                                        RegExp(
+                                          '\\s+${RegExp.escape(page.id)}\$',
+                                        ),
+                                        '',
+                                      ),
                                       page.properties['color'],
                                     )
                                   : page.title,
@@ -788,6 +793,22 @@ class _EnrichReviewState extends State<EnrichReview> {
 /// TL-0102" for "ESP32 DevKit" is just "TL-0102".
 String enrichShortTarget(String surface, NoteRef target) {
   final title = target.title;
+  final item = target.properties['item'];
+  final shortTitle = title.replaceFirst(
+    RegExp('\\s+${RegExp.escape(target.id)}\$'),
+    '',
+  );
+  if (target.kind == 'equipment' &&
+      item is String &&
+      surface.toLowerCase().contains(item.toLowerCase()) &&
+      shortTitle.toLowerCase().startsWith(item.toLowerCase())) {
+    final suffix = shortTitle.substring(item.length).trim();
+    final unit = RegExp(
+      r'^(?:unit\s+(\d+)|\[(\d+)\])$',
+      caseSensitive: false,
+    ).firstMatch(suffix);
+    if (unit != null) return 'unit ${unit[1] ?? unit[2]}';
+  }
   if (title.endsWith(' ${target.id}')) {
     final head = title.substring(0, title.length - target.id.length).trim();
     if (head.toLowerCase() == surface.toLowerCase() ||
@@ -796,5 +817,5 @@ String enrichShortTarget(String surface, NoteRef target) {
       return target.id;
     }
   }
-  return title;
+  return target.kind == 'equipment' ? shortTitle : title;
 }
