@@ -1973,14 +1973,15 @@ class TyLogEditingController extends TextEditingController {
                 part.text.isNotEmpty;
             final leading = reserveText ? part.text.characters.first.length : 0;
             if (reserveText) {
-              // Leading splits above and below the baseline, so reserve twice the strip height.
+              // Proportional leading puts about 78% above the baseline.
               addText(
                 part.text.substring(0, leading),
                 global,
                 partStyle.copyWith(
+                  leadingDistribution: TextLeadingDistribution.proportional,
                   height:
                       (partStyle.height ?? 1.55) +
-                      2 * stripHeight / (partStyle.fontSize ?? 16),
+                      stripHeight / (0.78 * (partStyle.fontSize ?? 16)),
                 ),
                 withComposing ? value.composing : TextRange.empty,
               );
