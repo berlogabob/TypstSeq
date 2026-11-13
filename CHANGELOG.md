@@ -5,6 +5,33 @@ their history is in the commit log and the GitHub release notes.
 
 ## Unreleased
 
+## 0.24.0+175
+
+### New
+
+- Lab loans in plain sentences. Write "student 20239876 took QUEST 3 [2] home until Friday" in the day note and the review shows one card per line. "Track as loan" turns the line into a task with a running clock, shown as "out 1 h" with its due date, and "Returned" closes it.
+- Return dates come from phrases ("until Friday", "weekend" means next Monday) in English, Portuguese and Russian.
+- A warning appears before you lend something that is already out.
+- Each piece of equipment keeps a loan history with totals: hours out, loans by purpose and who borrowed it. `tylog loans` prints the same from the command line without touching the vault.
+- Unit numbers need no brackets: write "Quest 3 unit 1", "Quest 3 1" or "first Quest 3" (also "#1", "№1", "no. 1", Portuguese and Russian ordinals). The printed label form "QUEST 3 [1]" still works.
+- Equipment is found by name, alias and colour, so "the yellow Quest 3" finds the right unit. When two units fit, a "Which one?" chooser asks.
+- Review: "Skip line" hides a line you do not want suggestions for. "Accept all" counts only the cards you can see.
+
+Loans need an equipment catalogue in the vault: notes of kind `equipment`. The app does not create them.
+
+### Changed
+
+- The review sheet opens at full height and scrolls as one page, with no empty day headers.
+- Enrichment prompts are smaller and cached, so reviews are faster.
+- A loan is not a work timer: the work-timer bar ignores loans, and a loan and a task can run at the same time.
+
+### Fixed
+
+- A nickname you choose once for a person ("Зак", also "Заку", "Заком") is remembered, and a hand-written alias works the same.
+- Names match whole words only: a note called "Закупка на 2019" is no longer offered for "Заку". Real inflections ("Андрея" for "Андрей") still match.
+- Task cards show clean task text and add the person as an assignee without changing the task.
+- Loan start times are stored in UTC like every other clock, so durations are right outside the UTC timezone.
+
 ## 0.23.3+174
 
 ### Changed
