@@ -530,8 +530,16 @@ class EnrichMemory {
     for (final (i, id) in entities.keys.indexed) id: i,
   };
 
-  bool isRejected(String surface, String entity) =>
-      _rejected.contains('${enrichKey(surface)}\n$entity');
+  bool isRejected(String surface, String entity) {
+    final key = enrichKey(surface);
+    if (_rejected.contains('$key\n$entity')) return true;
+    if (entities[entity]?.kind != 'person') return false;
+    return _rejected.any((pair) {
+      final split = pair.indexOf('\n');
+      return pair.substring(split + 1) == entity &&
+          _sameStem(pair.substring(0, split), key);
+    });
+  }
 
   int acceptedCount(String surface, String entity) =>
       _accepted[enrichKey(surface)]?[entity] ?? 0;
@@ -618,6 +626,10 @@ List<(NoteRef, bool)> _candidates(EnrichMention mention, EnrichMemory memory) {
         ...?memory._nameIndex[key.substring(0, math.min(3, key.length))],
     for (final key in keys) ...?memory._nameIndex['w$key'],
     ...?memory._accepted[surfaceKey]?.keys,
+    for (final entry in memory._accepted.entries)
+      if (_sameStem(entry.key, surfaceKey))
+        for (final id in entry.value.keys)
+          if (memory.entities[id]?.kind == 'person') id,
   };
   final pool = [for (final id in ids) ?memory.entities[id]]
     ..sort(
@@ -699,7 +711,16 @@ bool? _match(
               _sameStem(name, key),
         ),
       );
-  return prefix || (memory._accepted[surfaceKey]?[entity.id] ?? 0) > 0
+  final learned =
+      entity.kind == 'person' &&
+      memory._accepted.entries.any(
+        (entry) =>
+            entry.value.containsKey(entity.id) &&
+            _sameStem(entry.key, surfaceKey),
+      );
+  return prefix ||
+          learned ||
+          (memory._accepted[surfaceKey]?[entity.id] ?? 0) > 0
       ? exact
       : null;
 }
@@ -707,7 +728,7 @@ bool? _match(
 /// Russian case forms of one name: "Настей", "Насте" ~ "Настя". Only finds
 /// a candidate (review), never proves one.
 bool _sameStem(String a, String b) {
-  if (a.length < 4 || b.length < 4) return false;
+  if (a.length < 3 || b.length < 3) return false;
   var i = 0;
   while (i < a.length && i < b.length && a[i] == b[i]) {
     i++;

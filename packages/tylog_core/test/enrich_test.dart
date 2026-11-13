@@ -47,6 +47,82 @@ EnrichMentions mentionsOf(
 );
 
 void main() {
+  group('learned person nicknames', () {
+    final person = entity('zak', 'Андрей Олегович Закатаны');
+    final purchase = entity(
+      'purchase',
+      'Закупка на 2019 для Ивана',
+      kind: 'note',
+    );
+    final index = indexOf([person, purchase]);
+    EnrichDecision resolve(String surface, EnrichMemory memory) =>
+        resolveMentions(
+          mentionsOf([
+            EnrichMention(surface: surface, type: 'person', line: 1),
+          ]),
+          day('2026-11-04'),
+          memory,
+        ).single;
+    const forms = ['Зак', 'Зака', 'Заку', 'Заком', 'Заке'];
+    const accept = EnrichFeedback(
+      surface: 'Заку',
+      entity: 'zak',
+      accepted: true,
+      note: 'd',
+      at: 't',
+    );
+
+    test('an unknown nickname proposes a person', () {
+      final result = resolve('Заку', EnrichMemory.build(index));
+      expect(result.status, EnrichStatus.propose);
+      expect(result.candidates, isEmpty);
+    });
+    test('a manual alias matches the case forms', () {
+      final memory = EnrichMemory.build(
+        indexOf([
+          entity('zak', person.title, aliases: ['Зак']),
+          purchase,
+        ]),
+      );
+      for (final form in forms) {
+        expect(resolve(form, memory).target?.id, 'zak', reason: form);
+      }
+      expect(resolve('Закон', memory).target, isNull);
+      expect(resolve('Закупка', memory).target?.id, isNot('zak'));
+    });
+    test('an accepted ledger choice matches case forms', () {
+      final memory = EnrichMemory.build(
+        index,
+        EnrichFeedback.parseLedger(
+          '{"decision":"accept","surface":"Заку","entity":"zak"}',
+        ),
+      );
+      for (final form in forms) {
+        expect(resolve(form, memory).target?.id, 'zak', reason: form);
+      }
+      expect(resolve('Закон', memory).target, isNull);
+      expect(resolve('Закупка', memory).target?.id, isNot('zak'));
+    });
+    test('a rejection suppresses other case forms', () {
+      final memory = EnrichMemory.build(index, [
+        accept,
+        const EnrichFeedback(
+          surface: 'Зака',
+          entity: 'zak',
+          accepted: false,
+          note: 'd',
+          at: 't',
+        ),
+      ]);
+      for (final form in forms) {
+        expect(
+          resolve(form, memory).candidates.map((c) => c.note.id),
+          isNot(contains('zak')),
+          reason: form,
+        );
+      }
+    });
+  });
   test('Russian name endings match but arbitrary suffixes do not', () {
     final memory = EnrichMemory.build(indexOf([entity('andrey', 'Андрей')]));
     EnrichDecision resolve(String surface) => resolveMentions(
