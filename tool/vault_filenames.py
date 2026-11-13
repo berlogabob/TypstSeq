@@ -146,6 +146,34 @@ def plan(vault):
     return plan_with_skips(vault)[0]
 
 
+def plan_targets(vault, wanted, max_chars=80):
+    """Plan explicit old-relative-path -> desired-stem moves with normal collisions."""
+    vault = Path(vault)
+    paths = sorted(_walk(vault), key=lambda p: p.relative_to(vault).as_posix())
+    existing = {(p.parent, _key(p.name)) for p in paths}
+    reserved = set()
+    rows = []
+    for old, stem in wanted.items():
+        src = vault / old
+        if not src.is_file():
+            continue
+        stem = clean_stem(stem, max_chars)
+        base = stem
+        target = stem + src.suffix
+        n = 2
+        while ((src.parent, _key(target)) in existing and _key(target) != _key(src.name)) or (src.parent, _key(target)) in reserved:
+            counter = f" {n}"
+            stem = _cut(base, max_chars - len(counter)).rstrip(TRIM_END) + counter
+            target = stem + src.suffix
+            n += 1
+        rel = (src.parent.relative_to(vault) / target).as_posix()
+        if rel == old or (unicodedata.normalize("NFC", src.name) == src.name and _key(target) == _key(src.name) and target != src.name):
+            continue
+        rows.append({"old": old, "new": rel, "rules": ["collision"] if stem != base else []})
+        reserved.add((src.parent, _key(target)))
+    return rows
+
+
 def _sha(path): return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
@@ -308,6 +336,7 @@ def revert(manifest, vault, apply=False):
         actions.append(("rename", src, dst, item))
     for item in reversed(doc.get("ref_moves", [])): actions.append(("move", vault / item["new"], vault / item["old"], item))
     for item in reversed(doc.get("ref_edits", [])): actions.append(("copy", Path(doc.get("backup", "")) / item["backup"], vault / item["file"], item))
+    for item in reversed(doc.get("creates", [])): actions.append(("delete", vault / item["path"], None, item))
     if apply: require_app_closed()
     done = 0
     for kind, src, dst, item in actions:
@@ -315,6 +344,9 @@ def revert(manifest, vault, apply=False):
             if not src.exists() or (dst.exists() and not os.path.samefile(src, dst)): continue
             if kind == "rename" and _sha(src) != item["sha256"]: continue
             if apply: dst.parent.mkdir(parents=True, exist_ok=True); os.rename(src, dst)
+        elif kind == "delete":
+            if not src.exists() or not src.is_file() or _sha(src) != item["sha256"]: continue
+            if apply: src.unlink()
         else:
             if not src.exists(): continue
             if apply:
