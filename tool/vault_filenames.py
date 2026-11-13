@@ -337,10 +337,17 @@ def revert(manifest, vault, apply=False):
     for item in reversed(doc.get("ref_moves", [])): actions.append(("move", vault / item["new"], vault / item["old"], item))
     for item in reversed(doc.get("ref_edits", [])): actions.append(("copy", Path(doc.get("backup", "")) / item["backup"], vault / item["file"], item))
     for item in reversed(doc.get("creates", [])): actions.append(("delete", vault / item["path"], None, item))
+    for item in reversed(doc.get("asset_moves", [])): actions.append(("asset", Path(doc.get("backup", "")) / item["from_backup"], vault / item["to"], item))
+    ledger_lines = doc.get("ledger_lines", [])
     if apply: require_app_closed()
     done = 0
     for kind, src, dst, item in actions:
-        if kind in ("rename", "move"):
+        if kind == "asset":
+            if not src.exists() or dst.exists(): continue
+            if apply:
+                import shutil
+                dst.parent.mkdir(parents=True, exist_ok=True); shutil.copytree(src, dst)
+        elif kind in ("rename", "move"):
             if not src.exists() or (dst.exists() and not os.path.samefile(src, dst)): continue
             if kind == "rename" and _sha(src) != item["sha256"]: continue
             if apply: dst.parent.mkdir(parents=True, exist_ok=True); os.rename(src, dst)
@@ -353,6 +360,16 @@ def revert(manifest, vault, apply=False):
                 import shutil
                 dst.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(src, dst)
         done += 1
+    ledger = Path(doc["ledger"]) if doc.get("ledger") else None
+    if ledger and ledger.exists() and ledger_lines:
+        raw = ledger.read_bytes(); lines = raw.splitlines(keepends=True)
+        remove = set(ledger_lines)
+        kept = [line for line in lines if line.decode("utf-8", "replace").rstrip("\r\n") not in remove]
+        if len(kept) != len(lines):
+            if apply: atomic_write(ledger, b"".join(kept).decode("utf-8"))
+            done += 1
+        if apply and not doc.get("ledger_existed", True) and not kept:
+            ledger.unlink(missing_ok=True)
     return {"planned": len(actions), "completed": done if apply else 0, "would_revert": done if not apply else 0}
 
 

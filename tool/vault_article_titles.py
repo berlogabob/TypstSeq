@@ -147,12 +147,97 @@ def collect(vault, chat=None, max_model_calls=200, no_model=False):
         shared=distinct and len(groups[vd.fold_title(n["title"])])>1
         new,method=choose(n,host,shared,chat,budget) if generic or shared else (n["title"],"unresolved")
         rel=n["path"].relative_to(vault).as_posix(); props=n["properties"]
-        prefix=re.match(r"^([A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}) - ",n["path"].stem)
-        filehost=prefix.group(1) if prefix else host
-        stembase=n["path"].stem[len(prefix.group(0)):] if prefix else n["path"].stem
-        desired=vf.clean_stem(f"{filehost} - {new}" if prefix else f"{host} - {new}") if new!=n["title"] else stembase
-        rows.append({"file":rel,"title":n["title"],"new_title":new,"method":method,"host":host,"wanted_stem":desired,"rated_or_read":bool(props.get("rating") is not None or props.get("status","") not in {"unread","processed",""})})
+        rows.append(make_row(n, vault, rel, new, method, host))
     return rows,budget[1]
+
+
+def make_row(note, vault, rel, new, method, host):
+    prefix=re.match(r"^([A-Za-z0-9][A-Za-z0-9.-]*\.[A-Za-z]{2,}) - ",note["path"].stem)
+    filehost=prefix.group(1) if prefix else host
+    stembase=note["path"].stem[len(prefix.group(0)):] if prefix else note["path"].stem
+    desired=vf.clean_stem(f"{filehost} - {new}" if prefix else f"{host} - {new}") if new!=note["title"] else stembase
+    props=note["properties"]
+    return {"file":rel,"title":note["title"],"new_title":new,"method":method,"host":host,"wanted_stem":desired,"rated_or_read":bool(props.get("rating") is not None or props.get("status","") not in {"unread","processed",""})}
+
+
+def script_of(text):
+    letters=[c for c in text if c.isalpha()]
+    return "cyrillic" if letters and sum("\u0400" <= c <= "\u052f" for c in letters)/len(letters) > .30 else "latin"
+
+
+def source_text(body):
+    lines=body.splitlines()
+    start=next((i+1 for i,x in enumerate(lines) if x.strip().startswith("#line(length: 100%)")),None)
+    if start is None: text=""
+    else:
+        lines=lines[start:]
+        end=next((i for i,x in enumerate(lines) if "// tylog:auto-related" in x),len(lines))
+        text="\n".join(lines[:end])
+    text=re.sub(r'#link\s*\([^)]*\)\s*\[([^]]*)\]',r'\1',text)
+    text=re.sub(r'#(?:strong|emph)\s*\[([^]]*)\]',r'\1',text)
+    text=re.sub(r'#(?:image|line|quote)\s*\([^)]*\)(?:\[[^]]*\])?', ' ',text)
+    text=unescape(text)
+    text=re.sub(r'(?m)^\s*=+\s*[^\n]*$',' ',text)
+    text=re.sub(r'[#*`]', '', text)
+    text=" ".join(text.split())[:1500]
+    if len(text)<80: text=summary_text(body)
+    return text[:1500]
+
+
+def parse_model_json(reply):
+    try: return json.loads(reply)
+    except (ValueError,TypeError):
+        m=re.search(r'\{[^{}]*"title"\s*:\s*"(?:\\.|[^"\\])*"[^{}]*\}',str(reply),re.S)
+        if not m: raise ValueError("bad JSON")
+        return json.loads(m.group())
+
+
+def model_title(value, original, source, host):
+    value=normalise_title(value,10000).strip().strip("\"'“”‘’«»")
+    value=value.rstrip().removesuffix(".").strip()
+    if len(value)>80:
+        cut=value[:80]
+        candidate=cut.rsplit(" ",1)[0] if " " in cut else ""
+        if len(candidate)<20: raise ValueError("too-long")
+        value=candidate.rstrip(" .,;:-–—")
+    if len(value)<4: raise ValueError("too-short")
+    if is_generic_title(value,host,host_names(host)): raise ValueError("generic")
+    if is_generic_title(original,host,host_names(host)) and value.casefold()==original.casefold(): raise ValueError("original-generic")
+    if SUMMARY_JUNK.search(value): raise ValueError("summary-junk")
+    if len(value)>80: raise ValueError("too-long")
+    expected="cyrillic" if script_of(original)=="cyrillic" or script_of(source)=="cyrillic" else "latin"
+    actual=script_of(value)
+    if expected=="latin" and actual=="cyrillic": raise ValueError("wrong-language")
+    if expected=="cyrillic" and actual=="latin" and len(value.split())>3: raise ValueError("wrong-language")
+    return value
+
+
+def retitle_from_manifest(vault, manifest, plan, chat=None, max_model_calls=300):
+    vault=Path(vault); mdoc=json.loads(Path(manifest).read_text(encoding="utf-8")); rows=json.loads(Path(plan).read_text(encoding="utf-8"))["articles"]
+    mapping={x["old"]:x["new"] for x in mdoc.get("renames",[])}
+    if chat is None:
+        import enrich_worker as ew
+        task,connections=ew.load_task(vault); chat=ew.make_chat(task,connections)
+    out=[]; kept=[]; calls=0
+    for row in rows:
+        if row.get("method")!="offline-summary": continue
+        current=mapping.get(row["file"],row["file"]); p=vault/current
+        try: note=vd.parse_note(p)
+        except Exception as exc:
+            kept.append({"file":current,"reason":f"read-error: {exc}"}); continue
+        if note["title"]!=row["new_title"]:
+            kept.append({"file":current,"reason":"changed-since"}); continue
+        if calls>=max_model_calls:
+            kept.append({"file":current,"reason":"call-cap"}); continue
+        text=source_text(note["body"]); url=note["properties"].get("url",""); host=host_of(note)
+        prompt=f'''Create a concise article title, maximum 80 characters. Write in the ORIGINAL language of the article; infer it from URL host, original title, and source text. The summary may be Russian because of the pipeline; do not let that make the title Russian. No site name, no quotes, no trailing period.\nURL: {url}\nOriginal title: {row["title"]}\nSource text: {text}'''
+        calls+=1
+        try:
+            reply,_,_=chat([{"role":"system","content":"Reply with one JSON object {\"title\": \"...\"} and nothing else."},{"role":"user","content":prompt}])
+            title=model_title(parse_model_json(reply)["title"],row["title"],text,host)
+            out.append(make_row(note,vault,current,title,"model-original-language",host))
+        except Exception as exc: kept.append({"file":current,"reason":str(exc) or "chat-error"})
+    return out,kept,calls
 
 
 def _replacement(text, old, new):
@@ -193,25 +278,34 @@ def apply_plan(vault, rows, backup, manifest):
 
 
 def main(argv=None):
-    ap=argparse.ArgumentParser(); ap.add_argument("vault",nargs="?"); ap.add_argument("--apply",action="store_true"); ap.add_argument("--backup"); ap.add_argument("--manifest"); ap.add_argument("--plan-out"); ap.add_argument("--plan-in"); ap.add_argument("--max-model-calls",type=int,default=200); ap.add_argument("--no-model",action="store_true"); ap.add_argument("--revert",nargs=2,metavar=("MANIFEST","VAULT"))
+    ap=argparse.ArgumentParser(); ap.add_argument("vault",nargs="?"); ap.add_argument("--apply",action="store_true"); ap.add_argument("--backup"); ap.add_argument("--manifest"); ap.add_argument("--plan-out"); ap.add_argument("--plan-in", "--plan", dest="plan_in"); ap.add_argument("--from-manifest"); ap.add_argument("--model",action="store_true"); ap.add_argument("--max-model-calls",type=int,default=200); ap.add_argument("--no-model",action="store_true"); ap.add_argument("--revert",nargs=2,metavar=("MANIFEST","VAULT"))
     a=ap.parse_args(argv)
     if a.revert:
         print(json.dumps(vf.revert(a.revert[0],a.revert[1],a.apply),indent=2)); return 0
-    if a.plan_in:
+    kept=[]
+    if a.from_manifest:
+        if not a.vault or not a.plan_in: ap.error("VAULT and --plan-in PLAN are required with --from-manifest")
+        if not a.model: ap.error("--from-manifest requires --model")
+        rows,kept,calls=retitle_from_manifest(a.vault,a.from_manifest,a.plan_in,max_model_calls=a.max_model_calls)
+    elif a.plan_in:
         doc=json.loads(Path(a.plan_in).read_text()); rows=doc["articles"]; calls=doc.get("model_calls_used",0)
     else:
         if not a.vault: ap.error("VAULT required")
         rows,calls=collect(a.vault,max_model_calls=a.max_model_calls,no_model=a.no_model)
-    if not a.plan_in and a.vault:
+    if not a.plan_in and not a.from_manifest and a.vault:
         targets={r["file"]:r["wanted_stem"] for r in rows if r["new_title"]!=r["title"]}
         moves={x["old"]:x["new"] for x in vf.plan_targets(a.vault,targets)}
         for r in rows: r["new_file"]=moves.get(r["file"],r["file"])
     if a.plan_out: Path(a.plan_out).write_text(json.dumps({"articles":rows,"model_calls_used":calls},ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
-    for r in rows: print(f'{r["title"]} -> {r["new_title"]}  [{r["method"]}]  file: {r["file"]} -> {r.get("new_file",r["file"])}')
+    for r in rows:
+        if a.from_manifest: print(f'{r["title"]} | {r["file"]} -> {r["new_title"]}')
+        else: print(f'{r["title"]} -> {r["new_title"]}  [{r["method"]}]  file: {r["file"]} -> {r.get("new_file",r["file"])}')
+    for r in kept: print(f'kept {r["file"]}: {r["reason"]}')
     counts={k:sum(x["method"]==k for x in rows) for k in ("offline-heading","offline-summary","model","unresolved","kept-shared")}
     shared={}
     for r in rows: shared.setdefault(vd.fold_title(r["new_title"]),[]).append(r)
     print(json.dumps({**counts,"model_calls_used":calls,"planned_renames":sum(x["title"]!=x["new_title"] for x in rows),"remaining_shared_titles":sum(len(x)>1 for x in shared.values())},ensure_ascii=False))
+    if kept: print(json.dumps({"kept":len(kept),"reasons":{k:sum(x["reason"]==k for x in kept) for k in sorted({x["reason"] for x in kept})}},ensure_ascii=False))
     if a.apply:
         if not a.backup or not a.manifest: ap.error("--apply requires --backup and --manifest")
         apply_plan(a.vault,rows,a.backup,a.manifest)

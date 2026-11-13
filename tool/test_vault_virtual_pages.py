@@ -70,6 +70,42 @@ def test_revert_deletes_only_unchanged_creates(tmp_path):
     assert vf.revert(m,tmp_path,apply=True)['completed']==1 and not p.exists()
 
 
+def test_drop_anchor_stubs_roundtrips_and_preserves_normal_stub(tmp_path, monkeypatch):
+    v=tmp_path/'vault'
+    originals={}
+    body='\n'.join([
+        '#tylog.ref-note("#Page 3")[a]', '#tylog.ref-note("#Page 3")[b]',
+        '#tylog.ref-note("#Page 4")[c]', '#tylog.ref-note("#Page 4")[d]',
+        '#tylog.ref-note("Ordinary topic")[e]', '#tylog.ref-note("Ordinary topic")[f]',
+    ])+'\n'
+    note(v/'notes'/'source.typ','source','Source',body)
+    originals['notes/source.typ']=(v/'notes'/'source.typ').read_bytes()
+    # A second source exercises byte-preserving positional restoration across files.
+    note(v/'articles'/'other.typ','other','Other',
+        '#tylog.ref-note("#Page 3")[x]\n#tylog.ref-note("#Page 4")[y]\n')
+    originals['articles/other.typ']=(v/'articles'/'other.typ').read_bytes()
+    plan=vp.plan(v, stamp='20261113-123456')
+    monkeypatch.setenv('VAULT_DEDUPE_SKIP_APP_CHECK','1')
+    job3=tmp_path/'job3.json'; vp.apply_plan(plan,tmp_path/'job3-backup',job3)
+    # A changed stub must be skipped and left intact.
+    changed=next(x for x in plan['stubs'] if x['target']=='#Page 4')
+    changed_path=v/changed['path']; changed_path.write_bytes(changed_path.read_bytes()+b' user edit')
+    after_job3={p.relative_to(v).as_posix():p.read_bytes() for p in v.rglob('*.typ') if p.is_file()}
+    # Recompute the comparison state with the deliberate user modification.
+    anchor3=next(x for x in plan['stubs'] if x['target']=='#Page 3')
+    normal=next(x for x in plan['stubs'] if x['target']=='Ordinary topic')
+    drop_manifest=tmp_path/'drop.json'
+    vp.drop_stubs(v,job3,apply=True,backup=tmp_path/'drop-backup',manifest=drop_manifest)
+    assert not (v/anchor3['path']).exists()
+    assert changed_path.read_bytes().endswith(b' user edit')
+    assert (v/normal['path']).exists()
+    assert b'ref-note("#Page 3")' in (v/'notes/source.typ').read_bytes()
+    assert b'ref-note("#Page 4")' not in (v/'notes/source.typ').read_bytes()
+    assert b'ref-note("#Page 3")' in (v/'articles/other.typ').read_bytes()
+    assert vf.revert(drop_manifest,v,apply=True)['completed']==3
+    assert {p.relative_to(v).as_posix():p.read_bytes() for p in v.rglob('*.typ') if p.is_file()}==after_job3
+
+
 def test_typst_compile_when_available(tmp_path):
     typst=shutil.which('typst')
     if not typst: pytest.skip('typst is not installed')

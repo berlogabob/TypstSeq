@@ -22,6 +22,7 @@ DATE_COMPACT = re.compile(r'^(\d{4})(\d{2})(\d{2})$')
 MONTHS = {m.casefold(): i for i, m in enumerate(("January February March April May June July August September October November December").split(), 1)}
 MONTHS.update({k[:3]: v for k, v in list(MONTHS.items())})
 DATE_WORD = re.compile(r'^([A-Za-z]+)\s+(\d{1,2})(?:st|nd|rd|th),\s*(\d{4})$', re.I)
+ANCHOR_TITLE = re.compile(r'^#?\s*(?:page|p|pp|fig|figure|table|slide|стр|страница|рис|рисунок)\.?\s*\d+(?:\s*[-–]\s*\d+)?$', re.I)
 
 
 def unescape(s):
@@ -171,6 +172,85 @@ def write_manifest(path, doc):
     else: p.write_text(data, encoding='utf-8')
 
 
+def drop_stubs(vault, virtual_manifest, apply=False, backup=None, manifest=None):
+    vault = Path(vault)
+    source_doc = json.loads(Path(virtual_manifest).read_text(encoding='utf-8'))
+    backup_root = Path(source_doc['backup'])
+    edits_by_file = {x['file']: x for x in source_doc.get('ref_edits', [])}
+    stubs, hash_skips = [], []
+    for item in source_doc.get('creates', []):
+        path = vault / item['path']
+        if not path.is_file(): continue
+        if hashlib.sha256(path.read_bytes()).hexdigest() != item.get('sha256'):
+            hash_skips.append(item['path']); continue
+        try: note = parse_note(path)
+        except (OSError, UnicodeError, ValueError): continue
+        title = note.get('title', '')
+        if title.startswith('#Page') or ANCHOR_TITLE.fullmatch(title):
+            stubs.append({'path': item['path'], 'id': note.get('id'), 'title': title})
+    anchor_ids = {x['id'] for x in stubs if x['id']}
+    stub_ids = set(anchor_ids)
+    for item in source_doc.get('creates', []):
+        p = vault / item['path']
+        if p.is_file():
+            try:
+                ident = parse_note(p).get('id')
+                if ident: stub_ids.add(ident)
+            except (OSError, UnicodeError, ValueError): pass
+    replacements, no_backup, warnings, unresolved_ids = {}, [], [], set()
+    restored = 0
+    for path in note_files(vault):
+        rel = path.relative_to(vault).as_posix()
+        try: current = path.read_text(encoding='utf-8')
+        except (OSError, UnicodeError): continue
+        matches = list(REF.finditer(current))
+        if not any(unescape(m.group(1)) in anchor_ids for m in matches): continue
+        entry = edits_by_file.get(rel)
+        if not entry:
+            no_backup.append(rel); continue
+        try: before = (backup_root / entry['backup']).read_text(encoding='utf-8')
+        except (OSError, UnicodeError):
+            no_backup.append(rel); continue
+        previous = list(REF.finditer(before))
+        if len(previous) != len(matches): warnings.append(rel)
+        for now in matches[min(len(previous), len(matches)):]:
+            cur = unescape(now.group(1))
+            if cur in anchor_ids: unresolved_ids.add(cur)
+        changes = []
+        for i in range(min(len(previous), len(matches))):
+            now, old = matches[i], previous[i]
+            cur = unescape(now.group(1))
+            if cur in anchor_ids:
+                changes.append((now.start(1), now.end(1), old.group(1)))
+                restored += 1
+            elif cur != unescape(old.group(1)) and cur not in stub_ids and rel not in warnings:
+                warnings.append(rel)
+        updated = current
+        for start, end, raw in reversed(changes): updated = updated[:start] + raw + updated[end:]
+        if updated != current: replacements[rel] = updated
+    protected = set(unresolved_ids)
+    for rel in no_backup:
+        try: text = (vault / rel).read_text(encoding='utf-8')
+        except (OSError, UnicodeError): continue
+        protected.update(unescape(m.group(1)) for m in REF.finditer(text) if unescape(m.group(1)) in anchor_ids)
+    deletable = [x for x in stubs if x['id'] not in protected]
+    print(json.dumps({'anchor_stubs': len(stubs), 'links_restored': restored,
+                      'files_edited': len(replacements), 'warnings': len(warnings),
+                      'alignment-warning': sorted(warnings), 'no-backup': sorted(no_backup),
+                      'hash-mismatch': hash_skips, 'stub_titles': [x['title'] for x in stubs]}, ensure_ascii=False, indent=2))
+    if not apply: return
+    if not backup or not manifest: raise ValueError('--apply requires --backup and --manifest')
+    require_app_closed()
+    backup = Path(backup)
+    doc = {'version': 1, 'vault': str(vault), 'backup': str(backup), 'renames': [], 'ref_edits': [], 'ref_moves': [], 'creates': []}
+    for rel in sorted(set(replacements) | {x['path'] for x in deletable}):
+        backup_file(vault, rel, backup)
+        doc['ref_edits'].append({'file': rel, 'backup': rel})
+    for rel, text in replacements.items(): atomic_write(vault / rel, text)
+    for stub in deletable: (vault / stub['path']).unlink(missing_ok=True)
+    write_manifest(manifest, doc)
+
+
 def report(result):
     categories = {'created_stubs': len(result['stubs']), 'links_to_repoint': sum(x['count'] for x in result['stubs']) + sum(x['count'] for x in result['existing_title']) + sum(x['count'] for x in result['journal'] if x['status']=='handled'), 'journal_handled': sum(x['status']=='handled' for x in result['journal']), 'journal_missing': sum(x['status']=='missing' for x in result['journal']), 'existing_title_repoints': len(result['existing_title']), 'singletons': len(result['singletons']), 'skipped': {k: {'count':len(v), 'top10': sorted(v, key=lambda t: (-sum(1 for x in result['mapping'] if x==t), t))[:10]} for k,v in result['skipped'].items()}}
     return categories
@@ -178,12 +258,16 @@ def report(result):
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument('vault', nargs='?'); ap.add_argument('--min-links', type=int, default=2); ap.add_argument('--singletons-out'); ap.add_argument('--report-out'); ap.add_argument('--stamp'); ap.add_argument('--apply', action='store_true'); ap.add_argument('--backup'); ap.add_argument('--manifest'); ap.add_argument('--revert')
+    ap.add_argument('vault', nargs='?'); ap.add_argument('--min-links', type=int, default=2); ap.add_argument('--singletons-out'); ap.add_argument('--report-out'); ap.add_argument('--stamp'); ap.add_argument('--apply', action='store_true'); ap.add_argument('--backup'); ap.add_argument('--manifest'); ap.add_argument('--revert'); ap.add_argument('--drop-stubs', action='store_true'); ap.add_argument('--virtual-manifest')
     args = ap.parse_args(argv)
     if args.revert:
         if not args.vault: ap.error('VAULT required with --revert')
         print(json.dumps(revert(args.revert, args.vault, args.apply), indent=2)); return 0
     if not args.vault: ap.error('VAULT is required')
+    if args.drop_stubs:
+        if not args.virtual_manifest: ap.error('--drop-stubs requires --virtual-manifest')
+        if args.apply and (not args.backup or not args.manifest): ap.error('--apply requires --backup and --manifest')
+        drop_stubs(args.vault, args.virtual_manifest, args.apply, args.backup, args.manifest); return 0
     if args.apply and (not args.backup or not args.manifest): ap.error('--apply requires --backup and --manifest')
     result = plan(args.vault, args.min_links, args.stamp, args.singletons_out)
     summary = report(result)

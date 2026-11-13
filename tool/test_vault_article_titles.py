@@ -71,6 +71,54 @@ def test_model_cap_and_no_model(tmp_path):
     assert used==0 and len(calls)==1
 
 
+def test_model_retitle_language_validation_json_and_changed_since(tmp_path):
+    v=tmp_path/'v'; p=note(v,'articles/example.com - Article.typ','Article','https://example.com/story',
+        '== Summary\nЭто подробное русское резюме, которое описывает содержание публикации достаточно длинно.\n'+
+        ('A long English source paragraph with enough words to establish the original article language and provide useful evidence for the title model. ' * 4)+'\n')
+    p2=note(v,'articles/ru.test - Article.typ','Article','https://ru.test/story',
+        '== Summary\nРусское подробное резюме о статье и ее содержании для обработки конвейером.\n'+
+        'Это оригинальный русский текст статьи, содержащий достаточно букв и слов для определения русского языка и темы публикации.\n')
+    plan={'articles':[{'file':'articles/example.com - Article.typ','title':'Article','new_title':'derived one','method':'offline-summary'},
+                      {'file':'articles/ru.test - Article.typ','title':'Article','new_title':'derived two','method':'offline-summary'}]}
+    (tmp_path/'plan.json').write_text(json.dumps(plan))
+    manifest={'renames':[]}; (tmp_path/'manifest.json').write_text(json.dumps(manifest))
+    # Align current headings with plan targets.
+    for path,title in [(p,'derived one'),(p2,'derived two')]:
+        raw=path.read_text().replace('title: "Article"','title: "'+title+'"').replace('= Article','= '+title)
+        path.write_text(raw)
+    def chat(messages):
+        prompt=messages[1]['content']
+        return ('Here is my result: {"title":"A Clear English Research Story"}' if 'example.com' in prompt else '{"title":"Новая история исследований"}',None,None)
+    rows,kept,calls=vat.retitle_from_manifest(v,tmp_path/'manifest.json',tmp_path/'plan.json',chat)
+    assert calls==2 and [r['new_title'] for r in rows]==['A Clear English Research Story','Новая история исследований']
+    assert not kept
+    # Wrong-language answers remain visible as kept rows.
+    rows,kept,calls=vat.retitle_from_manifest(v,tmp_path/'manifest.json',tmp_path/'plan.json',lambda m:('{"title":"Русский заголовок статьи"}',None,None),max_model_calls=1)
+    assert calls==1 and kept[0]['reason']=='wrong-language'
+
+
+@pytest.mark.parametrize('answer,reason', [('Cat','too-short'),('Article','generic'),('A'*81,'too-long')])
+def test_model_retitle_rejects_invalid_answers(tmp_path,answer,reason):
+    v=tmp_path/'v'; p=note(v,'articles/a.test - Article.typ','Article','https://a.test/x','== Summary\nThis is a sufficiently long English summary used to establish the original source language for the generated title.\nOriginal English article text with enough words to establish a Latin language source and context for the generated title.\n')
+    p.write_text(p.read_text().replace('title: "Article"','title: "Derived Title"').replace('= Article','= Derived Title'))
+    (tmp_path/'plan.json').write_text(json.dumps({'articles':[{'file':'articles/a.test - Article.typ','title':'Article','new_title':'Derived Title','method':'offline-summary'}]}))
+    (tmp_path/'manifest.json').write_text('{"renames":[]}')
+    rows,kept,_=vat.retitle_from_manifest(v,tmp_path/'manifest.json',tmp_path/'plan.json',lambda m:(json.dumps({'title':answer}),None,None))
+    assert not rows and kept[0]['reason']==reason
+
+
+def test_model_retitle_changed_since_and_call_cap(tmp_path):
+    v=tmp_path/'v';
+    for i in range(2):
+        p=note(v,f'articles/{i}.typ','Article',f'https://x{i}.test/a','== Summary\nSome sufficiently long summary text that generated a title here.\nSource text is long enough to be evidence for the model and title generation.\n')
+        p.write_text(p.read_text().replace('title: "Article"','title: "Edited"').replace('= Article','= Edited'))
+    rows=[{'file':f'articles/{i}.typ','title':'Article','new_title':'Expected','method':'offline-summary'} for i in range(2)]
+    (tmp_path/'plan.json').write_text(json.dumps({'articles':rows})); (tmp_path/'manifest.json').write_text('{"renames":[]}')
+    calls=[]
+    out,kept,used=vat.retitle_from_manifest(v,tmp_path/'manifest.json',tmp_path/'plan.json',lambda m:(calls.append(m) or ('{}',None,None)),1)
+    assert not calls and used==0 and all(x['reason']=='changed-since' for x in kept)
+
+
 def test_real_pipeline_rules_if_installed():
     real=Path(os.environ.get('PIPELINE_SRC','~/Nextcloud/scripts/article-pipeline/src')).expanduser()/'article_pipeline/titles.py'
     if not real.exists(): pytest.skip('article pipeline title rules unavailable')
