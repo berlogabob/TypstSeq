@@ -137,6 +137,63 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  test('failure reasons map worker codes and preserve legacy errors', () {
+    const reasons = {
+      'llm_error': 'AI model did not answer',
+      'parse_error': 'nothing readable on the page',
+      'empty_content': 'page was empty',
+      'not_found': 'page not found (404)',
+      'blocked': 'site blocked the fetch (login, captcha or rate limit)',
+      'timeout': 'site timed out',
+      'network_error': 'network error',
+      'invalid_url': 'not a valid link',
+      'unknown': 'unknown error',
+      'worker_Exception': 'worker_Exception',
+    };
+    for (final entry in reasons.entries) {
+      expect(
+        ProcessingJob('', 'articles', {
+          'status': 'error',
+          'reason': entry.key,
+        }).failureReason,
+        entry.value,
+      );
+    }
+    expect(
+      ProcessingJob('', 'transcripts', {
+        'status': 'failed',
+        'error': 'legacy',
+      }).failureReason,
+      'legacy',
+    );
+  });
+
+  testWidgets('article error is shown and can be retried', (tester) async {
+    final storage = _Storage()
+      ..job('articles', 'error', {
+        'status': 'error',
+        'url': 'https://example.org/article',
+        'reason': 'blocked',
+        'shared_at': DateTime.now().toUtc().toIso8601String(),
+      });
+    final jobs = ProcessingJobs();
+    addTearDown(jobs.dispose);
+    await jobs.refresh(storage);
+    await tester.pumpWidget(_screen(jobs));
+    expect(find.text('https://example.org/article'), findsOneWidget);
+    expect(find.text('Article · Failed'), findsOneWidget);
+    expect(
+      find.text('site blocked the fetch (login, captcha or rate limit)'),
+      findsOneWidget,
+    );
+    await tester.tap(find.widgetWithText(TextButton, 'Retry'));
+    await tester.pumpAndSettle();
+    final data =
+        jsonDecode(storage.files['_system/jobs/articles/error.json']!) as Map;
+    expect(data['status'], 'queued');
+    expect(data.containsKey('reason'), isFalse);
+  });
+
   for (final kind in ['transcripts', 'translations', 'articles']) {
     testWidgets('Retry preserves the $kind worker payload and queues it', (
       tester,

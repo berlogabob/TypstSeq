@@ -107,7 +107,7 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
           final older = <ProcessingJob>[];
           for (final job in jobs.jobs) {
             final at = job.activityAt;
-            final finished = job.status == 'done' || job.status == 'failed';
+            final finished = job.status == 'done' || job.failed;
             (finished && at != null && at.isBefore(cutoff) ? older : recent)
                 .add(job);
           }
@@ -185,9 +185,10 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
             ])
               if (job.text(key) case final time?)
                 Text('$label: ${shortStamp(time)}'),
-            if (job.text('error') case final error?)
-              Text(error, style: TextStyle(color: scheme.error)),
-            if (job.status == 'failed')
+            if (job.failed)
+              if (job.failureReason case final error?)
+                Text(error, style: TextStyle(color: scheme.error)),
+            if (job.failed)
               TextButton.icon(
                 onPressed: _retrying.contains(job.path)
                     ? null

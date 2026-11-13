@@ -12,6 +12,20 @@ class ProcessingJob {
 
   String get status => data['status'] as String;
   bool get active => status == 'queued' || status == 'processing';
+  bool get failed => status == 'failed' || status == 'error';
+  String? get failureReason => switch (text('reason')) {
+    'llm_error' => 'AI model did not answer',
+    'parse_error' => 'nothing readable on the page',
+    'empty_content' => 'page was empty',
+    'not_found' => 'page not found (404)',
+    'blocked' => 'site blocked the fetch (login, captcha or rate limit)',
+    'timeout' => 'site timed out',
+    'network_error' => 'network error',
+    'invalid_url' => 'not a valid link',
+    'unknown' => 'unknown error',
+    final reason? => reason,
+    null => text('error'),
+  };
   String? text(String key) => data[key] is String ? data[key] as String : null;
   String? get notePath => text('note_path') ?? text('note') ?? text('origin');
   String get title =>
@@ -41,6 +55,7 @@ Future<List<ProcessingJob>> loadProcessingJobs(VaultStorage storage) async {
               'processing',
               'done',
               'failed',
+              'error',
             ].contains(data['status'])) {
           continue;
         }
@@ -108,13 +123,19 @@ class ProcessingJobs extends ChangeNotifier {
     final data = jsonDecode(await current.readText(job.path));
     if (!identical(current, storage) ||
         data is! Map<String, dynamic> ||
-        data['status'] != 'failed') {
+        !const ['failed', 'error'].contains(data['status'])) {
       return false;
     }
     data['status'] = 'queued';
     data[job.kind == 'articles' ? 'shared_at' : 'requested_at'] =
         (now ?? DateTime.now()).toUtc().toIso8601String();
-    for (final key in ['error', 'finished_at', 'processing_at', 'started_at']) {
+    for (final key in [
+      'error',
+      'reason',
+      'finished_at',
+      'processing_at',
+      'started_at',
+    ]) {
       data.remove(key);
     }
     await current.writeText(job.path, jsonEncode(data));
