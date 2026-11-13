@@ -132,6 +132,8 @@ class ProcessingJobs extends ChangeNotifier {
     for (final key in [
       'error',
       'reason',
+      'http_status',
+      'message',
       'finished_at',
       'processing_at',
       'started_at',

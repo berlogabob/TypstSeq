@@ -103,6 +103,7 @@ void main() {
         'title': 'Screenshot',
         'status': 'failed',
         'error': 'OCR server unavailable',
+        'opaque_worker_data': {'version': 2},
       });
     storage.files['_system/jobs/articles/broken.json'] = '{';
     storage.files['_system/jobs/process-now.json'] = '{}';
@@ -113,6 +114,7 @@ void main() {
     await jobs.refresh(storage);
     await tester.pumpWidget(_screen(jobs));
     expect(jobs.jobs, hasLength(4));
+    expect(jobs.jobs.last.data['opaque_worker_data'], {'version': 2});
     expect(find.text('Shared article'), findsOneWidget);
     expect(find.text('Interview'), findsNWidgets(2));
     expect(find.text('Article · Queued'), findsOneWidget);
@@ -194,6 +196,38 @@ void main() {
     expect(data.containsKey('reason'), isFalse);
   });
 
+  testWidgets('failure details show only for failures and ignore wrong types', (
+    tester,
+  ) async {
+    final storage = _Storage()
+      ..job('articles', 'details', {
+        'status': 'failed',
+        'reason': 'blocked',
+        'http_status': 503,
+        'message': 'Origin is temporarily unavailable',
+      })
+      ..job('articles', 'wrong_types', {
+        'status': 'error',
+        'http_status': '503',
+        'message': 42,
+      })
+      ..job('articles', 'done', {
+        'status': 'done',
+        'http_status': 200,
+        'message': 'Completed',
+      });
+    final jobs = ProcessingJobs();
+    addTearDown(jobs.dispose);
+    await jobs.refresh(storage);
+    await tester.pumpWidget(_screen(jobs));
+    expect(find.text('HTTP 503'), findsOneWidget);
+    expect(find.text('Origin is temporarily unavailable'), findsOneWidget);
+    expect(find.text('HTTP 200'), findsNothing);
+    expect(find.text('Completed'), findsNothing);
+    expect(find.text('503'), findsNothing);
+    expect(find.text('42'), findsNothing);
+  });
+
   for (final kind in ['transcripts', 'translations', 'articles']) {
     testWidgets('Retry preserves the $kind worker payload and queues it', (
       tester,
@@ -212,6 +246,8 @@ void main() {
           'engine': 'v2',
           'custom': {'keep': true},
           'error': 'Worker failed',
+          'http_status': 502,
+          'message': 'Gateway failed',
           'processing_at': finishedAt,
           'finished_at': finishedAt,
         });
@@ -245,6 +281,8 @@ void main() {
         expect(after[key], before[key]);
       }
       expect(after.containsKey('error'), isFalse);
+      expect(after.containsKey('http_status'), isFalse);
+      expect(after.containsKey('message'), isFalse);
       expect(after.containsKey('finished_at'), isFalse);
       expect(after.containsKey('processing_at'), isFalse);
       expect(jobs.activeCount, 1);

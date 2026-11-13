@@ -189,6 +189,12 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
               if (job.failureReason case final error?)
                 Text(error, style: TextStyle(color: scheme.error)),
             if (job.failed)
+              if (job.data['http_status'] case final int status)
+                Text('HTTP $status', style: TextStyle(color: scheme.error)),
+            if (job.failed)
+              if (job.text('message') case final message?)
+                Text(message, style: TextStyle(color: scheme.error)),
+            if (job.failed)
               TextButton.icon(
                 onPressed: _retrying.contains(job.path)
                     ? null
