@@ -1034,6 +1034,17 @@ Plan: `~/.claude/plans/tell-me-updates-on-peaceful-otter.md`. The OpenLabTwin si
 - [x] W36.12 (luna) Tools page: Record movement, Needs attention + merge, Places, Pairing, Archive, Usage (moved, not rewritten) — done with W36.8/9 by terra: storage_tools.dart (moved code), InventoryPage list deleted
 - [x] W36.13 (Sonnet/Ornith) STAFF-GUIDE rewritten around the jobs — done by codex luna (openlabtwin): five job subsections with labels checked against the office code
 - [ ] W36.14 (Claude) office gates + e2e + Chrome walk of the 5 jobs; tap counts after
+  - W36.14a done: count from the code (codex luna read-only on openlabtwin @508aa77, W36.7 rules, camera scan, existing people). Gates green (analyze 0, 69 office tests). The Chrome walk and e2e wait on W36.0 (live DB).
+
+    | Job | W36.7 old | W36.14a new | DB verb |
+    |---|---|---|---|
+    | Find a tagged item, scan / typed | 2 / 4 | 2 / 4 | none |
+    | Hand out a tagged unit | 9 | 6 (from the unit page: 4) | none (was issue) |
+    | Take it back | 8 | 4 (from the unit page: 2; shelf prefilled) | none (was return) |
+    | Move 5 untagged | 9 | 10 from the item page / 7 from the place page (From = this place) | none (was move) |
+    | Count a shelf, no QR / QR | 7 / 6 | 9 / 4 | none |
+
+    Not comparable as is: the new count includes 3 count-field focuses that W36.7 may have left out (count without QR, 7→9). Move did not improve from the item page, because both places have to be picked. The Chrome walk with a stopwatch decides both.
 - [ ] W36.15 (user) phone try; after a yes, merge `loans` + `storage` into `main` (deploys the office)
 
 ### Phase 2: real data
