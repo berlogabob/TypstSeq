@@ -1059,7 +1059,7 @@ Plan: `~/.claude/plans/tell-me-updates-on-peaceful-otter.md`. The OpenLabTwin si
 - [x] W36.22 (terra) `tool/lab_bridge.py`: JSONL → issue/return movements with the D1 note; results to `_system/lab/results/<device>.jsonl`; dry run by default — 6 pytest with fake PostgREST; review fixes: resolve_person helper, log only outcome changes (30-min runs); live dry run waits on W36.0
 - [ ] W36.23 (luna) task chip "OLT: recorded" / "OLT: refused, <reason>"; a refusal also shows in Incoming
 - [ ] W36.24 (Claude → user) bridge + `export_tylog.py` dry runs on the real vault; apply after a yes
-- [ ] W36.25 (luna) Mac LaunchAgent every 30 min, export then bridge; switched on only after a week of manual runs + a yes
+- [ ] W36.25 (luna) Mac LaunchAgent every 30 min, export then bridge; switched on only after a week of manual runs + a yes — code ready (tool/lab_sync.sh + tool/launchd/org.tylog.lab.plist.template, not rendered or loaded). Needs `make install-indexer` first: the installed `~/.local/bin/tylog` is from Oct 9 and has no `loans` command, and the indexer agent uses the same binary, so rebuild it only when a phase ships
 
 ### Phase 4: thesis evidence
 - [x] W36.26 (luna) node cron after the mirror appends the snapshot to `data/storage_metrics.jsonl` — openlabtwin 508aa77: loans {returned, median_hours, open_tagged} + by_channel (tylog/import/office, closed vocabulary); cron 04:00 → ~/storage_metrics.jsonl on the node (takes effect on the next edge-setup run)
