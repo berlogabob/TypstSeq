@@ -1008,15 +1008,25 @@ Plan: `~/.claude/plans/tell-me-updates-on-peaceful-otter.md`. The OpenLabTwin si
 
 ### Phase 0: unblock, research, status doc
 - [ ] W36.0 (user) put the new project URL and service key (`ukelqvkanfimiafnomex`, from the node's `.env`) in the Mac's `openlabtwin/.env`; a read-only row count must work
-- [ ] W36.1 (luna) `openlabtwin/scripts/storage_snapshot.py`: read-only JSON of places counted, items/assets/movements by kind and note prefix, open loans, `storage_issues` by code; one test
-- [ ] W36.2 (research) `docs/thesis/literature-2026-11.md`: 20-30 primary sources, each on one line saying which decision or metric it supports or challenges
+- [x] W36.1 (luna) `openlabtwin/scripts/storage_snapshot.py`: read-only JSON of places counted, items/assets/movements by kind and note prefix, open loans, `storage_issues` by code; one test — openlabtwin a057152; exact-dict test green; live run waits on W36.0
+- [x] W36.2 (research) `docs/thesis/literature-2026-11.md`: 20-30 primary sources, each on one line saying which decision or metric it supports or challenges — 38 sources, abstract level; gaps: small-scale graph benchmarks, lab loan systems, contested status; BFCL checked, ASEE twin review unverified (403)
 - [ ] W36.3 (Claude) `docs/thesis/2026-11-17-status.typ` → PDF: system map, what's built, what's measured, gaps, D1-D7, and a table answering each supervisor suggestion
 - [ ] W36.4 (Claude) ADRs: openlabtwin 0053 (D1, D3, D4) and TyLog adr/0003 (D2, D6); rule 1 in conceptual-model.md
 
 ### Phase 1: OLT works alone
 - [ ] W36.5 (luna) migration: partial unique index on `movements.note` for `tylog:%` + a trigger refusing an issue of an asset that is already out; pgTAP file. Written only: `sqltest.py` pushes to the live project
 - [ ] W36.6 (user → Claude) approve, then `uv run python scripts/sqltest.py` (push + pgTAP)
-- [ ] W36.7 (luna) baseline tap counts for find / hand out / take back / move / count a shelf in today's office (table here)
+- [x] W36.7 (luna) baseline tap counts for find / hand out / take back / move / count a shelf in today's office. Codex read-only on openlabtwin `storage` @a057152, counted from the widget code; minimum taps assuming camera scan and existing people/places:
+
+  | Job | Taps | Typed | Screens + dialogs | DB verb needed |
+  |---|---|---|---|---|
+  | Find a tagged item | 2 (scan) / 4 (typed tag) | 0 / 1 | 3 | no |
+  | Hand out a tagged unit | 9 | 0 | 3 + 1 dialog | issue |
+  | Take it back | 8 | 0 | 3 + 1 dialog | return |
+  | Move 5 untagged units | 9 | 1 | 3 + 1 dialog | move |
+  | Count a shelf (3 untagged + 2 tagged), no QR / with QR | 7 / 6 | 3 | 4 / 2 | no |
+
+  Biggest effort: picking the database verb in a generic form, and the route through Bookings → Inventory → Places. Target after W36.8-12: hand out and take back in 3 taps from the item, with no DB verb anywhere.
 - [ ] W36.8 (terra) Storage becomes a top-level destination next to Bookings; the 7 bar icons go
 - [ ] W36.9 (terra) Storage home: one search field (items, tags, place codes, people, plus scan), Out now, Needs attention (n)
 - [ ] W36.10 (terra) item page: where each unit is, history, Hand out / Take back / Move as one-screen forms writing `movementRow`; exact-row widget tests
