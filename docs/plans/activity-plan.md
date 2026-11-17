@@ -1033,7 +1033,18 @@ Plan: `~/.claude/plans/tell-me-updates-on-peaceful-otter.md`. The OpenLabTwin si
 - [x] W36.11 (luna) place page: Count this shelf is the main action; Edit, Add inside and Tag go to the overflow menu — done by terra with W36.10: Count this shelf first, Edit/Add inside/Tag in the overflow menu
 - [x] W36.12 (luna) Tools page: Record movement, Needs attention + merge, Places, Pairing, Archive, Usage (moved, not rewritten) — done with W36.8/9 by terra: storage_tools.dart (moved code), InventoryPage list deleted
 - [x] W36.13 (Sonnet/Ornith) STAFF-GUIDE rewritten around the jobs — done by codex luna (openlabtwin): five job subsections with labels checked against the office code
-- [ ] W36.14 (Claude) office gates + e2e + Chrome walk of the 5 jobs; tap counts after
+- [x] W36.14 (Claude) office gates + e2e + Chrome walk of the 5 jobs; tap counts after — openlabtwin 0cfbd82 + 33095d3. Both browser e2e tests PASS on the live project (Chrome via Playwright, throwaway E2E rows, cleanup verified, live data unchanged: 210 movements / 83 units / 140 items). Measured in-app taps, starting from the screen the job begins on (unit page, or a place opened by its QR link):
+
+    | Job | Measured taps | W36.7 old | Notes |
+    |---|---|---|---|
+    | Find a tagged unit (typed) | 3 (Storage tab, search, result) | 4 | scan: 2 |
+    | Hand out | 4 (Hand out, Person, pick, Confirm) | 9 | +2 to reach the unit by scan |
+    | Take back | 2 (Take back, Confirm) | 8 | shelf prefilled from the last issue |
+    | Move 5 untagged | 5 from the place page (Move, To, pick, Quantity, Confirm) | 9 | |
+    | Count a shelf (1 untagged), QR | 3 (Count, field, Save) | 6 | plus one tick per tagged unit |
+    | Second loan of a unit that is out | refused by the live trigger: "already out with E2E Borrower" | not enforced | |
+
+    Seconds are machine speed (0.4–3.9 s), not human effort; human seconds come from W36.15/W36.27.
   - W36.14a done: count from the code (codex luna read-only on openlabtwin @508aa77, W36.7 rules, camera scan, existing people). Gates green (analyze 0, 69 office tests). The Chrome walk and e2e wait on W36.0 (live DB).
 
     | Job | W36.7 old | W36.14a new | DB verb |
