@@ -32,11 +32,11 @@ erDiagram
 
 | Entity | In TyLog | In OLT |
 |---|---|---|
-| Item | a `.typ` note: daily, note, screenshot (OCR), audio (ASR transcript), article, event | `activities`, `lessons` |
-| Entity | a note of kind person, place, project, concept or marker | `people`, `places`, `items`, `assets` |
+| Item | a `.typ` note: daily, note, article, research, idea, screenshot (OCR), audio (ASR transcript) | `activities`, `lessons`, `ideas` |
+| Entity | a note of kind person, organization, place, website, event or project; custom kinds are allowed and the lab export adds equipment. Marker pages and tags promoted to graph concepts also act as entities | `people`, `places`, `items`, `assets` |
 | Mention | a span in an Item (`_system/enrich/mentions/*.json`) | an activity's note or purpose text |
 | Link | the resolved reference (`#tylog.link`) | `activity_items`, `movements` |
-| Decision | `_system/enrich/feedback/*.jsonl` (`at`, `decision`, `surface`, `entity`, `note`, `context`) | `audit_log` |
+| Decision | `_system/decisions/*.jsonl` (Incoming) and `_system/enrich/feedback/*.jsonl` (link review: `at`, `decision`, `surface`, `entity`, `note`, `context`, `proposed_by`, `confidence` when known) | `movements` (append-only), `audit_log` |
 
 ## Source and derivation
 
@@ -45,8 +45,9 @@ erDiagram
 | Typed text (daily, notes) | Items | typed |
 | Screenshot OCR | screenshot Items: category, tags, keywords | extracted |
 | Audio ASR | transcript inside an audio Item | extracted |
-| LLM enrichment | Mentions and suggested Links | suggested, then confirmed or rejected |
-| OLT (Supabase) | external Entities, keyed by place code or uuid | institutional |
+| LLM enrichment (day notes, voice notes, screenshots; never articles) | Mentions, keywords, loan proposals, suggested Links | suggested; exact matches applied as `auto`, the rest confirmed or rejected |
+| OLT export (`export_tylog.py`) | place, equipment and professor notes in `notes/labs/inventory/`, id = place code, asset tag or `lab-person-<id>` | institutional |
+| OLT connector (Supabase) | requested bookings and new ideas in Incoming | institutional |
 | Calendar (ICS) | event Items | imported |
 | Contacts | person Entities | imported |
 
@@ -60,13 +61,13 @@ External Items (OLT, Microsoft) are cached outside the synced vault and become a
 
 ## Knowledge states and provenance
 
-Every fact (link, mention, tag) and vocabulary item (tag, entity kind, cluster) carries one status — proposed, accepted, rejected, auto, obsolete — plus `proposed_by` and `confidence`. LLMs and rules only propose; vocabulary never changes without a decision, and cluster merges/splits/renames become proposals in Incoming. Desktop auto-links are recorded with status `auto`. See [docs/adr/0002-knowledge-states.md](../adr/0002-knowledge-states.md).
+ADR 0002 defines one status for every fact (link, mention, tag) and vocabulary item (tag, entity kind, cluster): proposed, accepted, rejected, auto, obsolete. In the code, link decisions record `proposed_by` (`llm:<model>` or `auto`) and `confidence` when known. The LLM only proposes. The resolver applies an exact, unambiguous match by itself and records it as `auto`. Cluster merges, splits and renames are proposals in Incoming. Tags and kinds change only by the user's own edit. There is no `contested` state. See [docs/adr/0002-knowledge-states.md](../adr/0002-knowledge-states.md).
 
 ## Rules
 
-1. An external Entity (`source: openlabtwin`) is read-only in TyLog; edits go through OLT's API and its own access rules. Lab equipment and places are exported into the vault as notes (`labs/inventory/`, id = asset tag or place code) that the export overwrites and TyLog never edits; loans recorded in TyLog become OLT movements through the lab bridge ([ADR 0003](../adr/0003-lab-equipment-identity-and-typed-loans.md)).
-2. A Link is never final until a Decision accepts it; the resolver uses accepted Decisions to improve.
-3. The graph can be filtered by source; clusters can be grouped by source.
+1. An external Entity (`source: openlabtwin`) is read-only in TyLog; edits go through OLT's API and its own access rules. Lab equipment, places and professors are exported into the vault as notes (`notes/labs/inventory/`, id = asset tag, place code or `lab-person-<id>`). The export overwrites them, and by policy TyLog does not edit them; loans recorded in TyLog become OLT movements through the lab bridge ([ADR 0003](../adr/0003-lab-equipment-identity-and-typed-loans.md)).
+2. A suggested Link is final only after a Decision: the user's accept, or an `auto` decision for an exact match. The resolver learns from the decision ledger.
+3. The graph can hide or show each source.
 4. Secrets (tokens, API keys) are not part of the model; they stay per device.
 
 ## What the thesis measures
