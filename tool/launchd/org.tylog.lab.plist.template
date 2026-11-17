@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>org.tylog.lab</string>
+  <key>ProgramArguments</key>
+  <array>
+    <!-- W36.25: export then bridge every 30 min. Render with install.sh lab, but load it only after a week of
+         manual runs and the user's yes; until then it runs dry (no --apply). For apply, add --apply --staff-id N. -->
+    <string>@REPO@/tool/lab_sync.sh</string>
+  </array>
+  <key>StartInterval</key><integer>1800</integer>
+  <key>LowPriorityIO</key><true/>
+  <key>ProcessType</key><string>Background</string>
+  <key>StandardOutPath</key><string>@HOME@/Library/Logs/tylog-lab.log</string>
+  <key>StandardErrorPath</key><string>@HOME@/Library/Logs/tylog-lab.log</string>
+</dict>
+</plist>
