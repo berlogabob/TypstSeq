@@ -858,15 +858,14 @@ class _WhiteboardState extends State<Whiteboard> {
 
   void addOltTree() {
     final notes = (widget.index?.notes ?? <NoteRef>[])
-        .where(
-          (n) =>
-              n.path.startsWith('olt:place:') ||
-              n.path.startsWith('olt:asset:'),
-        )
+        // Lab places and equipment arrive as exported vault notes (ADR 0003).
+        .where((n) => n.properties['source'] == 'openlabtwin')
         .toList();
     if (notes.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No OpenLabTwin places or assets cached')),
+        const SnackBar(
+          content: Text('No OpenLabTwin places or equipment in this vault yet'),
+        ),
       );
       return;
     }

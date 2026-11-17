@@ -1,152 +1,27 @@
-import 'dart:collection';
-
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/connectors/connector.dart';
-import 'package:tylog/widgets/external_entity_page.dart';
 import 'package:tylog/connectors/olt_connector.dart';
-import 'package:tylog/widgets/entity_tree.dart';
+import 'package:tylog/widgets/external_entity_page.dart';
 import 'package:tylog_core/models.dart';
 
 void main() {
-  test('cached places and notes nest under their external parents', () async {
+  test('entities are empty while bookings remain in Incoming', () async {
     final connector = OltConnector(
       () async => {
-        'items': [
-          {'id': 5, 'name': 'Microscope', 'unit': 'pcs'},
-        ],
-        'assets': [
+        'activities': [
           {
-            'id': 7,
-            'tag': 'A7',
-            'item_id': 5,
-            'condition': 'good',
-            'seen_at': '2026-11-03',
+            'id': 42,
+            'title': 'Microscope booking',
+            'status': 'requested',
+            'starts_at': '2026-11-17T10:00:00Z',
           },
         ],
-        'asset_place': [
-          {'asset_id': 7, 'place_id': 2},
-        ],
-        'stock': [
-          {'item_id': 5, 'place_id': 2, 'qty': 3},
-        ],
-        'places': [
-          {'id': 1, 'name': 'Building', 'code': 'B'},
-          {'id': 2, 'name': 'Room', 'code': 'R15', 'parent_id': 1},
-          {'id': 3, 'name': 'Desk', 'parent_id': 2},
-        ],
       },
     );
     await connector.refresh();
-    final places = connector.entities().map((e) => e.toNoteRef()).toList();
-    expect((places.last.properties['stock'] as List).single, {
-      'qty': 3,
-      'unit': 'pcs',
-    });
-    final note = NoteRef(
-      id: 'note',
-      path: 'note.typ',
-      title: 'Note',
-      outgoingLinks: const [],
-      partOf: const ['olt:place:R15'],
-    );
-    final all = [...places, note];
-    final tree = buildEntityTree(all, all.map((n) => n.path).toSet());
-    expect(tree.single.note.id, 'olt:place:1');
-    final room = tree.single.children.single;
-    expect(room.note.id, 'olt:place:2');
-    expect(
-      room.children.map((n) => n.note.id),
-      containsAll(['olt:place:3', 'olt:asset:7', 'note']),
-    );
-  });
-
-  test('stable IDs retain legacy code and tag aliases', () async {
-    final connector = OltConnector(
-      () async => {
-        'places': [
-          {'id': 1, 'name': 'Room', 'code': 'R'},
-        ],
-        'assets': [
-          {'id': 7, 'tag': 'A7'},
-        ],
-      },
-    );
-    await connector.refresh();
-    final entities = connector.entities();
-    expect(entities[0].id, 'olt:place:1');
-    expect(entities[0].aliases, contains('olt:place:R'));
-    expect(entities[1].id, 'olt:asset:7');
-    expect(entities[1].aliases, contains('olt:asset:A7'));
-  });
-
-  test('stock rows are traversed once for multiple places', () async {
-    final stock = _CountingList([
-      {'item_id': 5, 'place_id': 1, 'qty': 2},
-      {'item_id': 5, 'place_id': 2, 'qty': 3},
-    ]);
-    final connector = OltConnector(
-      () async => {
-        'places': [
-          {'id': 1, 'name': 'One'},
-          {'id': 2, 'name': 'Two'},
-        ],
-        'stock': stock,
-      },
-    );
-    await connector.refresh();
-    final entities = connector.entities();
-    expect(stock.iterations, 1);
-    expect((entities[0].properties['stock'] as List).single['qty'], 2);
-    expect((entities[1].properties['stock'] as List).single['qty'], 3);
-  });
-
-  testWidgets('place displays cached assets and stock', (tester) async {
-    late OltConnector connector;
-    await tester.runAsync(() async {
-      connector = OltConnector(
-        () async => {
-          'places': [
-            {'id': 1, 'name': 'Room', 'code': 'R'},
-          ],
-          'items': [
-            {'id': 2, 'name': 'Lens', 'unit': 'pcs'},
-          ],
-          'assets': [
-            {
-              'id': 3,
-              'tag': 'A3',
-              'item_id': 2,
-              'condition': 'good',
-              'seen_at': '2026-11-03',
-            },
-          ],
-          'asset_place': [
-            {'asset_id': 3, 'place_id': 1},
-          ],
-          'stock': [
-            {'item_id': 2, 'place_id': 1, 'qty': 4},
-          ],
-        },
-      );
-      await connector.refresh();
-    });
-    final entities = connector.entities();
-    await tester.pumpWidget(
-      MaterialApp(
-        home: ExternalEntityPage(
-          entity: entities.first,
-          notes: entities.map((e) => e.toNoteRef()).toList(),
-          onOpen: (_) {},
-        ),
-      ),
-    );
-    expect(find.text('Assets here'), findsOneWidget);
-    expect(find.text('A3'), findsOneWidget);
-    expect(find.text('Lens · good · 2026-11-03'), findsOneWidget);
-    expect(find.text('Stock'), findsOneWidget);
-    expect(find.text('Lens'), findsOneWidget);
-    expect(find.text('4 pcs'), findsOneWidget);
+    expect(connector.entities(), isEmpty);
+    expect(connector.incoming('2026-11-17').single.title, 'Microscope booking');
   });
   testWidgets('external page displays children and references without writes', (
     tester,
@@ -182,24 +57,4 @@ void main() {
     expect(find.text('Reference'), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
   });
-}
-
-class _CountingList extends ListBase<dynamic> {
-  _CountingList(this.items);
-  final List<dynamic> items;
-  int iterations = 0;
-  @override
-  Iterator<dynamic> get iterator {
-    iterations++;
-    return items.iterator;
-  }
-
-  @override
-  int get length => items.length;
-  @override
-  set length(int value) => items.length = value;
-  @override
-  dynamic operator [](int index) => items[index];
-  @override
-  void operator []=(int index, dynamic value) => items[index] = value;
 }

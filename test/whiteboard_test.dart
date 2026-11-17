@@ -100,31 +100,36 @@ void main() {
   });
   tearDown(() => deleteTempDir(dir));
 
-  testWidgets('adds OpenLabTwin hierarchy and shows cached asset stock', (
-    tester,
-  ) async {
+  testWidgets('adds the exported OpenLabTwin hierarchy', (tester) async {
     const room = NoteRef(
-      id: 'olt:place:1',
-      path: 'olt:place:1',
+      id: 'R15',
+      path: 'labs/inventory/R15.typ',
       title: 'Room',
       kind: 'place',
       outgoingLinks: [],
+      properties: {'source': 'openlabtwin'},
     );
     const asset = NoteRef(
-      id: 'olt:asset:2',
-      path: 'olt:asset:2',
+      id: 'TL-0002',
+      path: 'labs/inventory/TL-0002.typ',
       title: 'Microscope',
-      kind: 'asset',
+      kind: 'equipment',
       outgoingLinks: [],
-      partOf: ['olt:place:1'],
-      properties: {
-        'stock': [
-          {'qty': 0, 'unit': 'pcs'},
-        ],
-      },
+      partOf: ['R15'],
+      properties: {'source': 'openlabtwin'},
+    );
+    const unrelated = NoteRef(
+      id: 'plain',
+      path: 'notes/plain.typ',
+      title: 'Plain note',
+      outgoingLinks: [],
     );
     final index = VaultIndex(
-      notesByPath: {room.path: room, asset.path: asset},
+      notesByPath: {
+        room.path: room,
+        asset.path: asset,
+        unrelated.path: unrelated,
+      },
       backlinksByTarget: {},
     );
     await tester.runAsync(
@@ -148,7 +153,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Room'), findsOneWidget);
     expect(find.text('Microscope'), findsOneWidget);
-    expect(find.text('Stock: 0 pcs'), findsOneWidget);
+    expect(find.text('Plain note'), findsNothing);
     final saved = await pollIo(tester, () async {
       final value = parseBoard(await storage.readText(boardPath('olt')));
       return value.cards.isEmpty ? null : value;

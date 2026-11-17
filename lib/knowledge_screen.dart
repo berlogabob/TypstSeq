@@ -686,9 +686,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
           leading: Icon(iconForKind(result.kind)),
           title: Text(result.title),
           subtitle: Text(
-            result.path.startsWith('olt:place:')
-                ? 'OpenLabTwin'
-                : labelForKind(result.kind),
+            labelForKind(result.kind),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),

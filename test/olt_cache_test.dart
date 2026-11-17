@@ -25,7 +25,7 @@ void main() {
     );
     await syncOltCache(client, dir);
     final cache = await loadOltCache(dir);
-    expect(cache.length, 7);
+    expect(cache.keys.toSet(), {'activities', 'ideas', 'places'});
     expect(cache.values.every((rows) => rows.length == 1001), isTrue);
   });
 
@@ -73,14 +73,9 @@ void main() {
         {'id': 1},
       ]),
     );
-    await File('${dir.path}/assets.json').writeAsString(
-      jsonEncode([
-        {'tag': 'old'},
-      ]),
-    );
     final client = OltClient(
       store: _Store(),
-      request: (_, uri, _, _) async => uri.path.endsWith('/assets')
+      request: (_, uri, _, _) async => uri.path.endsWith('/activities')
           ? const OltResponse(403, '{}')
           : const OltResponse(200, '[]'),
     );
@@ -91,9 +86,6 @@ void main() {
     final cache = await loadOltCache(dir);
     expect(cache['places'], [
       {'id': 1},
-    ]);
-    expect(cache['assets'], [
-      {'tag': 'old'},
     ]);
   });
 
