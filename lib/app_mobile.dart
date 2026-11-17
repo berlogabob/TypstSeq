@@ -52,6 +52,7 @@ import 'saved_searches.dart';
 import 'markdown_article_import.dart';
 import 'screenshots_ocr.dart';
 import 'widgets/screenshot_strip.dart';
+import 'lab_results.dart';
 import 'bot_vault/decisions.dart';
 import 'olt/olt_client.dart';
 import 'olt/olt_cache.dart';
@@ -951,6 +952,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       databaseForVault: _databaseForVault,
     )..addListener(_workspaceChanged);
     kindRegistry.addListener(_kindRegistryChanged);
+    labResultsNotifier.addListener(_kindRegistryChanged);
     WidgetsBinding.instance.addObserver(this);
     _shareChannel.setMethodCallHandler((call) async {
       if (call.method == 'shareAvailable') await _handlePendingShares();
@@ -986,6 +988,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _processingJobs.dispose();
     WidgetsBinding.instance.removeObserver(this);
     kindRegistry.removeListener(_kindRegistryChanged);
+    labResultsNotifier.removeListener(_kindRegistryChanged);
     workspace
       ..removeListener(_workspaceChanged)
       ..dispose();
@@ -1074,8 +1077,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mounted) setState(() {});
   }
 
+  (Vault?, int)? _labResultsRevision;
+
   void _workspaceChanged() {
     if (!mounted || _exiting) return;
+    final revision = (vault, workspace.indexRevision);
+    if (_labResultsRevision != revision) {
+      _labResultsRevision = revision;
+      final storage = vault?.storage;
+      if (storage != null) {
+        unawaited(refreshLabResults(storage));
+      } else {
+        labResultsNotifier.value = const {};
+      }
+    }
     if (workspace.entry == null) {
       _semantic?.dispose();
       _semantic = null;
@@ -3252,6 +3267,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
       if (day == isoDay(DateTime.now())) {
         external.addAll(githubConflictNotes(workspace.githubConflicts));
+        external.addAll(
+          labRefusalIncoming(
+            index?.tasks ?? const [],
+            labResultsNotifier.value,
+            _oltDecided,
+            day,
+          ),
+        );
       }
       final botMountIds = workspace.mounts
           .where((mount) => mount.source.extra['botVault'] == true)

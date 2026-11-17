@@ -7,7 +7,97 @@ import 'enrich_alias.dart';
 import 'loan_due.dart';
 import 'models.dart';
 import 'scanner.dart';
+import 'storage.dart';
 import 'values.dart';
+
+const labResultsDir = '_system/lab/results';
+
+class LabResult {
+  LabResult._(this._steps);
+  final Map<(String, String), _LabStep> _steps;
+
+  String stateFor(TaskRef task) {
+    if (_steps.values.any((step) => step.status == 'refused')) return 'refused';
+    final tags = loanEquipmentIds(task).toSet();
+    if (tags.isEmpty) return 'pending';
+    for (final tag in tags) {
+      if (_steps[(tag, 'out')]?.status != 'recorded' ||
+          (task.status == 'done' &&
+              _steps[(tag, 'return')]?.status != 'recorded')) {
+        return 'pending';
+      }
+    }
+    return 'recorded';
+  }
+
+  String? get reason {
+    final refused =
+        _steps.values.where((step) => step.status == 'refused').toList()
+          ..sort((a, b) => b.at.compareTo(a.at));
+    return refused.isEmpty ? null : refused.first.reason;
+  }
+}
+
+class _LabStep {
+  _LabStep(this.at, this.status, this.reason);
+  final DateTime at;
+  final String status;
+  final String? reason;
+}
+
+Map<String, LabResult> labResults(Iterable<String> jsonlFiles) {
+  final results = <String, LabResult>{};
+  for (final file in jsonlFiles) {
+    for (final line in const LineSplitter().convert(file)) {
+      try {
+        final row = jsonDecode(line);
+        if (row is! Map ||
+            row['task'] is! String ||
+            row['tag'] is! String ||
+            (row['task'] as String).isEmpty ||
+            (row['tag'] as String).isEmpty ||
+            !const {'out', 'return'}.contains(row['step']) ||
+            !const {'recorded', 'refused', 'skipped'}.contains(row['status']) ||
+            row['at'] is! String ||
+            (row['reason'] != null && row['reason'] is! String)) {
+          continue;
+        }
+        final at = DateTime.tryParse(row['at'] as String);
+        if (at == null) continue;
+        final result = results.putIfAbsent(
+          row['task'] as String,
+          () => LabResult._({}),
+        );
+        final key = (row['tag'] as String, row['step'] as String);
+        final previous = result._steps[key];
+        if (previous == null || at.isAfter(previous.at)) {
+          result._steps[key] = _LabStep(
+            at,
+            row['status'] as String,
+            row['reason'] as String?,
+          );
+        }
+      } catch (_) {
+        // Ignore malformed lines, retaining the other outcomes.
+      }
+    }
+  }
+  return results;
+}
+
+Future<Map<String, LabResult>> loadLabResults(VaultStorage storage) async {
+  final files = <String>[];
+  try {
+    for (final file in await storage.list(path: labResultsDir)) {
+      if (!file.isDirectory && file.path.endsWith('.jsonl')) {
+        try {
+          files.add(await storage.readText(file.path));
+        } catch (_) {}
+      }
+    }
+  } catch (_) {}
+  return labResults(files);
+}
 
 const enrichLoanEntity = 'loan:track';
 

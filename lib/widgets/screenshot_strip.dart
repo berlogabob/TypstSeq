@@ -188,7 +188,9 @@ class ScreenshotStrip extends StatelessWidget {
                   child: InkWell(
                     onTap: () {
                       if (note.kind == 'github-conflict') return;
-                      if (note.path.startsWith('olt:')) {
+                      if (note.properties['source'] == 'lab') {
+                        onOpenPath(note.properties['note'] as String);
+                      } else if (note.path.startsWith('olt:')) {
                         showModalBottomSheet<void>(
                           context: context,
                           builder: (context) => AppSheet(

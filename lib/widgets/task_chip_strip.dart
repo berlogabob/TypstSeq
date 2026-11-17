@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'package:material_ui/material_ui.dart';
-import 'package:tylog_core/tylog_core.dart' show isOpenLoan, loanOutFor;
+import 'package:tylog_core/tylog_core.dart'
+    show isOpenLoan, loanOutFor, loanEquipmentIds;
 import 'app_icons.dart';
 import 'constants.dart';
 import '../models.dart';
+import '../lab_results.dart';
 import 'task_clock.dart';
 
 class TaskChipStrip extends StatefulWidget {
@@ -219,6 +221,21 @@ class _TaskChipStripState extends State<TaskChipStrip> {
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
+          ),
+        if (loanEquipmentIds(_task).isNotEmpty)
+          ValueListenableBuilder(
+            valueListenable: labResultsNotifier,
+            builder: (context, results, _) {
+              final result = results[_task.id];
+              if (result == null) return const SizedBox.shrink();
+              final state = result.stateFor(_task);
+              final reason = result.reason;
+              return chip(
+                'lab',
+                'OLT: $state',
+                'OpenLabTwin: $state${state == 'refused' && reason != null ? ': $reason' : ''}',
+              );
+            },
           ),
       ],
     );

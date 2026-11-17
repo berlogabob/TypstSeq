@@ -153,6 +153,23 @@ extension _IncomingFlow on _HomeScreenState {
       );
       return;
     }
+    if (note.properties['source'] == 'lab') {
+      final dir = await oltCacheDirectory();
+      await addDecidedOltId(dir, note.id);
+      if (mounted) _markOltDecided(note.id);
+      await _appendIncomingDecision(
+        v,
+        device,
+        Decision(
+          at: DateTime.now().toIso8601String(),
+          device: device,
+          item: note.id,
+          source: 'lab',
+          action: action,
+        ),
+      );
+      return;
+    }
     var targetDay = isoDay(DateTime.now());
     if (action == 'scheduled') {
       final selected = await showDatePicker(
