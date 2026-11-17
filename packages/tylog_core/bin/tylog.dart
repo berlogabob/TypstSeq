@@ -51,7 +51,7 @@ Future<int> _loans(List<String> args) async {
   String? vault;
   for (var i = 0; i < args.length; i++) {
     final arg = args[i];
-    if (const {'--from', '--to', '--csv'}.contains(arg)) {
+    if (const {'--from', '--to', '--csv', '--jsonl'}.contains(arg)) {
       if (i + 1 >= args.length ||
           args[i + 1].startsWith('--') ||
           options.containsKey(arg)) {
@@ -60,7 +60,7 @@ Future<int> _loans(List<String> args) async {
       options[arg] = args[++i];
     } else if (arg.startsWith('--') || vault != null) {
       throw _UsageException(
-        'loans requires <vault> [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--csv out]',
+        'loans requires <vault> [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--csv out] [--jsonl out]',
       );
     } else {
       vault = arg;
@@ -84,12 +84,13 @@ Future<int> _loans(List<String> args) async {
     throw _UsageException('--from must not be after --to');
   }
   final root = Directory(vault).absolute;
-  final csvPath = options['--csv'];
-  if (csvPath != null) {
-    final output = File(csvPath).absolute.path;
+  for (final option in ['--csv', '--jsonl']) {
+    final outputPath = options[option];
+    if (outputPath == null) continue;
+    final output = File(outputPath).absolute.path;
     if (output == root.path ||
         output.startsWith('${root.path}${Platform.pathSeparator}')) {
-      throw _UsageException('--csv output must be outside the vault');
+      throw _UsageException('$option output must be outside the vault');
     }
   }
   final storage = LocalVaultStorage(root);
@@ -135,6 +136,12 @@ Future<int> _loans(List<String> args) async {
     await File(path).writeAsString(
       '${[header, ...rows].map((row) => row.map(quote).join(',')).join('\n')}\n',
     );
+  }
+  if (options['--jsonl'] case final path?) {
+    final rows = loanRows(index);
+    await File(
+      path,
+    ).writeAsString(rows.isEmpty ? '' : '${rows.map(jsonEncode).join('\n')}\n');
   }
   stdout.writeln(header.join('\t'));
   for (final row in rows) {
@@ -1121,4 +1128,5 @@ Usage:
   tylog pack-validate <file.tylogpack>
   tylog eval-links --vault <dir> --gold <file.jsonl>
   tylog eval-links --vault <dir> --sample N --out <file.jsonl>
-  tylog loans <vault> [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--csv out]''';
+  tylog loans <vault> [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--csv out] [--jsonl out]
+    --jsonl exports every loan task; --from/--to affect totals only''';

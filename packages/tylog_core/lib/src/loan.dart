@@ -225,6 +225,48 @@ List<String> loanEquipmentIds(TaskRef task) {
   ];
 }
 
+/// Builds stable, export-ready rows for every loan task in [index].
+List<Map<String, Object?>> loanRows(VaultIndex index) {
+  DateTime? stamp(String? value) {
+    final parsed = value == null ? null : DateTime.tryParse(value);
+    return parsed?.toUtc();
+  }
+
+  final tasks =
+      index.tasks.where((task) => task.properties['loan'] == true).toList()
+        ..sort((a, b) {
+          final byPath = a.notePath.compareTo(b.notePath);
+          return byPath != 0 ? byPath : a.id.compareTo(b.id);
+        });
+  return [
+    for (final task in tasks)
+      {
+        'id': task.id,
+        'path': task.notePath,
+        'status': task.status,
+        'equipment': loanEquipmentIds(task),
+        'borrower': task.properties['borrower'] is String
+            ? task.properties['borrower']
+            : null,
+        'assignees': task.assignees,
+        'purpose': task.properties['purpose'] is String
+            ? task.properties['purpose']
+            : null,
+        'due': task.due,
+        'start': task.clocked.isEmpty
+            ? null
+            : stamp(task.clocked.first.start)?.toIso8601String(),
+        'end': isOpenLoan(task) || task.clocked.isEmpty
+            ? null
+            : stamp(task.clocked.last.end)?.toIso8601String(),
+        'open': isOpenLoan(task),
+        'channel': task.properties['channel'] is String
+            ? task.properties['channel']
+            : 'llm',
+      },
+  ];
+}
+
 /// Whether [task] is a loan written by [trackAsLoan] that is not returned yet.
 bool isOpenLoan(TaskRef task) =>
     task.properties['loan'] == true &&

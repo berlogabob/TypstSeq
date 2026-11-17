@@ -175,6 +175,69 @@ void main() {
       expect(await files(), before);
     },
   );
+  test(
+    'CLI loans writes JSONL outside the vault and refuses inside paths',
+    () async {
+      final typst = await Process.run('typst', ['--version']);
+      if (typst.exitCode != 0) {
+        markTestSkipped('Typst is not installed');
+        return;
+      }
+      final repository = Directory.current.parent.parent.absolute;
+      final root = await Directory.systemTemp.createTemp('tylog_cli_jsonl_');
+      addTearDown(() => root.delete(recursive: true));
+      final environment = {
+        ...Platform.environment,
+        'TYLOG_REPOSITORY_ROOT': repository.path,
+      };
+      expect((await _cli(['init', root.path], environment)).exitCode, 0);
+      await File('${root.path}/notes/day.typ').writeAsString(
+        '''#import "/_system/tylog.typ" as tylog
+#show: tylog.note.with(id: "day", title: "Day", kind: "note")
+#tylog.task(
+  id: "loan-1",
+  text: "Borrow camera",
+  status: "doing",
+  assignees: ("Ada",),
+  due: "2026-11-20",
+  properties: ("loan": true, "equipment": ("CAM-1",), "borrower": "Ada", "purpose": "field",),
+)
+''',
+      );
+      final jsonl = File(
+        '${root.parent.path}/tylog_${root.path.hashCode}.jsonl',
+      );
+      addTearDown(() async {
+        if (await jsonl.exists()) await jsonl.delete();
+      });
+      final result = await _cli([
+        'loans',
+        root.path,
+        '--from',
+        '2026-11-01',
+        '--jsonl',
+        jsonl.path,
+      ], environment);
+      expect(result.exitCode, 0, reason: result.stderr.toString());
+      expect(
+        await jsonl.readAsString(),
+        '{"id":"loan-1","path":"notes/day.typ","status":"doing","equipment":["CAM-1"],"borrower":"Ada","assignees":["Ada"],"purpose":"field","due":"2026-11-20","start":null,"end":null,"open":true,"channel":"llm"}\n',
+      );
+
+      final refused = await _cli([
+        'loans',
+        root.path,
+        '--jsonl',
+        '${root.path}/inside.jsonl',
+      ], environment);
+      expect(refused.exitCode, 64);
+      expect(
+        refused.stderr,
+        contains('--jsonl output must be outside the vault'),
+      );
+      expect(await File('${root.path}/inside.jsonl').exists(), isFalse);
+    },
+  );
 }
 
 Future<ProcessResult> _cli(
