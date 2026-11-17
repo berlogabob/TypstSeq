@@ -3335,7 +3335,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                             '$reviewCount ${reviewCount == 1 ? 'line' : 'lines'} to review',
                           ),
                           trailing: const Icon(Icons.chevron_right),
-                          onTap: () => _showEnrichIncoming(),
+                          onTap: () => _showEnrichIncoming(
+                            day: current?.startsWith('daily/') == true
+                                ? null
+                                : current,
+                          ),
                         ),
                       ExpansionTile(
                         key: const ValueKey('daily-more'),

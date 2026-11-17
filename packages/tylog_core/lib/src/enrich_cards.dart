@@ -223,7 +223,9 @@ List<EnrichLineCard> enrichLineCards({
           for (final row in rows)
             '${row.state.name}:${row.surface}:${row.target?.id ?? ''}',
         ]..sort();
-        final conflict = loan == null ? null : openLoanFor(loan, openLoans);
+        final conflict = loan == null || loan.isReturn
+            ? null
+            : openLoanFor(loan, openLoans);
         return EnrichLineCard(
           line: line,
           taskId: taskLines[line]?.$1,

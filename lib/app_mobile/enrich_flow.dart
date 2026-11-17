@@ -242,7 +242,7 @@ extension _EnrichFlow on _HomeScreenState {
     await _loadEnrichSkipped(v);
     if (!mounted || !identical(vault, v)) return;
     final path = note;
-    final isDay = path != null && path.startsWith('daily/');
+    final isDay = path != null;
     if (!isDay) {
       if (_enrichDecisions != null) _rebuild(() => _enrichDecisions = null);
       return;
@@ -335,13 +335,24 @@ extension _EnrichFlow on _HomeScreenState {
     final ref = currentIndex.notesByPath[path];
     if (v == null || ref == null) return none;
     final mentions = await _readMentions(v, path);
-    if (mentions == null) {
-      _enrichTrace('$path no-mentions');
-      return none;
-    }
     final source = path == note
         ? workspace.source
         : await v.storage.readText(path);
+    final typed = typedLoanOffers(
+      source,
+      ref.id,
+      currentIndex,
+      noteDate: DateTime.tryParse(dailyDayOf(ref) ?? ref.date ?? ''),
+    );
+    if (mentions == null || enrichContentSha(source) != mentions.contentSha) {
+      return (
+        decisions: <EnrichDecision>[],
+        tags: <String>[],
+        markers: <EnrichMarkerOffer>[],
+        loans: typed,
+        source: source,
+      );
+    }
     // Index revisions arrive every sync poll; most change nothing here.
     final memoKey = (
       path,
@@ -365,10 +376,17 @@ extension _EnrichFlow on _HomeScreenState {
       source,
     ));
     final _EnrichView result = (
-      decisions: resolution.decisions,
+      decisions: resolution.decisions
+          .where((d) => !typed.any((t) => t.line == d.mention.line))
+          .toList(),
       tags: resolution.tags,
       markers: resolution.markers,
-      loans: resolution.loans,
+      loans: [
+        ...resolution.loans.where(
+          (offer) => !typed.any((t) => t.line == offer.line),
+        ),
+        ...typed,
+      ],
       source: source,
     );
     _enrichMemo = (memoKey, result);
@@ -389,11 +407,27 @@ extension _EnrichFlow on _HomeScreenState {
         final v = vault;
         if (v == null || ref == null) continue;
         final mentions = await _readMentions(v, path);
-        if (mentions == null) continue;
+        if (mentions == null) {
+          results[path] = await _applyEnrichment(
+            path,
+            memory,
+            currentIndex,
+            currentIndexRevision,
+          );
+          continue;
+        }
         final source = path == note
             ? workspace.source
             : await v.storage.readText(path);
-        if (enrichContentSha(source) != mentions.contentSha) continue;
+        if (enrichContentSha(source) != mentions.contentSha) {
+          results[path] = await _applyEnrichment(
+            path,
+            memory,
+            currentIndex,
+            currentIndexRevision,
+          );
+          continue;
+        }
         final memoKey = (
           path,
           source,
@@ -442,11 +476,26 @@ extension _EnrichFlow on _HomeScreenState {
     for (var i = 0; i < pending.length; i++) {
       final work = pending[i];
       final resolution = resolutions[i];
+      final typed = typedLoanOffers(
+        work.source,
+        work.ref.id,
+        currentIndex,
+        noteDate: DateTime.tryParse(
+          dailyDayOf(work.ref) ?? work.ref.date ?? '',
+        ),
+      );
       final view = (
-        decisions: resolution.decisions,
+        decisions: resolution.decisions
+            .where((d) => !typed.any((t) => t.line == d.mention.line))
+            .toList(),
         tags: resolution.tags,
         markers: resolution.markers,
-        loans: resolution.loans,
+        loans: [
+          ...resolution.loans.where(
+            (offer) => !typed.any((t) => t.line == offer.line),
+          ),
+          ...typed,
+        ],
         source: work.source,
       );
       final memoKey = (
@@ -793,6 +842,77 @@ extension _EnrichFlow on _HomeScreenState {
     final v = vault;
     if (v == null) return false;
     final currentIndex = index;
+    if (offer.channel == 'typed' && offer.equipment.isEmpty) return false;
+    if (offer.isReturn) {
+      final task = currentIndex == null
+          ? null
+          : openLoanFor(offer, openLoansByEquipment(currentIndex));
+      if (task == null) return false;
+      final source = path == note
+          ? workspace.source
+          : await v.storage.readText(path);
+      final lines = source.split('\n');
+      if (offer.line < 1 ||
+          offer.line > lines.length ||
+          lines[offer.line - 1].trim() != offer.text.trim()) {
+        return false;
+      }
+      var returned = false;
+      try {
+        if (task.notePath == path) {
+          final updated = await workspace.mutateNote(path, (current) {
+            if (current != source) throw StateError('Note changed');
+            return returnTypedLoan(
+              current,
+              offer,
+              task,
+              DateTime.now().toUtc(),
+            );
+          });
+          if (!updated) return false;
+        } else {
+          final updated = await workspace.mutateNote(
+            task.notePath,
+            (current) => applyTaskStatus(
+              current,
+              task.id,
+              'done',
+              DateTime.now().toUtc(),
+            ),
+          );
+          if (!updated) return false;
+          returned = true;
+          final removed = await workspace.mutateNote(path, (current) {
+            if (current != source) throw StateError('Note changed');
+            final result = current.split('\n')..removeAt(offer.line - 1);
+            return result.join('\n');
+          });
+          if (!removed) throw StateError('Could not remove command');
+        }
+      } catch (_) {
+        if (mounted) {
+          showSnack(
+            context,
+            returned
+                ? 'Loan returned, but the command could not be removed.'
+                : 'Could not return that loan.',
+          );
+        }
+        return false;
+      }
+      await _recordEnrichFeedback(
+        EnrichMention(
+          surface: offer.ledgerSurface,
+          type: 'topic',
+          line: offer.line,
+        ),
+        enrichLoanEntity,
+        path: path,
+        accepted: true,
+      );
+      await _refreshEnrichDay(path);
+      return true;
+    }
     final conflict = currentIndex == null
         ? null
         : openLoanFor(offer, openLoansByEquipment(currentIndex));
@@ -914,8 +1034,7 @@ extension _EnrichIncoming on _HomeScreenState {
       paths ??=
           currentIndex.notesByPath.keys
               .where(
-                (path) =>
-                    path.startsWith('daily/') && (day == null || day == path),
+                (path) => day == null ? path.startsWith('daily/') : day == path,
               )
               .toList()
             ..sort((a, b) => b.compareTo(a));

@@ -73,6 +73,7 @@ class _EnrichReviewState extends State<EnrichReview> {
   final Set<String> _skipped = {};
   final Set<EnrichDecision> _hidden = {};
   final Set<String> _accepted = {};
+  final Map<int, NoteRef> _loanSelection = {};
 
   @override
   void didUpdateWidget(covariant EnrichReview oldWidget) {
@@ -89,10 +90,27 @@ class _EnrichReviewState extends State<EnrichReview> {
       if (!_hidden.contains(row.decision)) row,
   ];
 
-  String? _label(EnrichLineCard card) => enrichPrimaryLabel(
-    _rows(card).where((row) => row.state == EnrichRowState.willLink).length,
-    card.loan,
-  );
+  EnrichLoanOffer? _loan(EnrichLineCard card) {
+    final offer = card.loan;
+    final selected = _loanSelection[card.line];
+    return offer != null && selected != null
+        ? offer.withEquipment(selected, widget.openLoans)
+        : offer;
+  }
+
+  String? _label(EnrichLineCard card) {
+    final offer = _loan(card);
+    if (offer?.channel == 'typed' &&
+        (offer!.equipment.isEmpty ||
+            (offer.isReturn && offer.openLoan == null))) {
+      return null;
+    }
+    if (offer?.isReturn == true) return 'Return loan';
+    return enrichPrimaryLabel(
+      _rows(card).where((row) => row.state == EnrichRowState.willLink).length,
+      offer,
+    );
+  }
 
   Future<void> _cardBody(EnrichLineCard card) async {
     try {
@@ -102,7 +120,7 @@ class _EnrichReviewState extends State<EnrichReview> {
         }
       }
       if (card.loan != null &&
-          await widget.onAcceptLoan?.call(card.loan!) == false) {
+          await widget.onAcceptLoan?.call(_loan(card)!) == false) {
         if (mounted) setState(() => _accepted.remove(card.key));
       }
     } catch (_) {
@@ -356,6 +374,46 @@ class _EnrichReviewState extends State<EnrichReview> {
                 Expanded(child: _lineText(card)),
                 Text('task', style: Theme.of(context).textTheme.labelSmall),
               ],
+            ),
+          if (card.loan != null && card.loan!.channel != 'typed')
+            Text(
+              typedLoanCommand(card.loan!),
+              key: ValueKey('enrich-loan-command-${card.line}'),
+              style: TextStyle(color: scheme.onSurfaceVariant),
+            ),
+          if (card.loan?.channel == 'typed' && card.loan!.equipment.isEmpty)
+            TextButton(
+              key: ValueKey('enrich-loan-choose-${card.line}'),
+              onPressed: () async {
+                final offer = card.loan!;
+                final choices = offer.equipmentCandidates.isEmpty
+                    ? widget.pages.where((p) => p.kind == 'equipment').toList()
+                    : offer.equipmentCandidates;
+                final chosen = await showModalBottomSheet<NoteRef>(
+                  context: context,
+                  builder: (context) => SafeArea(
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        ListTile(
+                          title: Text('Which “${offer.equipmentSurface}”?'),
+                        ),
+                        for (final page in choices)
+                          ListTile(
+                            title: Text(page.title),
+                            onTap: () => Navigator.pop(context, page),
+                          ),
+                      ],
+                    ),
+                  ),
+                );
+                if (chosen != null && mounted) {
+                  setState(() => _loanSelection[card.line] = chosen);
+                }
+              },
+              child: Text(
+                _loanSelection[card.line]?.title ?? 'Choose equipment…',
+              ),
             ),
           for (final row in _rows(card)) _row(card, row),
           if (card.warning != null)

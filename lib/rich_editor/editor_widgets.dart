@@ -437,7 +437,12 @@ class _TyLogRichEditorState extends State<TyLogRichEditor>
         highlighted: 0,
         loading: false,
       );
-      _ensureOverlay();
+      if (_autocomplete.value!.commandItems.isEmpty &&
+          _autocomplete.value!.taskItems.isEmpty) {
+        _cancelAutocomplete();
+      } else {
+        _ensureOverlay();
+      }
       return;
     }
     final previous = _autocomplete.value;

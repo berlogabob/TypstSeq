@@ -35,6 +35,12 @@ const _source = '''#import "/_system/tylog.typ" as tylog
 ''';
 
 void main() {
+  test('typed loan commands round trip as plain text', () {
+    const source =
+        '/loan out Quest 3 unit 1 to Ana Silva due friday\n/loan return Quest 3 unit 1';
+    expect(TyLogDocument.parse(source).toSource(), source);
+  });
+
   test('exposes malformed source line for a persistent editor warning', () {
     final controller = TyLogEditingController(
       source: '= Day\n#emph[unfinished',

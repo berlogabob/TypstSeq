@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 
 import 'enrich.dart';
+import 'enrich_alias.dart';
 import 'loan_due.dart';
 import 'models.dart';
 import 'scanner.dart';
@@ -21,6 +22,11 @@ class EnrichLoanOffer {
     this.purpose,
     this.topic,
     this.due,
+    this.channel = 'llm',
+    this.isReturn = false,
+    this.openLoan,
+    this.equipmentSurface,
+    this.equipmentCandidates = const [],
   });
 
   final int line;
@@ -32,6 +38,160 @@ class EnrichLoanOffer {
   final String? purpose;
   final String? topic;
   final String? due;
+  final String channel;
+  final bool isReturn;
+  final TaskRef? openLoan;
+  final String? equipmentSurface;
+  final List<NoteRef> equipmentCandidates;
+
+  EnrichLoanOffer withEquipment(
+    NoteRef note,
+    Map<String, List<TaskRef>> openLoans,
+  ) {
+    final selected = EnrichLoanOffer(
+      line: line,
+      text: text,
+      ledgerSurface: ledgerSurface,
+      equipment: [note],
+      person: person,
+      borrower: borrower,
+      purpose: purpose,
+      topic: topic,
+      due: due,
+      channel: channel,
+      isReturn: isReturn,
+      equipmentSurface: equipmentSurface,
+    );
+    return EnrichLoanOffer(
+      line: line,
+      text: text,
+      ledgerSurface: ledgerSurface,
+      equipment: [note],
+      person: person,
+      borrower: borrower,
+      purpose: purpose,
+      topic: topic,
+      due: due,
+      channel: channel,
+      isReturn: isReturn,
+      equipmentSurface: equipmentSurface,
+      openLoan: openLoanFor(selected, openLoans),
+    );
+  }
+}
+
+List<EnrichLoanOffer> typedLoanOffers(
+  String source,
+  String noteId,
+  VaultIndex index, {
+  DateTime? noteDate,
+}) {
+  final notes = index.notesByPath.values.toList();
+  final alias = EnrichAliasIndex.build(notes);
+  final memory = EnrichMemory.build(index, const []);
+  final context =
+      notes.where((n) => n.id == noteId).firstOrNull ??
+      NoteRef(id: noteId, path: '', title: '', outgoingLinks: const []);
+  final code = enrichCodeLines(source);
+  final lines = source.split('\n');
+  final offers = <EnrichLoanOffer>[];
+  var raw = false;
+  for (final (i, line) in lines.indexed) {
+    if (line.trimLeft().startsWith('```')) {
+      raw = !raw;
+      continue;
+    }
+    if (raw || code.contains(i + 1)) continue;
+    final match = RegExp(
+      r'^\s*/loan\s+(out|sai|выдать|return|devolve|вернуть)\s+(.+?)\s*$',
+      caseSensitive: false,
+      unicode: true,
+    ).firstMatch(line);
+    if (match == null) continue;
+    final returning = [
+      'return',
+      'devolve',
+      'вернуть',
+    ].contains(match[1]!.toLowerCase());
+    var equipmentText = match[2]!;
+    String? borrower;
+    String? due;
+    if (!returning) {
+      final parts = RegExp(
+        r'^(.+?)\s+to\s+(.+?)(?:\s+due\s+(.+))?$',
+        caseSensitive: false,
+        unicode: true,
+      ).firstMatch(equipmentText);
+      if (parts == null) continue;
+      equipmentText = parts[1]!.trim();
+      borrower = parts[2]!.trim();
+      if (parts[3] != null) {
+        final value = parts[3]!.trim();
+        final iso = RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value)
+            ? DateTime.tryParse(value)
+            : null;
+        due = iso != null && iso.toIso8601String().startsWith(value)
+            ? value
+            : noteDate == null
+            ? null
+            : parseLoanDue(value, noteDate) ??
+                  parseLoanDue('by $value', noteDate);
+      }
+    }
+    final ids = {for (final hit in alias.scan(equipmentText)) ...hit.ids};
+    final candidates = notes
+        .where((n) => n.kind == 'equipment' && ids.contains(n.id))
+        .toList();
+    final equipment = candidates.length == 1 ? candidates : <NoteRef>[];
+    NoteRef? person;
+    if (borrower != null) {
+      final decisions = resolveMentions(
+        EnrichMentions(
+          note: noteId,
+          contentSha: '',
+          mentions: [
+            EnrichMention(surface: borrower, type: 'person', line: i + 1),
+          ],
+        ),
+        context,
+        memory,
+      );
+      if (decisions.length == 1 &&
+          !decisions.single.choose &&
+          decisions.single.status != EnrichStatus.propose &&
+          decisions.single.target?.kind == 'person') {
+        person = decisions.single.target;
+      }
+    }
+    final offer = EnrichLoanOffer(
+      line: i + 1,
+      text: _taskText(line),
+      ledgerSurface: enrichPlainLine(line),
+      equipment: equipment,
+      person: person,
+      borrower: borrower,
+      due: due,
+      channel: 'typed',
+      isReturn: returning,
+      equipmentSurface: equipmentText,
+      equipmentCandidates: candidates,
+    );
+    offers.add(
+      equipment.isEmpty
+          ? offer
+          : offer.withEquipment(equipment.single, openLoansByEquipment(index)),
+    );
+  }
+  return offers;
+}
+
+String typedLoanCommand(EnrichLoanOffer offer) {
+  final equipment = offer.equipment.isEmpty
+      ? (offer.equipmentSurface ?? '')
+      : offer.equipment.map((e) => e.title).join(', ');
+  if (offer.isReturn) return '/loan return $equipment';
+  final borrower = offer.person?.title ?? offer.borrower ?? '';
+  return '/loan out $equipment to $borrower${offer.due == null ? '' : ' due ${offer.due}'}';
 }
 
 String _taskText(String line) => line
@@ -121,6 +281,26 @@ List<EnrichLoanOffer> enrichLoanOffers(
   return offers;
 }
 
+/// Applies a return and consumes its command when both are in the same note.
+String returnTypedLoan(
+  String source,
+  EnrichLoanOffer offer,
+  TaskRef task,
+  DateTime now,
+) {
+  final lines = source.split('\n');
+  if (!offer.isReturn ||
+      !isOpenLoan(task) ||
+      !offer.equipment.any((e) => loanEquipmentIds(task).contains(e.id)) ||
+      offer.line < 1 ||
+      offer.line > lines.length ||
+      _taskText(lines[offer.line - 1]) != offer.text) {
+    return source;
+  }
+  lines.removeAt(offer.line - 1);
+  return applyTaskStatus(lines.join('\n'), task.id, 'done', now);
+}
+
 String loanTaskId(String noteId, EnrichLoanOffer offer) =>
     'loan-${sha256.convert(utf8.encode('$noteId|${offer.equipment.map((e) => e.id).join(',')}|${offer.text}')).toString().substring(0, 8)}';
 
@@ -147,6 +327,7 @@ String trackAsLoan(
   }
   final properties = <String>[
     '"loan": true',
+    if (offer.channel == 'typed') '"channel": "typed"',
     if (offer.purpose != null) '"purpose": ${typstString(offer.purpose!)}',
     '"equipment": (${offer.equipment.map((e) => typstString(e.id)).join(', ')},)',
     if (offer.borrower != null) '"borrower": ${typstString(offer.borrower!)}',

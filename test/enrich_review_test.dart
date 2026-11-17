@@ -4,6 +4,121 @@ import 'package:tylog/widgets/enrich_review.dart';
 import 'package:tylog_core/tylog_core.dart';
 
 void main() {
+  testWidgets('typed and LLM loan cards display their commands', (
+    tester,
+  ) async {
+    const equipment = NoteRef(
+      id: 'TL-1',
+      path: 'e.typ',
+      title: 'Camera TL-1',
+      kind: 'equipment',
+      outgoingLinks: [],
+    );
+    const typed = EnrichLoanOffer(
+      line: 1,
+      text: '/loan out Camera to Ana',
+      ledgerSurface: '/loan out Camera to Ana',
+      equipment: [equipment],
+      borrower: 'Ana',
+      channel: 'typed',
+    );
+    const llm = EnrichLoanOffer(
+      line: 2,
+      text: 'Ana borrowed Camera',
+      ledgerSurface: 'Ana borrowed Camera',
+      equipment: [equipment],
+      borrower: 'Ana',
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ListView(
+            children: [
+              EnrichReview(
+                source: '/loan out Camera to Ana\nAna borrowed Camera',
+                decisions: const [],
+                loans: const [typed, llm],
+                onAccept: (_, _) {},
+                onReject: (_, _) {},
+                onCreate: (_) {},
+                onIgnore: (_) {},
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    expect(
+      find.text('/loan out Camera to Ana', findRichText: true),
+      findsOneWidget,
+    );
+    final command = tester.widget<Text>(
+      find.byKey(const ValueKey('enrich-loan-command-2')),
+    );
+    expect(command.data, '/loan out Camera TL-1 to Ana');
+    expect(command.style?.color, isNotNull);
+  });
+
+  testWidgets('typed ambiguous equipment must be chosen before tracking', (
+    tester,
+  ) async {
+    const one = NoteRef(
+      id: 'one',
+      path: 'one.typ',
+      title: 'Quest 3 unit 1',
+      kind: 'equipment',
+      outgoingLinks: [],
+    );
+    const two = NoteRef(
+      id: 'two',
+      path: 'two.typ',
+      title: 'Quest 3 unit 2',
+      kind: 'equipment',
+      outgoingLinks: [],
+    );
+    const offer = EnrichLoanOffer(
+      line: 1,
+      text: '/loan out Quest 3 to Ana',
+      ledgerSurface: '/loan out Quest 3 to Ana',
+      equipment: [],
+      equipmentSurface: 'Quest 3',
+      equipmentCandidates: [one, two],
+      borrower: 'Ana',
+      channel: 'typed',
+    );
+    EnrichLoanOffer? accepted;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ListView(
+            children: [
+              EnrichReview(
+                source: offer.text,
+                decisions: const [],
+                loans: const [offer],
+                onAcceptLoan: (value) {
+                  accepted = value;
+                },
+                onAccept: (_, _) {},
+                onReject: (_, _) {},
+                onCreate: (_) {},
+                onIgnore: (_) {},
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Track loan'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('enrich-loan-choose-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Quest 3 unit 2'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Track loan'));
+    await tester.pumpAndSettle();
+    expect(accepted?.equipment.single.id, 'two');
+  });
+
   testWidgets('task cards show a task label', (tester) async {
     const mention = EnrichMention(surface: 'Alex', type: 'person', line: 3);
     const decision = EnrichDecision(mention, EnrichStatus.propose, []);
