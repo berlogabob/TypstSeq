@@ -1032,7 +1032,7 @@ Plan: `~/.claude/plans/tell-me-updates-on-peaceful-otter.md`. The OpenLabTwin si
 - [x] W36.10 (terra) item page: where each unit is, history, Hand out / Take back / Move as one-screen forms writing `movementRow`; exact-row widget tests — item_page.dart + AssetPage actions; exact movementRow tests for tagged hand out, tagged take back (last issue's shelf), untagged move of 5; no DB verbs in these flows (test)
 - [x] W36.11 (luna) place page: Count this shelf is the main action; Edit, Add inside and Tag go to the overflow menu — done by terra with W36.10: Count this shelf first, Edit/Add inside/Tag in the overflow menu
 - [x] W36.12 (luna) Tools page: Record movement, Needs attention + merge, Places, Pairing, Archive, Usage (moved, not rewritten) — done with W36.8/9 by terra: storage_tools.dart (moved code), InventoryPage list deleted
-- [ ] W36.13 (Sonnet/Ornith) STAFF-GUIDE rewritten around the jobs
+- [x] W36.13 (Sonnet/Ornith) STAFF-GUIDE rewritten around the jobs — done by codex luna (openlabtwin): five job subsections with labels checked against the office code
 - [ ] W36.14 (Claude) office gates + e2e + Chrome walk of the 5 jobs; tap counts after
 - [ ] W36.15 (user) phone try; after a yes, merge `loans` + `storage` into `main` (deploys the office)
 
