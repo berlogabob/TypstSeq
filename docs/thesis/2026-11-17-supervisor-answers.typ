@@ -13,7 +13,7 @@
   "Answers to the architecture note",
   subtitle: "What TyLog and OpenLabTwin use for each layer, and how they connect",
   meta-line: "17 Nov 2026 · facts checked against the repositories and the live database on that day",
-  standfirst: [We follow the note's main principle: the LLM interprets, deterministic code decides, a person approves, and every change keeps its source. We reach it with a smaller stack: plain files and a local index for the personal graph, PostgreSQL for the lab, and local models through Ollama. There is no graph server, no vector database server and no message queue. Each row below names what we use for one layer of the note.],
+  standfirst: [We follow the note's main principle: the LLM interprets, deterministic code decides, a person approves, and every change keeps its source. We reach it with a smaller stack: plain files and a local index for the personal graph, PostgreSQL for the lab, and local models served by Unsloth Studio on our GPU PC. There is no graph server, no vector database server and no message queue. Each row below names what we use for one layer of the note.],
 )
 
 = Layer by layer
@@ -22,7 +22,7 @@
   ("Layer in the note", "What we use", "State"),
   (
     ("User interfaces", "TyLog app on phone and desktop (notes, voice, screenshots); OpenLabTwin office (web) and public forms; QR labels on shelves and units; REST API (PostgREST); TyLog MCP server", "Built"),
-    ("Local LLM", "Ollama. Ornith 1.5 35B on the Studio GPU PC extracts from TyLog notes; Ornith 1.5 9B runs the lab idea hub. The model returns JSON only", "Built"),
+    ("Local LLM", "Unsloth Studio on the Studio GPU PC, through an OpenAI-compatible API: Ornith 1.5 35B extracts from TyLog notes, Ornith 1.5 9B runs the lab idea hub. The model returns JSON only. Any OpenAI-compatible server (vLLM, Ollama) can replace it by changing a URL, which is the note's stable service interface (section 11)", "Built"),
     ("Semantic extraction", "Enrichment worker: mentions of people, places, equipment and topics per line, from day notes, screenshot OCR, audio transcripts and articles", "Built"),
     ("Validation", "Deterministic resolver; review card with a human tap; PostgreSQL constraints, row-level security and triggers (one active loan per unit); 139 database tests on the live project", "Built, no SHACL"),
     ("Knowledge graph", "TyLog: the vault itself. Notes are nodes typed by kind; links, part-of and assignees are edges; a local SQLite index answers queries. OpenLabTwin: tables and views", "Built, no graph DB"),
@@ -31,7 +31,7 @@
     ("Modules", "OpenLabTwin: bookings, storage, loans, ideas, paper archive, TV. TyLog: journal, tasks, loans, calendar, library, boards, audio, screenshots", "Built"),
     ("Slash commands", [`/loan out <equipment> to <person> due <date>` and `/loan return <equipment>`, parsed without the LLM; each LLM proposal shows the command it stands for], "Built"),
     ("Transactions, audit", "Review card = preview, tap = commit. Lab movements are append-only, never edited; an audit trigger keeps every change; each movement notes its channel", "Built"),
-    ("Retrieval", "On-device embeddings (multilingual-e5-small) inside the TyLog index; nomic-embed-text on the lab node", "Built, no Qdrant"),
+    ("Retrieval", "On-device embeddings (multilingual-e5-small) inside the TyLog index; nomic-embed-text through Ollama on the lab node", "Built, no Qdrant"),
     ("Storage", "Typst files synced through our own Nextcloud; Supabase PostgreSQL; Supabase Storage for archive photos; nightly backup and a local mirror on the lab node", "Built"),
     ("Auth, events, deploy", "Supabase Auth (email link, staff role); cron and launchd instead of queues; GitHub Pages and Actions; no Docker or Kubernetes for the apps", "Built"),
   ),
