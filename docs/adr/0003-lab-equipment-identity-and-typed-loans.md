@@ -15,7 +15,7 @@ One shelf or console could therefore appear twice, and only the first path worke
 ## Decision
 
 1. **One identity.** Equipment is identified by its asset tag and places by their place code, and both reach TyLog only through the vault export (`source: openlabtwin`). The export overwrites these notes, and TyLog never edits them; changes are made in OLT. `OltConnector` keeps only bookings and ideas (Incoming).
-2. **OLT holds the loan record.** A loan task in TyLog is an input. `tool/lab_bridge.py` turns it into OLT `issue` and `return` movements whose note is `tylog:<task-id>:out|return`. OLT's answer (recorded, or refused with a reason) comes back as a log in `_system/lab/results/` and is never written into a `.typ` file.
+2. **OLT holds the loan record.** A loan task in TyLog is an input. `tool/lab_bridge.py` turns it into OLT `issue` and `return` movements whose note is `tylog:<task-id>:<tag>:out|return`. OLT's answer (recorded, or refused with a reason) comes back as a log in `_system/lab/results/` and is never written into a `.typ` file.
 3. **Typed loan lines.** `/loan out <equipment> to <person> [due <date>]` and `/loan return <equipment>` are parsed without an LLM. They lead to the same review card as an LLM proposal, and that card shows the typed command it would run.
 
 ## Consequences

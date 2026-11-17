@@ -996,7 +996,7 @@ Convention (unit numbers): write "Quest 3 unit 1", "yellow Quest" or just "Quest
 
 Plan: `~/.claude/plans/tell-me-updates-on-peaceful-otter.md`. The OpenLabTwin side runs on branch `storage` (off `loans`) in `openlabtwin`.
 - **Decisions:**
-  - D1: OLT `movements` is the only loan record. TyLog is an input channel, and the `tylog:<task>:out|return` note is the idempotency key.
+  - D1: OLT `movements` is the only loan record. TyLog is an input channel, and the `tylog:<task>:<tag>:out|return` note is the idempotency key.
   - D2: equipment identity = asset tag plus place code, through the vault export only. `OltConnector` keeps only bookings and ideas.
   - D3: a DB trigger refuses a second issue of an asset.
   - D4: an unknown borrower is skipped and listed.
@@ -1010,11 +1010,11 @@ Plan: `~/.claude/plans/tell-me-updates-on-peaceful-otter.md`. The OpenLabTwin si
 - [ ] W36.0 (user) put the new project URL and service key (`ukelqvkanfimiafnomex`, from the node's `.env`) in the Mac's `openlabtwin/.env`; a read-only row count must work
 - [x] W36.1 (luna) `openlabtwin/scripts/storage_snapshot.py`: read-only JSON of places counted, items/assets/movements by kind and note prefix, open loans, `storage_issues` by code; one test — openlabtwin a057152; exact-dict test green; live run waits on W36.0
 - [x] W36.2 (research) `docs/thesis/literature-2026-11.md`: 20-30 primary sources, each on one line saying which decision or metric it supports or challenges — 38 sources, abstract level; gaps: small-scale graph benchmarks, lab loan systems, contested status; BFCL checked, ASEE twin review unverified (403)
-- [ ] W36.3 (Claude) `docs/thesis/2026-11-17-status.typ` → PDF: system map, what's built, what's measured, gaps, D1-D7, and a table answering each supervisor suggestion
-- [ ] W36.4 (Claude) ADRs: openlabtwin 0053 (D1, D3, D4) and TyLog adr/0003 (D2, D6); rule 1 in conceptual-model.md
+- [x] W36.3 (Claude) `docs/thesis/2026-11-17-status.typ` → PDF: system map, what's built, what's measured, gaps, D1-D7, and a table answering each supervisor suggestion — v1 committed (PDF 4 pages); live OLT numbers go in v2 (W36.29) once W36.0 is done
+- [x] W36.4 (Claude) ADRs: openlabtwin 0053 (D1, D3, D4) and TyLog adr/0003 (D2, D6); rule 1 in conceptual-model.md — openlabtwin 0053 (1c29155), TyLog adr/0003 (e03391b8); note key carries the tag
 
 ### Phase 1: OLT works alone
-- [ ] W36.5 (luna) migration: partial unique index on `movements.note` for `tylog:%` + a trigger refusing an issue of an asset that is already out; pgTAP file. Written only: `sqltest.py` pushes to the live project
+- [x] W36.5 (luna) migration: partial unique index on `movements.note` for `tylog:%` + a trigger refusing an issue of an asset that is already out; pgTAP file. Written only: `sqltest.py` pushes to the live project — openlabtwin 79529da: `movements_tylog_note` partial unique index + `prevent_asset_double_issue` trigger (exact message), 14_loan_rules.test.sql plan(6); not pushed
 - [ ] W36.6 (user → Claude) approve, then `uv run python scripts/sqltest.py` (push + pgTAP)
 - [x] W36.7 (luna) baseline tap counts for find / hand out / take back / move / count a shelf in today's office. Codex read-only on openlabtwin `storage` @a057152, counted from the widget code; minimum taps assuming camera scan and existing people/places:
 
@@ -1044,7 +1044,7 @@ Plan: `~/.claude/plans/tell-me-updates-on-peaceful-otter.md`. The OpenLabTwin si
 ### Phase 3: together with TyLog
 - [ ] W36.19 (Claude → luna) check on the P30 for places appearing twice; drop place/asset entities from `olt_connector.dart`
 - [ ] W36.20 (terra) `/loan out <equipment> to <person> [due ...]` and `/loan return <equipment>` parsed without the LLM into the review card; LLM loan cards show the typed command
-- [ ] W36.21 (luna) `tylog loans --jsonl`: one row per loan task (id, path, tags, borrower, start, end, status, channel)
+- [x] W36.21 (luna) `tylog loans --jsonl`: one row per loan task (id, path, tags, borrower, start, end, status, channel) — `loanRows` in loan.dart + CLI; exact-JSONL CLI test + unit test; core suite 664 green
 - [ ] W36.22 (terra) `tool/lab_bridge.py`: JSONL → issue/return movements with the D1 note; results to `_system/lab/results/<device>.jsonl`; dry run by default
 - [ ] W36.23 (luna) task chip "OLT: recorded" / "OLT: refused, <reason>"; a refusal also shows in Incoming
 - [ ] W36.24 (Claude → user) bridge + `export_tylog.py` dry runs on the real vault; apply after a yes
