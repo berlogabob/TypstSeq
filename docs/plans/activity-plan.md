@@ -1045,7 +1045,7 @@ Plan: `~/.claude/plans/tell-me-updates-on-peaceful-otter.md`. The OpenLabTwin si
 - [ ] W36.19 (Claude → luna) check on the P30 for places appearing twice; drop place/asset entities from `olt_connector.dart`
 - [ ] W36.20 (terra) `/loan out <equipment> to <person> [due ...]` and `/loan return <equipment>` parsed without the LLM into the review card; LLM loan cards show the typed command
 - [x] W36.21 (luna) `tylog loans --jsonl`: one row per loan task (id, path, tags, borrower, start, end, status, channel) — `loanRows` in loan.dart + CLI; exact-JSONL CLI test + unit test; core suite 664 green
-- [ ] W36.22 (terra) `tool/lab_bridge.py`: JSONL → issue/return movements with the D1 note; results to `_system/lab/results/<device>.jsonl`; dry run by default
+- [x] W36.22 (terra) `tool/lab_bridge.py`: JSONL → issue/return movements with the D1 note; results to `_system/lab/results/<device>.jsonl`; dry run by default — 6 pytest with fake PostgREST; review fixes: resolve_person helper, log only outcome changes (30-min runs); live dry run waits on W36.0
 - [ ] W36.23 (luna) task chip "OLT: recorded" / "OLT: refused, <reason>"; a refusal also shows in Incoming
 - [ ] W36.24 (Claude → user) bridge + `export_tylog.py` dry runs on the real vault; apply after a yes
 - [ ] W36.25 (luna) Mac LaunchAgent every 30 min, export then bridge; switched on only after a week of manual runs + a yes
