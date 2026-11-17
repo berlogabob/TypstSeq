@@ -87,5 +87,5 @@ The lab database stays the only record of loans; TyLog is one more way to enter 
 - *No generic module contract or command registry yet.* Each module is a schema plus its screens. The #box[`/loan`] commands are the first typed family; others follow when a module needs them.
 
 #callout(title: "In one line", tone: "info")[
-  LLM for interpretation, files and PostgreSQL for knowledge, a small vocabulary for meaning, database rules and human review for validation, apps as modules, `/loan` lines for commands, and one decision log across both systems.
+  LLM for interpretation, files and PostgreSQL for knowledge, vectors inside the TyLog index for retrieval, a small vocabulary for meaning, database rules and human review for validation, apps as modules, `/loan` lines for commands, and one decision log across both systems.
 ]
