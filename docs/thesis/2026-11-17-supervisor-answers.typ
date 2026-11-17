@@ -13,7 +13,7 @@
   "Answers to the architecture note",
   subtitle: "What TyLog and OpenLabTwin use for each layer, and how they connect",
   meta-line: "17 Nov 2026 · facts checked against the repositories and the live database on that day",
-  standfirst: [We follow the note's main principle: the LLM interprets, deterministic code decides, a person approves, and every change keeps its source. We reach it with a smaller stack: plain files and a local index for the personal graph, PostgreSQL for the lab, and local models served by Unsloth Studio on our GPU PC. There is no graph server, no vector database server and no message queue. Each row below names what we use for one layer of the note.],
+  standfirst: [We follow the note's main principle: the LLM interprets, deterministic code decides, a person approves, and every change keeps its source. We reach it with a smaller stack: plain files and a local index for the personal graph, PostgreSQL for the lab, and local models served by Unsloth Studio on our GPU PC. There is no graph server, no separate vector database server (TyLog keeps its vectors inside its own index) and no message queue. Each row below names what we use for one layer of the note.],
 )
 
 = Layer by layer
@@ -31,7 +31,7 @@
     ("Modules", "OpenLabTwin: bookings, storage, loans, ideas, paper archive, TV. TyLog: journal, tasks, loans, calendar, library, boards, audio, screenshots", "Built"),
     ("Slash commands", [`/loan out <equipment> to <person> due <date>` and `/loan return <equipment>`, parsed without the LLM; each LLM proposal shows the command it stands for], "Built"),
     ("Transactions, audit", "Review card = preview, tap = commit. Lab movements are append-only, never edited; an audit trigger keeps every change; each movement notes its channel", "Built"),
-    ("Retrieval", "On-device embeddings (multilingual-e5-small) inside the TyLog index; nomic-embed-text through Ollama on the lab node", "Built, no Qdrant"),
+    ("Vector search", "TyLog has its own vector store inside its SQLite index: notes are cut into chunks, each embedded on the device (multilingual-e5-small, 384 dimensions). Search is hybrid (keyword + vector, merged by rank fusion) and every hit cites its chunk in the source note. Lab idea hub: nomic-embed-text through Ollama on the lab node", "Built, embedded, not a server"),
     ("Storage", "Typst files synced through our own Nextcloud; Supabase PostgreSQL; Supabase Storage for archive photos; nightly backup and a local mirror on the lab node", "Built"),
     ("Auth, events, deploy", "Supabase Auth (email link, staff role); cron and launchd instead of queues; GitHub Pages and Actions; no Docker or Kubernetes for the apps", "Built"),
   ),
@@ -83,7 +83,7 @@ The lab database stays the only record of loans; TyLog is one more way to enter 
 
 - *No graph database (Neo4j, Jena, GraphDB).* At one person and one lab, the vault plus a SQLite index and PostgreSQL answer every query we need. We can export to RDF later without changing the model.
 - *No SHACL or OWL reasoning yet.* The rules live where the data lives: PostgreSQL constraints and triggers for the lab, the resolver and the note writers' own checks for notes. One rule then holds for every channel (office, TyLog, scripts).
-- *No vector database, queues or Docker for the apps.* Embeddings fit in the local index; cron and launchd replace events. The note's section 17 allows this for a first version.
+- *No separate vector database server, queues or Docker for the apps.* TyLog's vectors live in its own SQLite index, next to the text they came from, so a hit always points back to its note; cron and launchd replace events. The note's section 17 allows this for a first version.
 - *No generic module contract or command registry yet.* Each module is a schema plus its screens. The #box[`/loan`] commands are the first typed family; others follow when a module needs them.
 
 #callout(title: "In one line", tone: "info")[
