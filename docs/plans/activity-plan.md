@@ -1043,7 +1043,7 @@ Plan: `~/.claude/plans/tell-me-updates-on-peaceful-otter.md`. The OpenLabTwin si
 
 ### Phase 3: together with TyLog
 - [x] W36.19 (Claude → luna) check on the P30 for places appearing twice; drop place/asset entities from `olt_connector.dart` — real vault scan instead of P30 check: 0 olt: refs, 0 equipment notes, 0 loan tasks; connector entities() empty, cache 7→3 tables; whiteboard reads source: openlabtwin notes; 146 tests green
-- [ ] W36.20 (terra) `/loan out <equipment> to <person> [due ...]` and `/loan return <equipment>` parsed without the LLM into the review card; LLM loan cards show the typed command
+- [x] W36.20 (terra) `/loan out <equipment> to <person> [due ...]` and `/loan return <equipment>` parsed without the LLM into the review card; LLM loan cards show the typed command — typedLoanOffers/typedLoanCommand/returnTypedLoan in loan.dart; 3 core tests incl. Typst compile of the typed task, 2 widget tests; enrich button on a non-daily note now scans that note (typed lines can live anywhere); analyze 0, 154 app tests green
 - [x] W36.21 (luna) `tylog loans --jsonl`: one row per loan task (id, path, tags, borrower, start, end, status, channel) — `loanRows` in loan.dart + CLI; exact-JSONL CLI test + unit test; core suite 664 green
 - [x] W36.22 (terra) `tool/lab_bridge.py`: JSONL → issue/return movements with the D1 note; results to `_system/lab/results/<device>.jsonl`; dry run by default — 6 pytest with fake PostgREST; review fixes: resolve_person helper, log only outcome changes (30-min runs); live dry run waits on W36.0
 - [ ] W36.23 (luna) task chip "OLT: recorded" / "OLT: refused, <reason>"; a refusal also shows in Incoming
@@ -1051,7 +1051,7 @@ Plan: `~/.claude/plans/tell-me-updates-on-peaceful-otter.md`. The OpenLabTwin si
 - [ ] W36.25 (luna) Mac LaunchAgent every 30 min, export then bridge; switched on only after a week of manual runs + a yes
 
 ### Phase 4: thesis evidence
-- [ ] W36.26 (luna) node cron after the mirror appends the snapshot to `data/storage_metrics.jsonl`
+- [x] W36.26 (luna) node cron after the mirror appends the snapshot to `data/storage_metrics.jsonl` — openlabtwin 508aa77: loans {returned, median_hours, open_tagged} + by_channel (tylog/import/office, closed vocabulary); cron 04:00 → ~/storage_metrics.jsonl on the node (takes effect on the next edge-setup run)
 - [ ] W36.27 (Claude) effort table: old office / new office / `/loan` line / TyLog sentence
 - [ ] W36.28 (user) label the gold set (40-line template from P9)
 - [ ] W36.29 (Claude) status doc v2 with real numbers
