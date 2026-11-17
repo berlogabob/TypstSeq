@@ -1027,11 +1027,11 @@ Plan: `~/.claude/plans/tell-me-updates-on-peaceful-otter.md`. The OpenLabTwin si
   | Count a shelf (3 untagged + 2 tagged), no QR / with QR | 7 / 6 | 3 | 4 / 2 | no |
 
   Biggest effort: picking the database verb in a generic form, and the route through Bookings → Inventory → Places. Target after W36.8-12: hand out and take back in 3 taps from the item, with no DB verb anywhere.
-- [ ] W36.8 (terra) Storage becomes a top-level destination next to Bookings; the 7 bar icons go
-- [ ] W36.9 (terra) Storage home: one search field (items, tags, place codes, people, plus scan), Out now, Needs attention (n)
+- [x] W36.8 (terra) Storage becomes a top-level destination next to Bookings; the 7 bar icons go — openlabtwin f3df54b: Bookings | Storage | More bottom bar
+- [x] W36.9 (terra) Storage home: one search field (items, tags, place codes, people, plus scan), Out now, Needs attention (n) — storage_home.dart: accent-insensitive search over items/tags/places/people + scan, Out now, Needs attention (n); 64 office tests green
 - [ ] W36.10 (terra) item page: where each unit is, history, Hand out / Take back / Move as one-screen forms writing `movementRow`; exact-row widget tests
 - [ ] W36.11 (luna) place page: Count this shelf is the main action; Edit, Add inside and Tag go to the overflow menu
-- [ ] W36.12 (luna) Tools page: Record movement, Needs attention + merge, Places, Pairing, Archive, Usage (moved, not rewritten)
+- [x] W36.12 (luna) Tools page: Record movement, Needs attention + merge, Places, Pairing, Archive, Usage (moved, not rewritten) — done with W36.8/9 by terra: storage_tools.dart (moved code), InventoryPage list deleted
 - [ ] W36.13 (Sonnet/Ornith) STAFF-GUIDE rewritten around the jobs
 - [ ] W36.14 (Claude) office gates + e2e + Chrome walk of the 5 jobs; tap counts after
 - [ ] W36.15 (user) phone try; after a yes, merge `loans` + `storage` into `main` (deploys the office)
