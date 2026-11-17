@@ -1056,7 +1056,7 @@ Plan: `~/.claude/plans/tell-me-updates-on-peaceful-otter.md`. The OpenLabTwin si
     | Count a shelf, no QR / QR | 7 / 6 | 9 / 4 | none |
 
     Not comparable as is: the new count includes 3 count-field focuses that W36.7 may have left out (count without QR, 7→9). Move did not improve from the item page, because both places have to be picked. The Chrome walk with a stopwatch decides both.
-- [ ] W36.15 (user) phone try; after a yes, merge `loans` + `storage` into `main` (deploys the office)
+- [ ] W36.15 (user) phone try; after a yes, merge `loans` + `storage` into `main` (deploys the office) — merged on the user's yes 2026-11-17 (openlabtwin ad8c6ad + 2cfaf47 PyYAML for seed_places; CI Test + Sync and deploy green, live on Pages); phone try on the real office pending (user)
 
 ### Phase 2: real data
 - [ ] W36.16 (user → Claude) confirm `docs/places.yaml`; `seed_places.py --apply`; `labels.py`
