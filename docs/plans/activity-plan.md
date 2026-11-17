@@ -1015,7 +1015,7 @@ Plan: `~/.claude/plans/tell-me-updates-on-peaceful-otter.md`. The OpenLabTwin si
 
 ### Phase 1: OLT works alone
 - [x] W36.5 (luna) migration: partial unique index on `movements.note` for `tylog:%` + a trigger refusing an issue of an asset that is already out; pgTAP file. Written only: `sqltest.py` pushes to the live project — openlabtwin 79529da: `movements_tylog_note` partial unique index + `prevent_asset_double_issue` trigger (exact message), 14_loan_rules.test.sql plan(6); not pushed
-- [ ] W36.6 (user → Claude) approve, then `uv run python scripts/sqltest.py` (push + pgTAP)
+- [x] W36.6 (user → Claude) approve, then `uv run python scripts/sqltest.py` (push + pgTAP) — user yes 2026-11-17; pending was only 20261117100000_loan_rules.sql; applied to ukelqvkanfimiafnomex; pgTAP 14/14 files green (139 assertions, 14_loan_rules 6/6); snapshot after: 210 movements, unchanged (rollback-only tests)
 - [x] W36.7 (luna) baseline tap counts for find / hand out / take back / move / count a shelf in today's office. Codex read-only on openlabtwin `storage` @a057152, counted from the widget code; minimum taps assuming camera scan and existing people/places:
 
   | Job | Taps | Typed | Screens + dialogs | DB verb needed |
