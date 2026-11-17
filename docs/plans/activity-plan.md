@@ -991,3 +991,59 @@ Convention (unit numbers): write "Quest 3 unit 1", "yellow Quest" or just "Quest
 - [x] W35.8 Reddit extraction via public JSON (pipeline ef07ec1): fetch_reddit_post_article reads <post>.json (browser UA), title/selftext/author/subreddit/link + top-level comments (15 / 12000 chars cap); 403/429 raise FetchError blocked with http_status (reader fallback first); other JSON failures fall to old.reddit scrape. Offline tests only (tests/test_reddit_json.py). Real read-only fetch from this Mac (one GET, vault untouched): HTTP 403 (190 KB block page) - the endpoint does NOT answer without login from this IP, so reddit jobs will now report reason blocked + http_status 403 unless the r.jina.ai reader fallback succeeds. See W35.11.
 - [ ] W35.11 Reddit from this IP is blocked (403 on .json). Options: OAuth app-only token (needs a client id/secret from the user), a different egress (Studio), or accept blocked. Decide before retrying the 12 reddit jobs.
 - [x] W35.9 pipeline repo: junk_urls.jsonl is machine-written state like failures.jsonl (gitignored, not tracked); .gitignore updated and pushed with W35.6/W35.8 commits.
+
+## Wave 36 (2026-11-17): lab storage, alone and with TyLog, wired into the thesis
+
+Plan: `~/.claude/plans/tell-me-updates-on-peaceful-otter.md`. The OpenLabTwin side runs on branch `storage` (off `loans`) in `openlabtwin`.
+- **Decisions:**
+  - D1: OLT `movements` is the only loan record. TyLog is an input channel, and the `tylog:<task>:out|return` note is the idempotency key.
+  - D2: equipment identity = asset tag plus place code, through the vault export only. `OltConnector` keeps only bookings and ideas.
+  - D3: a DB trigger refuses a second issue of an asset.
+  - D4: an unknown borrower is skipped and listed.
+  - D5: the office UI is rebuilt around jobs on the same schema.
+  - D6: `/loan` typed lines in TyLog.
+  - D7: no graph server.
+- **Supervisor note** (`~/Downloads/‎Untitled (1).docx`): suggestions only; the status doc answers each one.
+- **Who does what:** codex for code, Claude reviews and runs the gates. Live-DB writes, migration pushes, `--apply` and merges to `main` each wait for the user.
+
+### Phase 0: unblock, research, status doc
+- [ ] W36.0 (user) put the new project URL and service key (`ukelqvkanfimiafnomex`, from the node's `.env`) in the Mac's `openlabtwin/.env`; a read-only row count must work
+- [ ] W36.1 (luna) `openlabtwin/scripts/storage_snapshot.py`: read-only JSON of places counted, items/assets/movements by kind and note prefix, open loans, `storage_issues` by code; one test
+- [ ] W36.2 (research) `docs/thesis/literature-2026-11.md`: 20-30 primary sources, each on one line saying which decision or metric it supports or challenges
+- [ ] W36.3 (Claude) `docs/thesis/2026-11-17-status.typ` → PDF: system map, what's built, what's measured, gaps, D1-D7, and a table answering each supervisor suggestion
+- [ ] W36.4 (Claude) ADRs: openlabtwin 0053 (D1, D3, D4) and TyLog adr/0003 (D2, D6); rule 1 in conceptual-model.md
+
+### Phase 1: OLT works alone
+- [ ] W36.5 (luna) migration: partial unique index on `movements.note` for `tylog:%` + a trigger refusing an issue of an asset that is already out; pgTAP file. Written only: `sqltest.py` pushes to the live project
+- [ ] W36.6 (user → Claude) approve, then `uv run python scripts/sqltest.py` (push + pgTAP)
+- [ ] W36.7 (luna) baseline tap counts for find / hand out / take back / move / count a shelf in today's office (table here)
+- [ ] W36.8 (terra) Storage becomes a top-level destination next to Bookings; the 7 bar icons go
+- [ ] W36.9 (terra) Storage home: one search field (items, tags, place codes, people, plus scan), Out now, Needs attention (n)
+- [ ] W36.10 (terra) item page: where each unit is, history, Hand out / Take back / Move as one-screen forms writing `movementRow`; exact-row widget tests
+- [ ] W36.11 (luna) place page: Count this shelf is the main action; Edit, Add inside and Tag go to the overflow menu
+- [ ] W36.12 (luna) Tools page: Record movement, Needs attention + merge, Places, Pairing, Archive, Usage (moved, not rewritten)
+- [ ] W36.13 (Sonnet/Ornith) STAFF-GUIDE rewritten around the jobs
+- [ ] W36.14 (Claude) office gates + e2e + Chrome walk of the 5 jobs; tap counts after
+- [ ] W36.15 (user) phone try; after a yes, merge `loans` + `storage` into `main` (deploys the office)
+
+### Phase 2: real data
+- [ ] W36.16 (user → Claude) confirm `docs/places.yaml`; `seed_places.py --apply`; `labels.py`
+- [ ] W36.17 (user → Claude) `import_pairing.py --apply` (A3); console and box labels
+- [ ] W36.18 (user) labels on, count R15 + Vitrine; snapshot before/after; spreadsheet-vs-count difference into the doc
+
+### Phase 3: together with TyLog
+- [ ] W36.19 (Claude → luna) check on the P30 for places appearing twice; drop place/asset entities from `olt_connector.dart`
+- [ ] W36.20 (terra) `/loan out <equipment> to <person> [due ...]` and `/loan return <equipment>` parsed without the LLM into the review card; LLM loan cards show the typed command
+- [ ] W36.21 (luna) `tylog loans --jsonl`: one row per loan task (id, path, tags, borrower, start, end, status, channel)
+- [ ] W36.22 (terra) `tool/lab_bridge.py`: JSONL → issue/return movements with the D1 note; results to `_system/lab/results/<device>.jsonl`; dry run by default
+- [ ] W36.23 (luna) task chip "OLT: recorded" / "OLT: refused, <reason>"; a refusal also shows in Incoming
+- [ ] W36.24 (Claude → user) bridge + `export_tylog.py` dry runs on the real vault; apply after a yes
+- [ ] W36.25 (luna) Mac LaunchAgent every 30 min, export then bridge; switched on only after a week of manual runs + a yes
+
+### Phase 4: thesis evidence
+- [ ] W36.26 (luna) node cron after the mirror appends the snapshot to `data/storage_metrics.jsonl`
+- [ ] W36.27 (Claude) effort table: old office / new office / `/loan` line / TyLog sentence
+- [ ] W36.28 (user) label the gold set (40-line template from P9)
+- [ ] W36.29 (Claude) status doc v2 with real numbers
+
+Later (only if the supervisor confirms): ontology + SHACL + RDF export, typed commands in the office, Godot twin, demand forecast, untagged items as TyLog equipment, A4.

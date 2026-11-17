@@ -64,7 +64,7 @@ Every fact (link, mention, tag) and vocabulary item (tag, entity kind, cluster) 
 
 ## Rules
 
-1. An external Entity (`source: openlabtwin`) is read-only in TyLog; edits go through OLT's API and its own access rules.
+1. An external Entity (`source: openlabtwin`) is read-only in TyLog; edits go through OLT's API and its own access rules. Lab equipment and places are exported into the vault as notes (`labs/inventory/`, id = asset tag or place code) that the export overwrites and TyLog never edits; loans recorded in TyLog become OLT movements through the lab bridge ([ADR 0003](../adr/0003-lab-equipment-identity-and-typed-loans.md)).
 2. A Link is never final until a Decision accepts it; the resolver uses accepted Decisions to improve.
 3. The graph can be filtered by source; clusters can be grouped by source.
 4. Secrets (tokens, API keys) are not part of the model; they stay per device.
