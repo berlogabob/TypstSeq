@@ -1079,3 +1079,13 @@ Plan: `~/.claude/plans/tell-me-updates-on-peaceful-otter.md`. The OpenLabTwin si
 - [ ] W36.29 (Claude) status doc v2 with real numbers
 
 Later (only if the supervisor confirms): ontology + SHACL + RDF export, typed commands in the office, Godot twin, demand forecast, untagged items as TyLog equipment, A4.
+
+## Wave 37 (2026-11-17): consumable switch, item photos, unit state photos
+
+User ask: consumable as an on/off switch anyone on staff can flip; the photos from the original spreadsheet; a photo of a unit's state when it breaks or is taken apart. Branch `photos` in openlabtwin.
+
+- [x] W37.1 (codex terra) migration `20261117130000_item_photos.sql`: `item_photos` (item, optional unit, path, state reference/ok/broken/disassembled/missing, taken_at/by), private `item-photos` bucket, condition `disassembled`, `merge_items` moves photos; pgTAP 15; `scripts/import_photos.py` + test — dry run on live items: 120 of 122 pictures matched (110 items); unmatched: furniture "Projectores de teto", "Ecras Lenovo" (listed, not uploaded); 3 spot-checked by eye
+- [x] W37.2 (codex terra + Claude) office: Consumable switch (writes kind), Use replaces Hand out/Take back for consumables, reference photo + thumbnails on the item page, camera picker downscaled to 1600 px in the browser, one signed-URL request per page load, broken/disassembled asks for a state photo; 74 office tests, analyze clean, 18 script tests
+- [ ] W37.3 (user yes) push the migration, run pgTAP on the live project
+- [ ] W37.4 (user yes) `import_photos.py --apply`
+- [ ] W37.5 (user yes) merge `photos` into `main` (deploys the office); try on the phone
