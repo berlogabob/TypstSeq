@@ -1097,10 +1097,10 @@ User ask: consumable as an on/off switch anyone on staff can flip; the photos fr
 User ask: plan everything discussed but not built, run by codex luna and Ornith 35b in short steps with constant checks; the idea bank "disappeared" (it moved to More → Ideas in W36.8, f3df54b). Plan: `~/.claude/plans/tell-me-updates-on-peaceful-otter.md`. Branch `w38` in openlabtwin.
 
 - [x] W38.0 (luna) `tool/wave_status.sh` also prints openlabtwin's `git status --short`
-- [ ] W38.1 (luna) office: Ideas as a 4th bottom tab (Bookings | Storage | Ideas | More), removed from More; widget test
-- [ ] W38.2 (luna) office: Consumable switch off asks Portable or Stationary; tests for both
+- [x] W38.1 (luna) office: Ideas as a 4th bottom tab (Bookings | Storage | Ideas | More), removed from More; built only while selected (no extra request on open). No widget test: OfficeHome needs live Supabase, change is wiring only; analyze 0, 75 tests; staff guide said "bulb icon in the top bar", fixed
+- [x] W38.2 (luna) office: Consumable switch off asks Portable or Stationary (dismiss saves nothing); tests for both; analyze 0, 76 tests (openlabtwin 4e9ecab)
 - [ ] W38.3 (user) phone try; after a yes, merge `w38` into `main` (deploys)
-- [ ] W38.4 (luna) `import_photos.py --apply` skips paths already in `item_photos` instead of refusing; test: second run adds nothing
+- [x] W38.4 (luna) `import_photos.py --apply` skips paths already in `item_photos` instead of refusing; test: second run adds nothing; prints new/already imported; 18 script tests (openlabtwin 25c0953)
 - [ ] W38.5 (user → Claude) say which items "Projectores de teto" and "Ecras Lenovo" are; add/rename; rerun `--apply` after a yes (expect 122 rows)
 - [x] W38.6 (Claude) dump live items (read-only) to scratch JSON: 140 items (112 portable, 28 stationary, 0 consumable)
 - [x] W38.7 (Ornith) `openlabtwin/docs/boxes-draft.md`: box groups for generic parts + consumable candidates; every id checked against live items. Done in 29 s: 4 box groups (cables, adapters/network, peripherals, microcontrollers) + 4 consumables, 36 ids all valid; no ESP32 item exists in live data yet; Pasco sensor + adaptor not grouped
