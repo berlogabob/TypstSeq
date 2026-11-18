@@ -26,4 +26,5 @@ else
   echo "Codex: idle"
 fi
 git status --short -- tool packages lib test android ios | head -6
+[ -d ../openlabtwin ] && git -C ../openlabtwin status --short | head -6 | sed "s/^/olt /"
 git log --oneline -2 | cut -c1-80

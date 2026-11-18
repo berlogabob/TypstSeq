@@ -1091,3 +1091,17 @@ User ask: consumable as an on/off switch anyone on staff can flip; the photos fr
 - [x] W37.3 (user yes) push the migration, run pgTAP on the live project — must go before the merge: the node pulls main every 30 min and backup.py now reads item_photos. Applied 2026-11-17; 148 pgTAP pass (15 files)
 - [x] W37.4 (user yes) `import_photos.py --apply`. First run hit a 409: 5 cells held 2-3 photos on one path and overwrote each other; fixed with -2/-3 suffixes (openlabtwin 496eadc), rerun: 120 rows, 110 items, 120 distinct paths
 - [ ] W37.5 (user yes) merge `photos` into `main` (deploys the office); try on the phone. Merged 32e7e09 and pushed 2026-11-17; phone try pending
+
+## Wave 38 (2026-11-18): leftovers in small agent steps (codex luna + Ornith 35b)
+
+User ask: plan everything discussed but not built, run by codex luna and Ornith 35b in short steps with constant checks; the idea bank "disappeared" (it moved to More → Ideas in W36.8, f3df54b). Plan: `~/.claude/plans/tell-me-updates-on-peaceful-otter.md`. Branch `w38` in openlabtwin.
+
+- [x] W38.0 (luna) `tool/wave_status.sh` also prints openlabtwin's `git status --short`
+- [ ] W38.1 (luna) office: Ideas as a 4th bottom tab (Bookings | Storage | Ideas | More), removed from More; widget test
+- [ ] W38.2 (luna) office: Consumable switch off asks Portable or Stationary; tests for both
+- [ ] W38.3 (user) phone try; after a yes, merge `w38` into `main` (deploys)
+- [ ] W38.4 (luna) `import_photos.py --apply` skips paths already in `item_photos` instead of refusing; test: second run adds nothing
+- [ ] W38.5 (user → Claude) say which items "Projectores de teto" and "Ecras Lenovo" are; add/rename; rerun `--apply` after a yes (expect 122 rows)
+- [x] W38.6 (Claude) dump live items (read-only) to scratch JSON: 140 items (112 portable, 28 stationary, 0 consumable)
+- [x] W38.7 (Ornith) `openlabtwin/docs/boxes-draft.md`: box groups for generic parts + consumable candidates; every id checked against live items. Done in 29 s: 4 box groups (cables, adapters/network, peripherals, microcontrollers) + 4 consumables, 36 ids all valid; no ESP32 item exists in live data yet; Pasco sensor + adaptor not grouped
+- [ ] W38.8 (user) confirm the draft; W36.16 continues (places.yaml boxes, seed_places --apply, labels)
