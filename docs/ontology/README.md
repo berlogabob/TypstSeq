@@ -48,6 +48,16 @@ Writes the domain document, `instances.jsonl`, `decisions.jsonl` (ledger rows ab
 
 On 2026-11-23 HermiT found the TechLAB and smart-agriculture fixture exports consistent, with no unsatisfiable classes.
 
+## Resolver misses and the exact-name rule
+`packages/tylog_core/tool/link_misses.dart` classifies each gold mention by why it was or was not linked. On the 181 draft labels, 75 mentions have a real page; the main loss (25) was a page named exactly as written losing to notes whose titles only contain the word ("Blender" against Blender tutorials). Rule added in `_candidates`: one exact-name page wins over partial matches unless the user already accepted another page for that word.
+
+| | linked correct | linked wrong | review | propose | precision | accuracy |
+|---|---:|---:|---:|---:|---:|---:|
+| before | 47 | 1 | 60 | 73 | 0.979 | 0.260 |
+| after | 72 | 2 | 34 | 73 | 0.973 | 0.398 |
+
+Caveat: the rule was designed after reading these same rows and the labels are unverified drafts, so this is not a held-out result. It needs a fresh verified sample.
+
 ## Handing a class to a small model
 Code: `packages/tylog_core/lib/src/slm_readiness.dart`. Each ledger decision is about one entity, whose kind gives its class, so the ledger is already tagged by class.
 

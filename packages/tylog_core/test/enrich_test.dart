@@ -96,6 +96,37 @@ void main() {
     });
   });
 
+  test('an exactly named page beats pages that only contain the word', () {
+    final index = indexOf([
+      entity('blender', 'Blender', kind: 'note'),
+      entity('a1', 'Cinematic Lighting in Blender', kind: 'note'),
+      entity('a2', 'Blender expert', kind: 'note'),
+    ]);
+    EnrichDecision resolve(EnrichMemory memory) => resolveMentions(
+      mentionsOf([
+        const EnrichMention(surface: 'blender', type: 'project', line: 1),
+      ]),
+      day('2026-11-04'),
+      memory,
+    ).single;
+    final decision = resolve(EnrichMemory.build(index));
+    expect(decision.status, EnrichStatus.linked);
+    expect(decision.target?.id, 'blender');
+    // The user's own earlier choice of another page keeps the question open.
+    final taught = resolve(
+      EnrichMemory.build(index, const [
+        EnrichFeedback(
+          surface: 'blender',
+          entity: 'a2',
+          accepted: true,
+          note: 'd',
+          at: 't',
+        ),
+      ]),
+    );
+    expect(taught.candidates.map((c) => c.note.id), contains('a2'));
+  });
+
   group('learned person nicknames', () {
     final person = entity('zak', 'Андрей Олегович Закатаны');
     final purchase = entity(

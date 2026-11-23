@@ -676,6 +676,17 @@ List<(NoteRef, bool)> _candidates(EnrichMention mention, EnrichMemory memory) {
       found = [(entity, false)];
     }
   }
+  // One page is named exactly as the user wrote it and the rest only contain
+  // the word ("Blender" against five Blender tutorials): that page is the
+  // answer, unless the user already accepted one of the others for this word.
+  final exact = found.where((c) => c.$2).toList();
+  if (exact.length == 1 &&
+      found.length > 1 &&
+      !found.any(
+        (c) => !c.$2 && memory.acceptedCount(mention.surface, c.$1.id) > 0,
+      )) {
+    found = exact;
+  }
   if (memory.preferMentionType && _pageTypes.contains(mention.type)) {
     final sameType = found.where((c) => c.$1.kind == mention.type).toList();
     if (sameType.isNotEmpty) found = sameType;
