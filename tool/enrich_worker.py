@@ -25,6 +25,8 @@ import transcribe_worker as tw
 
 AUTO_MARKER = "// tylog:auto-entities"
 ENTITY_KINDS = ("person", "organization", "place", "event", "website", "project", "equipment")
+# "thing" is the ontology root: a domain class directly under it is linkable too.
+LINKABLE = ENTITY_KINDS + ("thing",)
 MENTION_TYPES = ("person", "place", "organization", "project", "event", "topic", "equipment")
 SETTLE_SECONDS = 300
 # Bump when the prompt or reply shape changes: older mentions files are
@@ -71,11 +73,36 @@ def read_index(vault):
         return {}
 
 
-def known_entities(index):
-    return [{"id": note["id"], "title": note["title"], "kind": note["kind"],
+def base_kinds(vault):
+    """Domain class -> core entity kind, through is_a in the vault's ontologies
+    (_system/settings/ontology/*.json), so a "lab" is offered as a "place"."""
+    parents = {}
+    for path in sorted((Path(vault) / "_system/settings/ontology").glob("*.json")):
+        try:
+            classes = json.loads(path.read_text(encoding="utf-8")).get("classes") or {}
+        except (OSError, ValueError, AttributeError):
+            continue
+        for kind, entry in classes.items():
+            if isinstance(entry, dict) and isinstance(entry.get("is_a"), str):
+                parents[kind.strip().lower()] = entry["is_a"].strip().lower()
+    bases = {}
+    for kind in parents:
+        seen, current = set(), kind
+        while current not in LINKABLE and current in parents and current not in seen:
+            seen.add(current)
+            current = parents[current]
+        if current in LINKABLE:
+            bases[kind] = current
+    return bases
+
+
+def known_entities(index, bases=None):
+    bases = bases or {}
+    return [{"id": note["id"], "title": note["title"], "kind": kind,
              "aliases": note.get("aliases") or []}
             for note in index.get("notes", [])
-            if note.get("kind") in ENTITY_KINDS and note.get("kind") != "equipment"]
+            for kind in [bases.get(note.get("kind"), note.get("kind"))]
+            if kind in LINKABLE and kind != "equipment"]
 
 
 def legacy_known_entities(index, limit=200):
@@ -493,7 +520,7 @@ def run_once(vault, *, chat=None, now=None, state_path=None, limit=20, clock=tim
         return 0
     chat = chat or make_chat(task, connections)
     index = read_index(vault)
-    entities = known_entities(index)
+    entities = known_entities(index, base_kinds(vault))
     markers = load_markers(vault, task, index)
     failures = state.setdefault("failures", {})
     done = 0

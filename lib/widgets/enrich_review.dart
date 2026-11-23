@@ -739,7 +739,7 @@ class _EnrichReviewState extends State<EnrichReview> {
                             in searching && !decision.choose
                                 ? widget.pages.where(
                                     (page) =>
-                                        isEnrichTarget(page) &&
+                                        isEnrichTarget(page, kindOntology) &&
                                         (page.title.toLowerCase().contains(
                                               query.toLowerCase(),
                                             ) ||
@@ -784,7 +784,7 @@ class _EnrichReviewState extends State<EnrichReview> {
                             query.isNotEmpty &&
                             !widget.pages.any(
                               (page) =>
-                                  isEnrichTarget(page) &&
+                                  isEnrichTarget(page, kindOntology) &&
                                   (page.title.toLowerCase().contains(
                                         query.toLowerCase(),
                                       ) ||

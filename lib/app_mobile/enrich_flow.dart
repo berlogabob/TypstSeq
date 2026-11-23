@@ -44,8 +44,9 @@ const _EnrichView _noEnrich = (
   source: '',
 );
 
-EnrichMemory _buildEnrichMemory((VaultIndex, List<EnrichFeedback>) input) =>
-    EnrichMemory.build(input.$1, input.$2);
+EnrichMemory _buildEnrichMemory(
+  (VaultIndex, List<EnrichFeedback>, Ontology) input,
+) => EnrichMemory.build(input.$1, input.$2, input.$3);
 
 EnrichDayResolution _resolveEnrichDay(
   (EnrichMentions, NoteRef, EnrichMemory, VaultIndex, String) input,
@@ -306,7 +307,11 @@ extension _EnrichFlow on _HomeScreenState {
         v.storage,
       )).map((e) => (v, e.note, e.surface, e.entity)),
     );
-    final memory = await compute(_buildEnrichMemory, (currentIndex, events));
+    final memory = await compute(_buildEnrichMemory, (
+      currentIndex,
+      events,
+      (await loadOntology(v.storage)).ontology,
+    ));
     _enrichMemoryCache = (v, currentIndexRevision, DateTime.now(), memory);
     return memory;
   }

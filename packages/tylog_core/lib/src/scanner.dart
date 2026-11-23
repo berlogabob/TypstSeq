@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 
 import 'models.dart';
+import 'ontology.dart';
 import 'storage.dart';
 import 'values.dart';
 
@@ -886,9 +887,11 @@ Future<VaultIndex> scanVaultStorage(
       (stageMillis['support-publish'] ?? 0);
   stageTimer.reset();
   final issues = await _scanIssues(storage, issueLines, notes);
+  final loaded = await loadOntology(storage);
   final index = _buildVaultIndex(
     notes,
-    problems: problems,
+    problems: [...problems, ...loaded.problems],
+    ontology: loaded.ontology,
     tasks: tasks,
     issues: issues,
     issueLines: issueLines,
@@ -1180,6 +1183,7 @@ VaultIndex _buildVaultIndex(
   List<TaskRef> tasks = const [],
   List<IssueRef> issues = const [],
   Map<String, List<String>> issueLines = const {},
+  Ontology? ontology,
 }) {
   final resolver = LinkResolver(notes.values);
   final backlinks = <String, Set<String>>{};
@@ -1207,7 +1211,30 @@ VaultIndex _buildVaultIndex(
     }
   }
   final allProblems = [...problems];
+  String? kindOf(String reference) {
+    final resolved = resolver.resolve(reference);
+    return resolved.status == LinkResolutionStatus.resolved
+        ? notes[resolved.path]?.kind
+        : null;
+  }
+
   for (final source in notes.values) {
+    for (final violation
+        in ontology?.check(source.kind, {
+              ...source.properties,
+              'part_of': source.partOf,
+            }, kindOf) ??
+            const <String>[]) {
+      allProblems.add(
+        PkmsProblem(
+          code: 'ontology',
+          severity: PkmsSeverity.warning,
+          subject: source.path,
+          message: violation,
+          fix: 'Correct the value, or the ontology in $ontologyDir.',
+        ),
+      );
+    }
     for (final target in source.outgoingLinks) {
       // External URLs recorded as outgoing links by older scans (the
       // pre-fix _legacySources fallthrough) still sit in the note cache;

@@ -47,6 +47,55 @@ EnrichMentions mentionsOf(
 );
 
 void main() {
+  group('ontology', () {
+    final ontology = Ontology(const [
+      kCoreOntology,
+      {
+        'classes': {
+          'lab': {'is_a': 'place'},
+        },
+      },
+    ]);
+    EnrichMention mention(String surface, String type) =>
+        EnrichMention(surface: surface, type: type, line: 1);
+    List<EnrichDecision> resolve(EnrichMention m, EnrichMemory memory) =>
+        resolveMentions(mentionsOf([m]), day('2026-11-04'), memory);
+
+    test('a domain class is a link target only with the ontology', () {
+      final index = indexOf([entity('fablab', 'FabLab', kind: 'lab')]);
+      final m = mention('FabLab', 'place');
+      expect(resolve(m, EnrichMemory.build(index)).single.target, isNull);
+      final decision = resolve(
+        m,
+        EnrichMemory.build(index, const [], ontology),
+      ).single;
+      expect(decision.target?.id, 'fablab');
+      expect(decision.target?.kind, 'place');
+      expect(isEnrichTarget(index.notes.single), isFalse);
+      expect(isEnrichTarget(index.notes.single, ontology), isTrue);
+    });
+
+    test('preferMentionType keeps only candidates of the mention type', () {
+      final index = indexOf([
+        entity('lisboa-p', 'Lisboa'),
+        entity('lisboa-l', 'Lisboa', kind: 'lab'),
+      ]);
+      final memory = EnrichMemory.build(index, const [], ontology);
+      List<String> candidates(String type) => [
+        for (final c in resolve(
+          mention('Lisboa', type),
+          memory,
+        ).single.candidates)
+          c.note.id,
+      ];
+      expect(candidates('place'), unorderedEquals(['lisboa-p', 'lisboa-l']));
+      memory.preferMentionType = true;
+      expect(candidates('place'), ['lisboa-l']);
+      // A type nobody has changes nothing.
+      expect(candidates('event'), unorderedEquals(['lisboa-p', 'lisboa-l']));
+    });
+  });
+
   group('learned person nicknames', () {
     final person = entity('zak', 'Андрей Олегович Закатаны');
     final purchase = entity(

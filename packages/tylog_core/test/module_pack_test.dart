@@ -49,6 +49,16 @@ void main() {
     'assets/a.mp3': 'AUDIO',
   };
 
+  test('a pack installs and uninstalls its domain ontology', () async {
+    const ontology = '{"schema":1,"classes":{"lab":{"is_a":"place"}}}';
+    final pack = ModulePack.parse(archive({'ontology.json': ontology}));
+    await installModule(storage, pack, DateTime(2026, 1, 1));
+    expect(await storage.readText('$ontologyDir/p1.json'), ontology);
+    expect((await loadOntology(storage)).ontology.isA('lab', 'place'), isTrue);
+    await uninstallModule(storage, pack.id);
+    expect(await storage.exists('$ontologyDir/p1.json'), isFalse);
+  });
+
   test(
     'uninstall removes empty module folders and preserves unrelated files',
     () async {

@@ -34,6 +34,7 @@ Future<int> runTylog(List<String> arguments) async {
     'index' => _index(args),
     'cluster' => _cluster(args),
     'eval-links' => _evalLinks(args),
+    'export-domain' => _exportDomain(args),
     'loans' => _loans(args),
     'doctor' => _doctor(args),
     'vault-health' => _vaultHealth(args),
@@ -470,6 +471,8 @@ Future<int> _importContacts(List<String> args) async {
 }
 
 Future<int> _evalLinks(List<String> args) async {
+  final withOntology = args.contains('--ontology');
+  args = [...args]..remove('--ontology');
   final options = <String, String>{};
   for (var i = 0; i < args.length; i += 2) {
     if (!const {'--vault', '--gold', '--sample', '--out'}.contains(args[i]) ||
@@ -508,9 +511,33 @@ Future<int> _evalLinks(List<String> args) async {
         storage,
         index,
         await File(options['--gold']!).readAsString(),
+        ontology: withOntology ? (await loadOntology(storage)).ontology : null,
       ),
     );
   }
+  return 0;
+}
+
+/// Writes one field of application as files; see [exportDomain].
+Future<int> _exportDomain(List<String> args) async {
+  final options = {
+    for (var i = 0; i + 1 < args.length; i += 2) args[i]: args[i + 1],
+  };
+  if (args.length != 6 ||
+      !const {'--vault', '--id', '--out'}.every(options.containsKey)) {
+    throw _UsageException('export-domain requires --vault, --id and --out');
+  }
+  final storage = LocalVaultStorage(Directory(options['--vault']!).absolute);
+  final index = await loadVaultIndex(storage);
+  if (index == null) {
+    throw StateError('No readable vault index; run tylog index first');
+  }
+  final files = await exportDomain(storage, index, options['--id']!);
+  final out = await Directory(options['--out']!).create(recursive: true);
+  for (final entry in files.entries) {
+    await File('${out.path}/${entry.key}').writeAsString(entry.value);
+  }
+  stdout.writeln('Wrote ${files.keys.join(', ')} to ${out.path}');
   return 0;
 }
 
@@ -1126,7 +1153,8 @@ Usage:
   tylog migrate-mentions <vault> [--apply]
   tylog export <file.typ> [output.pdf]
   tylog pack-validate <file.tylogpack>
-  tylog eval-links --vault <dir> --gold <file.jsonl>
+  tylog eval-links --vault <dir> --gold <file.jsonl> [--ontology]
   tylog eval-links --vault <dir> --sample N --out <file.jsonl>
+  tylog export-domain --vault <dir> --id <domain|core> --out <dir>
   tylog loans <vault> [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--csv out] [--jsonl out]
     --jsonl exports every loan task; --from/--to affect totals only''';

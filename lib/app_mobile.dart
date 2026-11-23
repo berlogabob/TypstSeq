@@ -26,6 +26,8 @@ import 'package:tylog_core/enrich.dart';
 import 'package:tylog_core/tylog_core.dart'
     show
         Decision,
+        Ontology,
+        loadOntology,
         acceptLoan,
         equipmentUsage,
         runningWorkTask,

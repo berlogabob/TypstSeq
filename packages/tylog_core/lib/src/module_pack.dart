@@ -3,16 +3,19 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 
+import 'ontology.dart' show ontologyDir;
 import 'scanner.dart' show locateTypstCalls, taskField;
 import 'storage.dart';
 import 'validation.dart' show isSafeVaultPath;
 
 /// A data-only content pack (`*.tylogpack`, a zip): `manifest.json`, notes
-/// under `notes/`, files under `assets/`. Nothing in a pack executes.
+/// under `notes/`, files under `assets/`, and optionally `ontology.json`, the
+/// pack's domain ontology (see ontology.dart). Nothing in a pack executes.
 ///
 /// Install targets sit inside synced vault prefixes (a new top-level dir would
 /// silently not sync): `notes/x` -> `projects/<id>/x`, `assets/x` ->
-/// `assets/modules/<id>/x`. Notes may use these tokens, replaced at install:
+/// `assets/modules/<id>/x`, `ontology.json` ->
+/// `_system/settings/ontology/<id>.json`. Notes may use these tokens, replaced at install:
 /// `{{id}}` (the pack id) and `{{due:N}}` (start date + N days, ISO).
 class ModulePack {
   ModulePack._(this.id, this.name, this.version, this.unit, this.files);
@@ -57,7 +60,9 @@ class ModulePack {
       }
       final path = entry['path'] as String;
       if (!isSafeVaultPath(path) ||
-          !(path.startsWith('notes/') || path.startsWith('assets/'))) {
+          !(path.startsWith('notes/') ||
+              path.startsWith('assets/') ||
+              path == 'ontology.json')) {
         throw FormatException('Unsafe or unsupported pack path: $path');
       }
       final bytes = archive[path];
@@ -82,7 +87,9 @@ class ModulePack {
     );
   }
 
-  String targetOf(String packPath) => packPath.startsWith('notes/')
+  String targetOf(String packPath) => packPath == 'ontology.json'
+      ? '$ontologyDir/$id.json'
+      : packPath.startsWith('notes/')
       ? 'projects/$id/${packPath.substring(6)}'
       : 'assets/modules/$id/${packPath.substring(7)}';
 

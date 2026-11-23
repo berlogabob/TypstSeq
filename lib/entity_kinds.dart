@@ -1,3 +1,5 @@
+import 'package:tylog_core/tylog_core.dart' show Ontology, kCoreOntology;
+
 /// Standard entity kinds offered first in the New entity dropdown.
 const List<String> _kinds = <String>[
   'person',
@@ -42,42 +44,22 @@ List<String> entityKindChoices(Iterable<String> usedKinds) {
   return <String>[..._kinds, ...others];
 }
 
-/// Header fields the New entity dialog shows for [kind]. A `fields` list in
-/// the kind registry (`_system/settings/kinds.json`) wins; otherwise the
-/// built-in fields: email for person/organization, address for
-/// place/organization, link for every kind except equipment (location, serial,
-/// status). Keys are trimmed, lower-cased, deduped; non-strings dropped.
-// ponytail: fields are plain string keys; add per-field types when a kind
-// needs a date or entity picker.
+/// Header fields the New entity dialog shows for [kind]: the ontology's
+/// fields for the kind, inherited through `is_a`. [registry] is the kind
+/// registry (kinds.json over the domain ontologies); a `fields` list there
+/// replaces the core one. A kind that declares no fields anywhere gets a link.
 List<String> entityFieldsForKind(
   String kind, [
   Map<String, dynamic>? registry,
 ]) {
-  final String key = kind.trim().toLowerCase();
-  final Object? custom = (registry?[key] as Object?) is Map
-      ? (registry![key] as Map)['fields']
-      : null;
-  if (custom is List) {
-    final Set<String> fields = <String>{};
-    for (final Object? field in custom) {
-      if (field is String && field.trim().isNotEmpty) {
-        fields.add(field.trim().toLowerCase());
-      }
-    }
-    return fields.toList();
-  }
-  if (key == 'equipment') return <String>['location', 'serial', 'status'];
-  final List<String> fields = <String>[];
-
-  if (key == 'person' || key == 'organization') {
-    fields.add('email');
-  }
-  if (key == 'place' || key == 'organization') {
-    fields.add('address');
-  }
-  fields.add('link');
-
-  return fields;
+  final ontology = Ontology([
+    kCoreOntology,
+    {'classes': registry},
+  ]);
+  final declared = ontology
+      .lineage(kind)
+      .any((name) => ontology.classes[name]?['fields'] is List);
+  return declared ? ontology.fieldsFor(kind) : <String>['link'];
 }
 
 /// Dialog label for an entity header field.

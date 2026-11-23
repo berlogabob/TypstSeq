@@ -6,6 +6,7 @@ import 'dart:math';
 
 import 'enrich.dart';
 import 'models.dart';
+import 'ontology.dart';
 import 'storage.dart';
 
 Future<EnrichMentions> _readMentions(VaultStorage storage, String path) async {
@@ -55,6 +56,8 @@ Future<List<Map<String, Object?>>> sampleLinks(
   final seen = <(String, String)>{};
   for (final file in files) {
     final extracted = await _readMentions(storage, file.path);
+    // A mentions file can outlive its note (renamed or deleted day).
+    if (!index.notesByPath.containsKey(extracted.note)) continue;
     for (final mention in extracted.mentions) {
       if (!seen.add((extracted.note, mention.surface))) continue;
       final decision = _resolve(extracted, mention, index, memory);
@@ -80,13 +83,19 @@ Future<List<Map<String, Object?>>> sampleLinks(
 }
 
 /// Each gold row is evaluated in isolation; its own feedback never trains it.
+///
+/// With an [ontology] the resolver sees domain classes and prefers candidates
+/// of the mention's type; without one it is the unconstrained resolver. Two
+/// runs give the with/without comparison.
 Future<String> evaluateLinks(
   VaultStorage storage,
   VaultIndex index,
-  String goldJsonl,
-) async {
+  String goldJsonl, {
+  Ontology? ontology,
+}) async {
   final feedback = await loadEnrichFeedback(storage);
-  final baseline = EnrichMemory.build(index);
+  final baseline = EnrichMemory.build(index, const [], ontology)
+    ..preferMentionType = ontology != null;
   final counts = [List<int>.filled(4, 0), List<int>.filled(4, 0)];
   var n = 0;
   for (final line in const LineSplitter().convert(goldJsonl)) {
@@ -126,7 +135,8 @@ Future<String> evaluateLinks(
             !(event.note == note &&
                 enrichKey(event.surface) == enrichKey(surface)),
       ),
-    );
+      ontology,
+    )..preferMentionType = ontology != null;
     for (final (i, memory) in [baseline, learned].indexed) {
       final decision = _resolve(extracted, mention, index, memory);
       final bucket = switch (decision?.status) {

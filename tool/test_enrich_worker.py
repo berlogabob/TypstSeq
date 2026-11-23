@@ -284,6 +284,20 @@ def test_known_entities_are_complete_and_exclude_equipment():
     assert len(enrich.legacy_known_entities({"notes": notes})) == 350
 
 
+def test_domain_classes_are_offered_as_their_core_kind(tmp_path):
+    folder = tmp_path / "_system/settings/ontology"
+    folder.mkdir(parents=True)
+    (folder / "techlab.json").write_text(json.dumps({"schema": 1, "classes": {
+        "lab": {"is_a": "place"}, "fablab": {"is_a": "lab"}, "loop": {"is_a": "loop"}}}))
+    (folder / "bad.json").write_text("{")
+    bases = enrich.base_kinds(tmp_path)
+    assert bases == {"lab": "place", "fablab": "place"}
+    notes = [{"id": "f", "title": "FabLab", "kind": "fablab"}, {"id": "x", "title": "X", "kind": "loop"}]
+    assert enrich.known_entities({"notes": notes}) == []
+    assert enrich.known_entities({"notes": notes}, bases) == [
+        {"id": "f", "title": "FabLab", "kind": "place", "aliases": []}]
+
+
 def test_run_once_writes_loans_and_preserves_content_sha(tmp_path):
     vault, note = vault_with(tmp_path)
     day = "= 2026-10-22\n\n- 14:05 Student 2031 booked an appointment in the lab, asked for Equipment A and B, has problems with the ESP32 library\n"

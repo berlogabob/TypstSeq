@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "id": "techlab",
+  "name": "TechLAB",
+  "classes": {
+    "lab": {"is_a": "place", "label": "Lab", "icon": "science", "fields": ["capacity"]},
+    "room": {"is_a": "place", "label": "Room", "icon": "apartment", "fields": ["capacity"]},
+    "booking": {"is_a": "event", "label": "Booking", "icon": "event", "fields": ["starts_at", "ends_at", "places"]}
+  },
+  "slots": {
+    "capacity": {"type": "number", "domain": ["place"]},
+    "location": {"type": "entity", "range": "place", "domain": ["equipment"], "max": 1},
+    "starts_at": {"type": "date", "domain": ["booking"]},
+    "ends_at": {"type": "date", "domain": ["booking"]},
+    "places": {"type": "entity", "range": "place", "domain": ["booking"]}
+  }
+}

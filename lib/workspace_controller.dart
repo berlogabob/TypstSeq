@@ -1183,7 +1183,7 @@ class WorkspaceController extends ChangeNotifier {
     final generation = _vaultGeneration;
     if (opened == null) return;
     try {
-      final registry = await readKindRegistry(opened.storage);
+      final registry = await readKindsWithOntology(opened.storage);
       if (_owns(opened, generation)) kindRegistry.value = registry;
     } catch (error) {
       if (!_owns(opened, generation)) return;
@@ -1321,7 +1321,7 @@ class WorkspaceController extends ChangeNotifier {
     final generation = _vaultGeneration;
     if (opened == null) return;
     final path = await settingsPathFor(opened.storage, kindsSyncPath);
-    final registry = await writeKindRegistryEntry(
+    await writeKindRegistryEntry(
       opened.storage,
       kind,
       icon: icon,
@@ -1331,7 +1331,7 @@ class WorkspaceController extends ChangeNotifier {
       opened.restoreWriteMarkers(path, stale: false, pendingSync: true);
       if (_owns(opened, generation)) queueCloudSync();
     }
-    if (_owns(opened, generation)) kindRegistry.value = registry;
+    await reloadKindRegistry();
   }
 
   static const calendarsSyncPath = '_system/settings/calendars.json';

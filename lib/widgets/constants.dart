@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:tylog_core/tylog_core.dart' show Ontology, kCoreOntology;
 import 'app_icons.dart';
 import '../kind_registry.dart';
 
@@ -182,6 +183,21 @@ final kindRegistry = ValueNotifier<KindRegistry>(const {});
 /// This is the *only* place a note kind becomes an icon: routing every list
 /// through it is what stops "note" being `Icons.notes` on one screen and
 /// `Icons.description_outlined` on the next.
+KindRegistry? _kindOntologyFor;
+Ontology _kindOntology = Ontology.core;
+
+/// The core ontology refined by the kind registry; rebuilt when it changes.
+Ontology get kindOntology {
+  if (!identical(_kindOntologyFor, kindRegistry.value)) {
+    _kindOntologyFor = kindRegistry.value;
+    _kindOntology = Ontology([
+      kCoreOntology,
+      {'classes': kindRegistry.value},
+    ]);
+  }
+  return _kindOntology;
+}
+
 IconData iconForKind(String? kind, {KindRegistry? registry}) {
   final entry = (registry ?? kindRegistry.value)[kind];
   final icon = entry is Map ? kindIconPalette[entry['icon']] : null;

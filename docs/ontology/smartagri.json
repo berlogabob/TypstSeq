@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "id": "smartagri",
+  "name": "Smart agriculture",
+  "source": "SAREF4AGRI v2.1.1, ETSI TS 103 410-6 (https://saref.etsi.org/saref4agri/)",
+  "classes": {
+    "farm": {"is_a": "place", "label": "Farm", "icon": "warehouse", "same_as": "s4agri:Farm"},
+    "parcel": {"is_a": "place", "label": "Parcel", "icon": "category", "same_as": "s4agri:Parcel"},
+    "farmer": {"is_a": "person", "label": "Farmer", "same_as": "s4agri:Farmer", "fields": ["manages"]},
+    "farm_holding": {"is_a": "organization", "label": "Farm holding", "same_as": "s4agri:FarmHolding", "fields": ["manages"]},
+    "crop": {"is_a": "thing", "label": "Crop", "icon": "biotech", "same_as": "s4agri:Crop", "fields": ["located_in", "plant_date", "harvest_date"]},
+    "soil": {"is_a": "thing", "label": "Soil", "same_as": "s4agri:Soil", "fields": ["located_in"]},
+    "animal": {"is_a": "thing", "label": "Animal", "same_as": "s4agri:Animal", "fields": ["member_of", "birth_date", "death_date"]},
+    "animal_group": {"is_a": "thing", "label": "Animal group", "icon": "groups", "same_as": "s4agri:AnimalGroup", "fields": ["located_in"]},
+    "sensor": {"is_a": "equipment", "label": "Sensor", "icon": "memory", "same_as": "saref:Sensor"},
+    "pluviometer": {"is_a": "sensor", "label": "Pluviometer", "same_as": "s4agri:Pluviometer"},
+    "soil_tensiometer": {"is_a": "sensor", "label": "Soil tensiometer", "same_as": "s4agri:SoilTensiometer"},
+    "thermometer": {"is_a": "sensor", "label": "Thermometer", "same_as": "s4agri:Thermometer"},
+    "weight_sensor": {"is_a": "sensor", "label": "Weight sensor", "same_as": "s4agri:WeightSensor"},
+    "weather_station": {"is_a": "sensor", "label": "Weather station", "same_as": "s4agri:WeatherStation"},
+    "watering_system": {"is_a": "equipment", "label": "Watering system", "same_as": "s4agri:WateringSystem"},
+    "watering_valve": {"is_a": "equipment", "label": "Watering valve", "same_as": "s4agri:WateringValve"},
+    "watering_gun": {"is_a": "equipment", "label": "Watering gun", "same_as": "s4agri:WateringGun"}
+  },
+  "slots": {
+    "located_in": {"type": "entity", "range": "place", "domain": ["crop", "soil", "animal_group"], "same_as": "s4agri:isLocatedIn"},
+    "member_of": {"type": "entity", "range": "animal_group", "domain": ["animal"], "same_as": "s4agri:isMemberOf"},
+    "manages": {"type": "entity", "range": "farm", "domain": ["farmer", "farm_holding"], "same_as": "s4agri:managesFarm"},
+    "plant_date": {"type": "date", "domain": ["crop"], "max": 1, "same_as": "s4agri:hasPlantDate"},
+    "harvest_date": {"type": "date", "domain": ["crop"], "max": 1, "same_as": "s4agri:hasHarvestDate"},
+    "birth_date": {"type": "date", "domain": ["animal"], "max": 1, "same_as": "s4agri:hasBirthDate"},
+    "death_date": {"type": "date", "domain": ["animal"], "max": 1, "same_as": "s4agri:hasDeathDate"}
+  }
+}

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:tylog_core/storage.dart';
+import 'package:tylog_core/tylog_core.dart' show loadOntology;
 
 import 'settings_path.dart';
 
@@ -15,6 +16,25 @@ Future<KindRegistry> readKindRegistry(VaultStorage storage) async {
     throw const FormatException('Kind registry must be a JSON object');
   }
   return decoded;
+}
+
+/// kinds.json over the domain ontologies' classes, for display: a domain kind
+/// gets its icon, label and `is_a` without an entry in kinds.json.
+Future<KindRegistry> readKindsWithOntology(VaultStorage storage) async {
+  final merged = <String, dynamic>{};
+  for (final document in [
+    ...(await loadOntology(storage)).domains,
+    {'classes': await readKindRegistry(storage)},
+  ]) {
+    final classes = (document as Map)['classes'];
+    if (classes is! Map) continue;
+    classes.forEach((kind, entry) {
+      if (kind is String && entry is Map) {
+        merged[kind] = {...?(merged[kind] as Map?), ...entry};
+      }
+    });
+  }
+  return merged;
 }
 
 Future<KindRegistry> writeKindRegistryEntry(

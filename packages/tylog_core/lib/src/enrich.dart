@@ -16,6 +16,7 @@ import 'package:unorm_dart/unorm_dart.dart' as unorm;
 import 'enrich_alias.dart';
 import 'loan.dart';
 import 'models.dart';
+import 'ontology.dart';
 import 'scanner.dart';
 import 'storage.dart';
 import 'values.dart';
@@ -45,10 +46,17 @@ const _pageTypes = {'person', 'place', 'organization', 'project', 'event'};
 /// Kinds a mention may resolve to.
 /// Plain `note` pages count: people imported from Logseq or created by hand
 /// are often kind `note`, and proposing a new page for them is the noise.
-bool isEnrichTarget(NoteRef note) =>
-    note.kind == 'note' ||
-    note.kind == 'equipment' ||
-    entityNoteKinds.contains(note.kind);
+///
+/// With an [ontology], a domain class counts through `is_a`: a `lab` that is a
+/// `place` is a target.
+bool isEnrichTarget(NoteRef note, [Ontology? ontology]) =>
+    _targetKinds.contains(_baseKind(note.kind, ontology));
+
+const _targetKinds = {'note', 'equipment', 'thing', ...entityNoteKinds};
+
+/// The nearest core target kind in [kind]'s lineage, else [kind] itself.
+String _baseKind(String kind, Ontology? ontology) =>
+    ontology?.lineage(kind).where(_targetKinds.contains).firstOrNull ?? kind;
 
 /// Groups pages that share a normalized title or alias.
 List<List<NoteRef>> findDuplicates(VaultIndex index) {
@@ -406,14 +414,27 @@ class EnrichMemory {
   /// Marker lookup is shared by every day resolved against this index.
   final Map<String, NoteRef> markerNotes;
 
+  /// Ablation switch, off in the app until measured on a gold set: when some
+  /// candidates have the mention's type, the others are dropped.
+  bool preferMentionType = false;
+
+  /// With an [ontology], entities of a domain class are targets and carry
+  /// their core kind here (a `lab` is held as a `place`), so every kind rule
+  /// below applies to subclasses unchanged.
   factory EnrichMemory.build(
     VaultIndex index, [
     Iterable<EnrichFeedback> feedback = const [],
+    Ontology? ontology,
   ]) {
-    final entities = {
-      for (final note in index.notesByPath.values)
-        if (isEnrichTarget(note)) note.id: note,
-    };
+    final entities = <String, NoteRef>{};
+    for (final note in index.notesByPath.values) {
+      final base = _baseKind(note.kind, ontology);
+      if (_targetKinds.contains(base)) {
+        entities[note.id] = base == note.kind
+            ? note
+            : note.copyWith(kind: base);
+      }
+    }
     // Link targets may be written as id, alias, title or file stem.
     final resolver = LinkResolver(index.notesByPath.values);
     final idByTarget = <String, String>{};
@@ -654,6 +675,10 @@ List<(NoteRef, bool)> _candidates(EnrichMention mention, EnrichMemory memory) {
         when entity.kind != 'equipment' || mention.type == 'equipment') {
       found = [(entity, false)];
     }
+  }
+  if (memory.preferMentionType && _pageTypes.contains(mention.type)) {
+    final sameType = found.where((c) => c.$1.kind == mention.type).toList();
+    if (sameType.isNotEmpty) found = sameType;
   }
   return found;
 }
