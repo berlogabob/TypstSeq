@@ -48,9 +48,30 @@ extension _DuplicateMerge on WorkspaceController {
     final loserText = await readNote(loser);
     final draft = NoteMetadataDraft.fromNote(scanNote(loser, loserText));
     final canonical = replaceNoteHeader('', draft);
-    final body = loserText.startsWith(canonical)
+    var body = loserText.startsWith(canonical)
         ? loserText.substring(canonical.length)
         : null;
+    if (body == null) {
+      // Pages created in bulk carry a short header (id, title, kind, empty
+      // tags), which is not byte-equal to the canonical one. Nothing in such
+      // a header can be lost, so its body is still safely separable.
+      final rewritten = replaceNoteHeader(loserText, draft);
+      if (rewritten.startsWith(canonical)) {
+        final rest = rewritten.substring(canonical.length);
+        if (loserText.endsWith(rest)) {
+          final header = loserText.substring(0, loserText.length - rest.length);
+          final keys = RegExp(
+            r'^\s*([a-z_]+)\s*:',
+            multiLine: true,
+          ).allMatches(header).map((m) => m[1]).toSet();
+          if (const {'id', 'title', 'kind', 'tags'}.containsAll(keys) &&
+              (!keys.contains('tags') ||
+                  RegExp(r'tags:\s*\(\s*\)').hasMatch(header))) {
+            body = rest;
+          }
+        }
+      }
+    }
     final crossFolder =
         survivor.substring(0, survivor.lastIndexOf('/')) !=
         loser.substring(0, loser.lastIndexOf('/'));

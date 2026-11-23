@@ -31,6 +31,59 @@ class _DelayedStorage extends LocalVaultStorage {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  test('a page with the short bulk-created header merges', () async {
+    final root = await Directory.systemTemp.createTemp('merge-short-');
+    final storage = LocalVaultStorage(root);
+    final vault = Vault.withStorage(storage);
+    await vault.ensureCreated();
+    final workspace = WorkspaceController(
+      taskScheduler: TaskScheduler(),
+      reconcileTasks: (_) async {},
+    )..vault = vault;
+    addTearDown(() async {
+      workspace.dispose();
+      await deleteTempDir(root);
+    });
+    await storage.writeText(
+      'notes/a.typ',
+      replaceNoteHeader(
+        '= A\n\nKeep.\n',
+        const NoteMetadataDraft(id: 'a', title: 'A'),
+      ),
+    );
+    String short(String extra, String body) =>
+        '#import "/_system/tylog.typ" as tylog\n\n#show: tylog.note.with(\n'
+        '  id: "b",\n  title: "B",\n  kind: "note",\n  tags: (),\n$extra)\n\n$body';
+    await storage.writeText('notes/b.typ', short('', '= B\n\nFrom B.\n'));
+    await storage.writeText(
+      'daily/d.typ',
+      replaceNoteHeader(
+        '- saw #tylog.ref-note("b")[B]\n',
+        const NoteMetadataDraft(id: 'd', title: 'D'),
+      ),
+    );
+    workspace.index = await scanVaultStorage(storage);
+    await workspace.mergeDuplicate(
+      await workspace.previewDuplicateMerge('notes/a.typ', 'notes/b.typ'),
+    );
+    final merged = await storage.readText('notes/a.typ');
+    expect(merged, contains('From B.'));
+    expect(merged, contains('"B"'));
+    expect(await storage.exists('notes/b.typ'), isFalse);
+    expect(await storage.readText('daily/d.typ'), contains('ref-note("a")'));
+
+    // A header holding anything else is still refused.
+    await storage.writeText(
+      'notes/b.typ',
+      short('  properties: (x: "1",),\n', '= B\n'),
+    );
+    workspace.index = await scanVaultStorage(storage);
+    await expectLater(
+      workspace.previewDuplicateMerge('notes/a.typ', 'notes/b.typ'),
+      throwsStateError,
+    );
+  });
+
   test('merge drops the removed title heading and empty sections', () async {
     final root = await Directory.systemTemp.createTemp('merge-heading-');
     final storage = LocalVaultStorage(root);
