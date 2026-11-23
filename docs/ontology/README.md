@@ -20,6 +20,9 @@ Kinds stay open: a kind no document lists is still valid. Only declared slots ar
 | 6. Facets | slot `type`, `range`, `domain`, `max`, `values` |
 | 7. Instances | entity notes in the vault |
 
+## IADE places pack
+`packages/tylog_core/tool/olt_places_pack.dart` builds a `.tylogpack` from OpenLabTwin exports: every row of `places` (rooms, cabinets, shelves, with their hierarchy as `part_of`) and every location named in the schedule. Each note carries `evidence` pointing at the rows it came from, and the pack ships the TechLAB ontology. Built 2026-11-23: 51 notes (21 rooms, 2 labs, 27 storage places, 1 building); installs, scans with no ontology problems, all 51 linkable. Not installed in any vault.
+
 ## Competency questions (TechLAB)
 1 to 3 are tests in `packages/tylog_core/test/competency_questions_test.dart`; 4 and 5 are not yet tested.
 1. Where is equipment X? (`location`)
@@ -34,7 +37,7 @@ With an ontology, entities of a domain class are link targets under their core k
     dart run bin/tylog.dart eval-links --vault V --gold G.jsonl
     dart run bin/tylog.dart eval-links --vault V --gold G.jsonl --ontology
 
-First run, 2026-11-23, 40 sampled mentions with draft labels (13 unverified), real vault with no domain ontology installed: both arms identical (6 linked correct, 0 wrong, 11 review, 23 propose). The rule changed nothing on this sample; a verified, larger gold set and a vault that uses a domain are needed before any claim.
+First run, 2026-11-23, 40 sampled mentions with draft labels (13 unverified), real vault with no domain ontology installed: both arms identical (6 linked correct, 0 wrong, 11 review, 23 propose). Second run the same day on 181 draft-labelled mentions (150 more, weighted to daily notes): again identical in both arms and with or without the ledger: 47 linked correct, 1 wrong, 60 review, 73 propose (precision 0.98, coverage 0.27). The labels are drafts; 32 of them come from links already written in the notes, which makes those rows easy. A verified gold set and a vault that uses a domain are needed before any claim.
 
 ## Export
     dart run bin/tylog.dart export-domain --vault V --id techlab --out DIR
@@ -66,7 +69,7 @@ Small-model arm, first run 2026-11-23 (`tool/gliner_baseline.py`; GLiNER `urchad
 | topic | 23/57 |
 | all | 230/329 (70%), same type 169 (51%) |
 
-GLiNER also returned 358 spans the LLM did not; nobody has judged them. Median 0.78 s per note on CPU, 35 s for all 38. Of the 13 draft-gold mentions that have a real entity, GLiNER found 10.
+GLiNER also returned 358 spans the LLM did not; nobody has judged them. Median 0.78 s per note on CPU, 35 s for all 38. Of the 13 draft-gold mentions that have a real entity, GLiNER found 10. `gliner_baseline.py sheet` writes every span from both models (687) for a person to mark real or not; with that, both are scored against the same truth.
 
 Not built: the card in the app, fitting a model, registering it per class in `ai.json`, the keep-only-if-it-matches guard.
 

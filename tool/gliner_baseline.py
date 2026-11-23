@@ -5,8 +5,10 @@ output is the reference, nobody labelled the text.
   prepare --vault V --gold G.jsonl --out in.jsonl    (Mac; notes named in G)
   run in.jsonl out.jsonl                             (Studio, CPU; needs gliner)
   score in.jsonl out.jsonl [--gold G.jsonl]          (Mac)
+  sheet in.jsonl out.jsonl spans.csv                 (Mac; one row per span to judge)
 """
 import argparse
+import csv
 import json
 import sys
 import time
@@ -84,16 +86,44 @@ def score(source, out, gold=None):
         print(f"gold rows {len(sampled)}: GLiNER found {hit}; of the {len(linked)} with a real entity: {hit_linked}")
 
 
+def sheet(source, out, target):
+    """Every span either model produced, for a person to mark real or not.
+    `real` is pre-filled "yes" only where both models found the span."""
+    small = {json.loads(line)["note"]: json.loads(line) for line in open(out, encoding="utf-8")}
+    with open(target, "w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["real", "note", "line", "surface", "llm_type", "gliner_type", "gliner_score", "text"])
+        for row in (json.loads(line) for line in open(source, encoding="utf-8")):
+            text = dict(row["lines"])
+            spans = small[row["note"]]["mentions"]
+            used = set()
+            for mention in row["llm"]:
+                hits = [(i, m) for i, m in enumerate(spans)
+                        if m["line"] == mention["line"] and _same(m["surface"], mention["surface"])]
+                used.update(i for i, _ in hits)
+                best = max((m for _, m in hits), key=lambda m: m["score"], default=None)
+                writer.writerow(["yes" if best else "", row["note"], mention["line"], mention["surface"], mention["type"],
+                                 best["type"] if best else "", best["score"] if best else "",
+                                 text.get(mention["line"], "")[:200]])
+            for i, m in enumerate(spans):
+                if i not in used:
+                    writer.writerow(["", row["note"], m["line"], m["surface"], "", m["type"], m["score"],
+                                     text.get(m["line"], "")[:200]])
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest="command", required=True)
     p = commands.add_parser("prepare"); p.add_argument("--vault", required=True); p.add_argument("--gold", required=True); p.add_argument("--out", required=True)
     p = commands.add_parser("run"); p.add_argument("source"); p.add_argument("out")
     p = commands.add_parser("score"); p.add_argument("source"); p.add_argument("out"); p.add_argument("--gold")
+    p = commands.add_parser("sheet"); p.add_argument("source"); p.add_argument("out"); p.add_argument("target")
     args = parser.parse_args()
     if args.command == "prepare":
         prepare(args.vault, args.gold, args.out)
     elif args.command == "run":
         run(args.source, args.out)
+    elif args.command == "sheet":
+        sheet(args.source, args.out, args.target)
     else:
         score(args.source, args.out, args.gold)
