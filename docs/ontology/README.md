@@ -53,6 +53,21 @@ Code: `packages/tylog_core/lib/src/slm_readiness.dart`. Each ledger decision is 
 
 A class is suggested (`slmSuggestions`) at 200 decisions about 20 distinct entities with at least one rejection; both numbers are untuned constants. The user's answer is a Decision row (`source: slm`, `item: slm:<class>`). Real vault on 2026-11-23: person 16 decisions, place 5, project 3, organization 2; nothing is ready.
 
+Small-model arm, first run 2026-11-23 (`tool/gliner_baseline.py`; GLiNER `urchade/gliner_multi-v2.1`, zero-shot, the seven mention types as labels, Studio CPU). Reference is the LLM's own extraction, so this is agreement, not accuracy. 38 notes (24 screenshots, 14 daily), 329 LLM mentions:
+
+| | found by GLiNER |
+|---|---:|
+| person | 64/69 |
+| place | 67/79 |
+| organization | 49/69 |
+| equipment | 7/10 |
+| event | 7/11 |
+| project | 13/34 |
+| topic | 23/57 |
+| all | 230/329 (70%), same type 169 (51%) |
+
+GLiNER also returned 358 spans the LLM did not; nobody has judged them. Median 0.78 s per note on CPU, 35 s for all 38. Of the 13 draft-gold mentions that have a real entity, GLiNER found 10.
+
 Not built: the card in the app, fitting a model, registering it per class in `ai.json`, the keep-only-if-it-matches guard.
 
 ## Reuse
