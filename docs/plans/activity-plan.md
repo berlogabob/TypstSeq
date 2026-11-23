@@ -1115,3 +1115,17 @@ The idea bank looked empty: on 2026-10-21 the old project (`huqecytswaswkswofrqd
 - [ ] W39.2 (user) phone try; after a yes, merge `w39` into `main` (deploys). Merged 3b12b5a and pushed 2026-11-23 (user: "yes, merge"); deploy-pages failed twice on GitHub's artifact error (also 11-21 20:00, 11-23 00:00), fresh dispatch run 45154380216 deployed 10:19 UTC; phone try pending
 - [ ] W39.3 (user) approve Angela's "World Conquest Bot" (still new; no approval was ever saved)
 - [x] W39.4 (user → Claude) Studio back on; fix the idea AI key on the node (401 before Studio went offline); rerun so Nathan's idea gets an AI title and shows on the TV. Node AI_KEY replaced with the Mac's working Studio key (.env.bak-20261123); --check ok; run: idea 1 titled, approved 51, matches 17; TV 51 ideas
+
+### Handoff (2026-11-23, session end)
+
+State: openlabtwin `main` = a56d185 (w39 merged 3b12b5a, office deployed 10:19 UTC; docs pushed). Live idea bank 52 (51 approved, 1 new), idea AI working again (node key fixed), TV 51 ideas. Old project paused; export on Mac `~/openlabtwin-old-project-export/` and node. Nothing running.
+
+Open, in order:
+- W39.2 / W38.3 (user): phone try of the 5-tab bar, Ideas counts, and the Consumable-off Portable/Stationary choice.
+- W39.3 (user): approve Angela's "World Conquest Bot".
+- Check after 2026-11-24 03:30: `~/backup.log` on the node lists ideas, tv_slides, wall_slides (node pulls main every 30 min).
+- If deploy-pages fails again: new `gh workflow run sync.yml`, never re-run failed jobs; consider an automatic retry.
+- Codex quota back 2026-11-26; Studio is up again (Ornith available).
+- Waiting for a yes: aliases for PT/EN names (W38.9–W38.12 proposal).
+- Wave 36 leftovers: W36.15 phone try, W36.16 shelves for R15-BOX-* + seed_places --apply + labels, W36.17 import_pairing --apply, W36.18 shelf count, W36.24 bridge/export dry runs, W36.25 LaunchAgent, W36.27 effort table, W36.28 gold labels, W36.29 status doc v2; ESP32 item missing; W37.5 phone try unticked.
+- Not imported from the old export (ask first): 7 old TV slides, bookings/people from 10-12 to 10-21.
