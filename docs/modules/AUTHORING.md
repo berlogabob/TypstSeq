@@ -13,6 +13,7 @@ A `.tylogpack` is a zip with three parts:
 manifest.json
 notes/**.typ     TyLog format v1 notes (spec/tylog-format-v1.md)
 assets/**        audio, images (anything)
+ontology.json    optional domain ontology (see docs/ontology/README.md)
 ```
 
 - `notes/` holds one `.typ` note per lesson/entry.

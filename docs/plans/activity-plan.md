@@ -1129,3 +1129,23 @@ Open, in order:
 - Waiting for a yes: aliases for PT/EN names (W38.9–W38.12 proposal).
 - Wave 36 leftovers: W36.15 phone try, W36.16 shelves for R15-BOX-* + seed_places --apply + labels, W36.17 import_pairing --apply, W36.18 shelf count, W36.24 bridge/export dry runs, W36.25 LaunchAgent, W36.27 effort table, W36.28 gold labels, W36.29 status doc v2; ESP32 item missing; W37.5 phone try unticked.
 - Not imported from the old export (ask first): 7 old TV slides, bookings/people from 10-12 to 10-21.
+
+## Wave 40 (2026-11-23): ontology, domain packs, small-model hand-over
+
+Plan: `~/.claude/plans/https-protege-stanford-edu-sup-foamy-finch-of-ed521f32-105f-4037-aabd-8f0da8a47b64.md`. Method and results: `docs/ontology/README.md`. Released 0.25.0+177.
+
+- [x] P1 ontology format, core, scanner validator, packs carry `ontology.json`
+- [x] P2 resolver and worker see domain classes; competency questions 1-3 as tests; `eval-links --ontology`
+- [x] P3 smart agriculture from SAREF4AGRI as a pack; `export-domain`; HermiT check
+- [x] P4 start: class readiness, suggestion rule, per-class export; GLiNER baseline on the Studio
+- [x] Exact-name resolver rule (draft gold: 47 -> 73 correct links of 181)
+- [x] IADE places pack installed in the real vault; 33 duplicate pages merged; merge fixes
+- [ ] (user) Phone try of 0.25.0 on the A24
+- [ ] (user) Verify gold drafts in `~/Documents/tylog-gold` (62 flagged rows); judge `gliner/spans-to-judge.csv`
+- [ ] (user) Outlook people export -> `tylog import-contacts`
+- [ ] (user) Confirm agriculture classes; hand-over thresholds (200 decisions / 20 entities)
+- [ ] 22 duplicate pairs left (3 refused by guards, 19 need a per-pair decision)
+- [ ] P4 rest: suggestion card in the app, fitting a model, per-class connection in `ai.json`, keep-only-if-it-matches guard
+- [ ] Competency questions 4-5 as tests; domain classes as mention types in the worker
+- [ ] Held-out, verified gold run for the exact-name rule
+

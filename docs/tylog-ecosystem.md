@@ -107,8 +107,10 @@ dart run bin/tylog.dart dedupe <vault> [--apply]
 dart run bin/tylog.dart migrate-mentions <vault> [--apply]
 dart run bin/tylog.dart export <file.typ> [output.pdf]
 dart run bin/tylog.dart pack-validate <file.tylogpack>
-dart run bin/tylog.dart eval-links --vault <dir> --gold <file.jsonl>
+dart run bin/tylog.dart eval-links --vault <dir> --gold <file.jsonl> [--ontology]
 dart run bin/tylog.dart eval-links --vault <dir> --sample N --out <file.jsonl>
+dart run bin/tylog.dart export-domain --vault <dir> --id <domain|core> --out <dir> [--class <kind>]
+dart run bin/tylog.dart slm-readiness --vault <dir>
 ```
 
 `bin/tylog.dart --help` prints the authoritative list (`_usage`).

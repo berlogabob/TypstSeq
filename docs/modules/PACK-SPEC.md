@@ -9,6 +9,7 @@ A data-only zip. Nothing in a pack executes. Implementation:
 manifest.json
 notes/**.typ     TyLog format v1 notes (spec/tylog-format-v1.md)
 assets/**        audio, images (anything)
+ontology.json    optional: the pack's domain ontology (docs/ontology/README.md)
 ```
 `manifest.json`: `{"schema":1, "id":"pt-pt-a2b1", "name":..., "version":"1.0.0",
 "files":[{"path":"notes/0001.typ","sha256":"<hex>"}, ...]}`.
@@ -21,6 +22,7 @@ The install record retains `unit`; old records default to `"tasks"`.
 ## Install mapping (inside synced vault prefixes only)
 - `notes/x` -> `projects/<id>/x`
 - `assets/x` -> `assets/modules/<id>/x`
+- `ontology.json` -> `_system/settings/ontology/<id>.json`
 - record -> `_system/modules/<id>.json` (installed hashes)
 
 ## Tokens in notes (resolved at install)
