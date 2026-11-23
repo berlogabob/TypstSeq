@@ -84,6 +84,16 @@ void main() {
     final out = Platform.environment['TYLOG_TTL_OUT'];
     if (out != null) await File(out).writeAsString(ttl);
     expect(() => exportDomain(storage, index, 'nope'), throwsArgumentError);
+    final rooms = await exportDomain(
+      storage,
+      index,
+      'techlab',
+      onlyClass: 'room',
+    );
+    expect(
+      const LineSplitter().convert(rooms['instances.jsonl']!),
+      hasLength(1),
+    );
   });
 
   test('the fixture conforms to the TechLAB ontology', () {

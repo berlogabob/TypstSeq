@@ -45,6 +45,16 @@ Writes the domain document, `instances.jsonl`, `decisions.jsonl` (ledger rows ab
 
 On 2026-11-23 HermiT found the TechLAB and smart-agriculture fixture exports consistent, with no unsatisfiable classes.
 
+## Handing a class to a small model
+Code: `packages/tylog_core/lib/src/slm_readiness.dart`. Each ledger decision is about one entity, whose kind gives its class, so the ledger is already tagged by class.
+
+    dart run bin/tylog.dart slm-readiness --vault V
+    dart run bin/tylog.dart export-domain --vault V --id core --class person --out DIR
+
+A class is suggested (`slmSuggestions`) at 200 decisions about 20 distinct entities with at least one rejection; both numbers are untuned constants. The user's answer is a Decision row (`source: slm`, `item: slm:<class>`). Real vault on 2026-11-23: person 16 decisions, place 5, project 3, organization 2; nothing is ready.
+
+Not built: the card in the app, fitting a model, registering it per class in `ai.json`, the keep-only-if-it-matches guard.
+
 ## Reuse
 | TyLog | Standard |
 |---|---|

@@ -26,6 +26,7 @@ export 'src/ontology.dart';
 export 'src/report.dart';
 export 'src/scanner.dart';
 export 'src/search_index.dart';
+export 'src/slm_readiness.dart';
 export 'src/storage.dart';
 export 'src/tree_layout.dart';
 export 'src/validation.dart';

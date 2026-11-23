@@ -276,13 +276,17 @@ List<NoteRef> pointingInto(VaultIndex index, String slot, String id) {
 ///   or a subclass.
 /// - `decisions.jsonl`: accept/reject ledger rows about those instances.
 /// - `<id>.ttl`: classes, slots, instances and their resolved entity links.
+///
+/// [onlyClass] narrows the instances, and so the decisions, to one class and
+/// its subclasses: `core` with `person` is the blob for a people model.
 // ponytail: decisions carry the note path, not the sentence; join with the
 // mentions files when a model needs the text.
 Future<Map<String, String>> exportDomain(
   VaultStorage storage,
   VaultIndex index,
-  String id,
-) async {
+  String id, {
+  String? onlyClass,
+}) async {
   final loaded = await loadOntology(storage);
   final document = id == 'core'
       ? kCoreOntology
@@ -292,7 +296,9 @@ Future<Map<String, String>> exportDomain(
   final own = Ontology([document]);
   final instances = [
     for (final note in index.notes)
-      if (ontology.lineage(note.kind).any(own.classes.containsKey)) note,
+      if (ontology.lineage(note.kind).any(own.classes.containsKey) &&
+          (onlyClass == null || ontology.isA(note.kind, onlyClass)))
+        note,
   ]..sort((a, b) => a.id.compareTo(b.id));
   final ids = {for (final note in instances) note.id: note};
   String lines(Iterable<Object?> rows) =>

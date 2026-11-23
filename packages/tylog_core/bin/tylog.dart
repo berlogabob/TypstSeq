@@ -35,6 +35,7 @@ Future<int> runTylog(List<String> arguments) async {
     'cluster' => _cluster(args),
     'eval-links' => _evalLinks(args),
     'export-domain' => _exportDomain(args),
+    'slm-readiness' => _slmReadiness(args),
     'loans' => _loans(args),
     'doctor' => _doctor(args),
     'vault-health' => _vaultHealth(args),
@@ -518,13 +519,39 @@ Future<int> _evalLinks(List<String> args) async {
   return 0;
 }
 
+/// Per class: how much decision data exists, and what is missing before the
+/// class can be suggested for a small model.
+Future<int> _slmReadiness(List<String> args) async {
+  if (args.length != 2 || args.first != '--vault') {
+    throw _UsageException('slm-readiness requires --vault');
+  }
+  final storage = LocalVaultStorage(Directory(args[1]).absolute);
+  final index = await loadVaultIndex(storage);
+  if (index == null) {
+    throw StateError('No readable vault index; run tylog index first');
+  }
+  stdout.write(
+    slmReadinessReport(
+      classReadiness(
+        index,
+        await loadEnrichFeedback(storage),
+        (await loadOntology(storage)).ontology,
+      ),
+    ),
+  );
+  return 0;
+}
+
 /// Writes one field of application as files; see [exportDomain].
 Future<int> _exportDomain(List<String> args) async {
   final options = {
     for (var i = 0; i + 1 < args.length; i += 2) args[i]: args[i + 1],
   };
-  if (args.length != 6 ||
-      !const {'--vault', '--id', '--out'}.every(options.containsKey)) {
+  if (args.length.isOdd ||
+      !const {'--vault', '--id', '--out'}.every(options.containsKey) ||
+      options.keys.any(
+        (key) => !const {'--vault', '--id', '--out', '--class'}.contains(key),
+      )) {
     throw _UsageException('export-domain requires --vault, --id and --out');
   }
   final storage = LocalVaultStorage(Directory(options['--vault']!).absolute);
@@ -532,7 +559,12 @@ Future<int> _exportDomain(List<String> args) async {
   if (index == null) {
     throw StateError('No readable vault index; run tylog index first');
   }
-  final files = await exportDomain(storage, index, options['--id']!);
+  final files = await exportDomain(
+    storage,
+    index,
+    options['--id']!,
+    onlyClass: options['--class'],
+  );
   final out = await Directory(options['--out']!).create(recursive: true);
   for (final entry in files.entries) {
     await File('${out.path}/${entry.key}').writeAsString(entry.value);
@@ -1155,6 +1187,7 @@ Usage:
   tylog pack-validate <file.tylogpack>
   tylog eval-links --vault <dir> --gold <file.jsonl> [--ontology]
   tylog eval-links --vault <dir> --sample N --out <file.jsonl>
-  tylog export-domain --vault <dir> --id <domain|core> --out <dir>
+  tylog export-domain --vault <dir> --id <domain|core> --out <dir> [--class <kind>]
+  tylog slm-readiness --vault <dir>
   tylog loans <vault> [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--csv out] [--jsonl out]
     --jsonl exports every loan task; --from/--to affect totals only''';
