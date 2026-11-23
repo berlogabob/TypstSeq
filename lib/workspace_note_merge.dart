@@ -144,7 +144,9 @@ extension _DuplicateMerge on WorkspaceController {
           targets,
           remove.title,
           keep.id,
-          labelTitle: keep.title,
+          // A merge repoints the link; the words the user wrote stay. The
+          // removed title becomes an alias of the page that is kept.
+          labelTitle: remove.title,
         );
         if (updated.contains(typstString(remove.id))) {
           throw StateError(
@@ -192,8 +194,14 @@ extension _DuplicateMerge on WorkspaceController {
               updated = replaceNoteProperty(updated, entry.key, entry.value);
             }
           }
-          final aliases = {...metadata.aliases, remove.title, ...remove.aliases}
-            ..remove(metadata.title);
+          // The index's aliases too: the source parser cannot read every
+          // header, and an alias it misses would be overwritten here.
+          final aliases = {
+            ...keep.aliases,
+            ...metadata.aliases,
+            remove.title,
+            ...remove.aliases,
+          }..remove(metadata.title);
           if (draft.tags.isNotEmpty &&
               !text.startsWith(
                 replaceNoteHeader(
@@ -216,11 +224,15 @@ extension _DuplicateMerge on WorkspaceController {
             'aliases':
                 '(${aliases.map(typstString).map((s) => '$s,').join(' ')})',
           });
-          updated = replaceNotePartOf(
-            updated,
-            NoteMetadataDraft.fromNote(metadata),
-            {...metadata.partOf, ...remove.partOf}.toList(),
-          );
+          final parents = {...metadata.partOf, ...remove.partOf}.toList();
+          // Neither page has a parent: writing an empty `part_of` is noise.
+          if (parents.isNotEmpty) {
+            updated = replaceNotePartOf(
+              updated,
+              NoteMetadataDraft.fromNote(metadata),
+              parents,
+            );
+          }
           // The removed page's own `= Title` heading would repeat inside the
           // merged section, and a page with nothing else left an empty one.
           final content = body?.replaceFirst(
@@ -237,7 +249,7 @@ extension _DuplicateMerge on WorkspaceController {
               targets,
               remove.title,
               keep.id,
-              labelTitle: keep.title,
+              labelTitle: remove.title,
             );
             if (mergedBody.contains(typstString(remove.id))) {
               throw StateError(
@@ -257,10 +269,8 @@ extension _DuplicateMerge on WorkspaceController {
         }
       }
     }
-    before.putIfAbsent(
-      survivor,
-      () => throw StateError('Survivor could not be updated.'),
-    );
+    // The kept page may need no change: it already lists the removed name.
+    before[survivor] ??= survivor == note ? source : await readNote(survivor);
     return DuplicateMergePreview._(survivor, loser, before, after);
   }
 

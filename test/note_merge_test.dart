@@ -6,7 +6,7 @@ import 'package:tylog/task_scheduler.dart';
 import 'package:tylog/vault.dart';
 import 'package:tylog/vault_storage.dart';
 import 'package:tylog/workspace_controller.dart';
-import 'package:tylog_core/tylog_core.dart' show loadDecisions;
+import 'package:tylog_core/tylog_core.dart' show VaultIndex, loadDecisions;
 
 import 'support/temp_dir.dart';
 
@@ -70,7 +70,29 @@ void main() {
     expect(merged, contains('From B.'));
     expect(merged, contains('"B"'));
     expect(await storage.exists('notes/b.typ'), isFalse);
-    expect(await storage.readText('daily/d.typ'), contains('ref-note("a")'));
+    expect(
+      await storage.readText('daily/d.typ'),
+      contains('saw #tylog.ref-note("a")[B]'),
+    );
+    expect(merged, isNot(contains('part_of')));
+
+    // Aliases only the index knows survive, and a kept page that already
+    // lists the removed name needs no change.
+    await storage.writeText('notes/b.typ', short('', '= B\n'));
+    final scanned = await scanVaultStorage(storage);
+    final kept = scanned.notesByPath['notes/a.typ']!;
+    workspace.index = VaultIndex(
+      notesByPath: {
+        ...scanned.notesByPath,
+        'notes/a.typ': kept.copyWith(aliases: [...kept.aliases, 'Old name']),
+      },
+      backlinksByTarget: scanned.backlinksByTarget,
+    );
+    await workspace.mergeDuplicate(
+      await workspace.previewDuplicateMerge('notes/a.typ', 'notes/b.typ'),
+    );
+    expect(await storage.readText('notes/a.typ'), contains('"Old name"'));
+    expect(await storage.exists('notes/b.typ'), isFalse);
 
     // A header holding anything else is still refused.
     await storage.writeText(
@@ -1324,7 +1346,8 @@ void main() {
       await workspace.mergeDuplicate(preview);
       final merged = await storage.readText('notes/a.typ');
       expect(merged, contains('== Merged from B'));
-      expect(merged, contains('Important body with #tylog.ref-note("a")[A].'));
+      // The link is repointed; the label the user wrote is kept.
+      expect(merged, contains('Important body with #tylog.ref-note("a")[B].'));
       expect(await storage.exists('notes/b.typ'), isFalse);
       final compile = Process.runSync('typst', [
         'compile',

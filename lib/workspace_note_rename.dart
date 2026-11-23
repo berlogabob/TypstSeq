@@ -170,7 +170,11 @@ String _renameReferences(
     var replacement = call.source;
     // Only a plain label equal to the old title follows the rename.
     final content = RegExp(r'\)\s*\[([\s\S]*)\]$').firstMatch(replacement);
-    if (content != null && unescapeMarkup(content[1]!) == oldTitle) {
+    // A label that would not change is left byte for byte as written (older
+    // imports escape differently from today's writer).
+    if (content != null &&
+        unescapeMarkup(content[1]!) == oldTitle &&
+        (labelTitle ?? title) != oldTitle) {
       replacement = replacement.replaceRange(
         content.end - content[1]!.length - 1,
         content.end - 1,
