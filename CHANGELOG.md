@@ -5,6 +5,18 @@ their history is in the commit log and the GitHub release notes.
 
 ## Unreleased
 
+## 0.25.0+177
+
+### New
+
+- Ontology. Kinds can extend one another (`is_a`) and properties can have a type, range and limit. A field of application adds one file under `_system/settings/ontology/`, or ships in a module pack. Violations appear in Problems.
+- Domain kinds are link targets: a `lab` that is a `place` is offered and linked like a place, and the New entity dialog shows its inherited fields.
+
+### Fixed
+
+- A page named exactly as you wrote it now links instead of going to review when other notes merely contain the word.
+- Duplicate merge keeps the words you wrote in links, keeps every alias of the kept page, and works on pages created in bulk.
+
 ## 0.24.1+176
 
 ### New
