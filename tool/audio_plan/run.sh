@@ -22,7 +22,7 @@ fi
 
 studio_ok=false
 if [ "$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 http://desktop-vdsrh2e:8888/v1/models)" = 401 ] \
-   && "$REPO/tool/model_bench/studio_load.py" "$MODEL" 65536 >/dev/null 2>&1; then studio_ok=true; fi
+   && "$REPO/tool/championship/model_bench/studio_load.py" "$MODEL" 65536 >/dev/null 2>&1; then studio_ok=true; fi
 echo "studio_ok=$studio_ok"
 
 run_agent() { # agent task log

@@ -672,9 +672,13 @@ def section_text(note_text, heading):
     return "".join(chunks[found[0] + 1:found[1]]).strip()
 
 
-def context_messages(context_text, target, window, song=None):
+def context_messages(context_text, target, window, song=None, source=None):
     """Prompt for one window of numbered speech lines [(number, text)]. The reply is one JSON object (parse_context_reply).
-    `song` ({"artist", "title"}) names the recording as a song and asks the summary for what the song is about."""
+    `song` ({"artist", "title"}) names the recording as a song and asks the summary for what the song is about.
+    `source` is the transcript's language when it is one known language: named outright, because "the language
+    of the transcript" alone got English summaries for short Russian recordings (2026-11-25)."""
+    written = (f"in {worker.LANGUAGE_NAMES.get(source, source)}, the language of the transcript" if source
+               else "in the language of the transcript")
     language = worker.LANGUAGE_NAMES.get(target, target)
     schema = ('{"summary": string, "scenes": [{"line": int, "title": string}], '
               f'"glossary": [{{"heard": string, "spelling": string, "{target}": string}}], '
@@ -687,7 +691,7 @@ def context_messages(context_text, target, window, song=None):
     system = (
         f"{intro}Reply with one JSON object and nothing else: "
         f"{schema}. "
-        "Write summary, scene titles and explanations in the language of the transcript. "
+        f"Write summary, scene titles and explanations {written}. "
         f"{summary}"
         "scenes: each place where the subject or scene changes, with the number of its first line and a short title. "
         "glossary: names and terms the transcript uses. heard is the form in the transcript; spelling is the correct "
@@ -785,7 +789,7 @@ def parse_summary_reply(reply):
     return summary.strip()
 
 
-def context_pass(speech, context_text, target, chat, song=None):
+def context_pass(speech, context_text, target, chat, song=None, source=None):
     """Stage 5 over the speech lines (dicts with `text`, numbered from 1). chat(messages) returns the reply text.
 
     Returns {"summary", "scenes", "glossary", "references"}; scene and reference line numbers are the
@@ -798,11 +802,11 @@ def context_pass(speech, context_text, target, chat, song=None):
     parts = []
     for first in range(0, len(numbered), CONTEXT_WINDOW):
         window = numbered[first:first + CONTEXT_WINDOW]
-        reply = chat(context_messages(context_text, target, window, song))
+        reply = chat(context_messages(context_text, target, window, song, source))
         parts.append(parse_context_reply(reply, {number for number, _ in window}, target))
     if len(parts) == 1:
         return parts[0]
-    summary = parse_summary_reply(chat(summary_messages(target, [part["summary"] for part in parts])))
+    summary = parse_summary_reply(chat(summary_messages(source or target, [part["summary"] for part in parts])))
     glossary, seen = [], set()
     for entry in (entry for part in parts for entry in part["glossary"]):
         if entry["heard"].lower() not in seen:

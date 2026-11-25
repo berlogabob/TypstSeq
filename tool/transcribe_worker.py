@@ -327,11 +327,11 @@ def _load(base, request, model):
 
 
 def ensure_context(base, request, model):
-    """Reloads `model` at LLM_CONTEXT when Studio lists it at its native context, which is its default load.
-    Studio falls back to that load after idle; a long prompt then gets an empty reply."""
+    """Loads `model` at LLM_CONTEXT when Studio lists it unloaded or at its native context, which is its default
+    load. Studio falls back to that load after idle; a long prompt then gets an empty reply."""
     entry = next((entry for entry in request("/models")["data"] if entry.get("id") == model), None)
     native = entry.get("native_context_length") if entry else None
-    if native is not None and entry.get("context_length") == native:
+    if entry and (entry.get("loaded") is False or (native is not None and entry.get("context_length") == native)):
         _load(base, request, model)
 
 
@@ -374,18 +374,80 @@ def looks_translated(source, text, target):
     return len(source.split()) <= 2 or text.strip() != source.strip()
 
 
+def task_connections(settings, task):
+    """The task's connection entries in the order to try: `priority` (A, B, C ...), else `connection`,
+    else [None] = the default endpoint. An unknown id raises."""
+    known = {entry["id"]: entry for entry in settings.get("connections", [])}
+    ids = task.get("priority") or ([task["connection"]] if task.get("connection") else [])
+    for identifier in ids:
+        if identifier not in known:
+            raise ValueError(f"Unknown translation connection: {identifier}")
+    return [known[identifier] for identifier in ids] or [None]
+
+
 def translate_connection(settings):
-    """The translate task's connection entry, or None for the default endpoint. An unknown id raises."""
-    task = settings.get("tasks", {}).get("translate", {})
-    connection = next((entry for entry in settings.get("connections", [])
-                       if entry["id"] == task.get("connection")), None)
-    if task.get("connection") and connection is None:
-        raise ValueError(f"Unknown translation connection: {task['connection']}")
-    return connection
+    """The translate task's first connection entry, or None for the default endpoint."""
+    return task_connections(settings, settings.get("tasks", {}).get("translate", {}))[0]
+
+
+# Subscription clients as connections (`kind`): the prompt goes in on stdin, the reply lands in $OUT.
+CLI = {
+    "codex-cli": 'codex exec --skip-git-repo-check --ephemeral -s read-only -o "$OUT" - >/dev/null',
+    "claude-cli": 'claude -p --tools "" --no-session-persistence > "$OUT"',
+}
+
+
+def cli_chat(kind, messages, seconds=LLM_DEADLINE):
+    """Reply text from a subscription client. It runs in an empty folder (nothing to read there) through a
+    login shell, because launchd gives the worker no PATH to the clients."""
+    with tempfile.TemporaryDirectory() as folder:
+        out = Path(folder) / "reply.txt"
+        done = subprocess.run(["/bin/bash", "-lc", CLI[kind]], cwd=folder, env={**os.environ, "OUT": str(out)},
+                              input="\n\n".join(message["content"] for message in messages),
+                              capture_output=True, text=True, timeout=seconds)
+        reply = out.read_text(encoding="utf-8").strip() if out.exists() else ""
+    if done.returncode or not reply:
+        raise ValueError(f"{kind}: {(done.stderr or done.stdout).strip()[-200:] or 'empty reply'}")
+    return re.sub(r"\A```\w*\n|\n```\Z", "", reply)
 
 
 def llm_chat(settings, *, max_tokens=3000, thinking=False, seconds=LLM_DEADLINE):
-    """(model, chat) for the translate task's LLM: connection, model choice and request deadlines.
+    """(model, chat) for the translate task. With a `priority` list the chat asks the first connection and moves
+    to the next when one fails; a connection that could not start is not tried again by this chat. The task's
+    model belongs to the first connection, the others choose their own."""
+    task = settings.get("tasks", {}).get("translate", {})
+    order = task_connections(settings, task)
+
+    def build(index):
+        connection = order[index]
+        if connection and connection.get("kind") in CLI:
+            return connection["kind"], lambda messages, json_mode=False: cli_chat(connection["kind"], messages, seconds)
+        own = settings if index == 0 else {**settings, "tasks": {**settings["tasks"], "translate": {
+            key: value for key, value in task.items() if key != "model"}}}
+        return _server_chat(own, connection, max_tokens=max_tokens, thinking=thinking, seconds=seconds)
+
+    if len(order) == 1:
+        return build(0)
+    built = {}
+
+    def chat(messages, json_mode=False):
+        errors = []
+        for index, connection in enumerate(order):
+            try:
+                if index not in built:
+                    built[index] = None
+                    built[index] = build(index)[1]
+                if built[index] is not None:
+                    return built[index](messages, json_mode)
+            except Exception as error:
+                errors.append(f"{connection['id']}: {str(error)[:200]}")
+        raise ValueError("; ".join(errors) or "no connection could start")
+
+    return task.get("model") or order[0]["id"], chat
+
+
+def _server_chat(settings, connection, *, max_tokens=3000, thinking=False, seconds=LLM_DEADLINE):
+    """(model, chat) for one OpenAI-compatible connection: model choice and request deadlines.
 
     chat(messages, json_mode=False) returns the reply text; thinking is off unless `thinking` is set, and each
     request is cut after `seconds`. json_mode asks Studio for a JSON object as well as the prompt. The caller
@@ -396,7 +458,7 @@ def llm_chat(settings, *, max_tokens=3000, thinking=False, seconds=LLM_DEADLINE)
     (ensure_context), once per llm_chat call, so each LLM stage of a job starts with the long context.
     """
     task = settings.get("tasks", {}).get("translate", {})
-    base, key = connection_credentials(translate_connection(settings))
+    base, key = connection_credentials(connection)
     if not base:
         raise ValueError("Set TYLOG_LLM_URL or configure provider studio in ~/.pi/agent/models.json")
 
@@ -722,12 +784,14 @@ def load_ai_settings(vault):
     tasks = value.get("tasks")
     tasks = tasks if isinstance(tasks, dict) else {}
     clean_tasks = {}
-    for name in ("transcribe", "translate"):
+    for name in ("transcribe", "translate", "phrases"):
         task = tasks.get(name)
         if isinstance(task, dict):
             clean_tasks[name] = {key: item for key, item in task.items()
                                  if key in ("quality", "model", "connection")
                                  and isinstance(item, str) and item}
+            if isinstance(task.get("priority"), list):
+                clean_tasks[name]["priority"] = [item for item in task["priority"] if isinstance(item, str)]
     connections = value.get("connections")
     connections = connections if isinstance(connections, list) else []
     return {"schema": 1, "tasks": clean_tasks,
@@ -783,7 +847,8 @@ def write_heartbeat(vault, settings, state, state_path, now, hostname, probe):
             age = now.timestamp() - previous.get("last_probe", 0)
             if previous.get("url") != connection["url"] or not 0 <= age < 300:
                 try:
-                    result = probe(*connection_credentials(connection))
+                    result = ({"reachable": True, "loaded": []} if connection.get("kind") in CLI
+                              else probe(*connection_credentials(connection)))
                 except Exception:
                     result = {"reachable": False, "loaded": []}
                 previous = {"url": connection["url"], "last_probe": now.timestamp(),
@@ -1308,7 +1373,7 @@ def context_stage(vault, job, note, sidecar, lines, settings, translate):
     planned = audio_v2.load_sidecar(sidecar)
     song = planned.get("song") if audio_v2.is_song(planned) else None
     result = audio_v2.context_pass(speech, audio_v2.section_text(read_note(note), "Context"), targets[0], chat,
-                                   song=song)
+                                   song=song, source=source_langs[0] if len(source_langs) == 1 else None)
     translated = {}
     for target in targets:
         done = audio_v2.translated_context(result, translate, source_langs, target)
@@ -1373,9 +1438,12 @@ STALE_CLAIM_HOURS = 2  # no single audio takes this long; the worker died or hun
 
 
 def _job_rank(kind, job):
-    """Transcripts first, then audio translations, then screenshot translations: screenshots never block audio."""
+    """Transcripts first, then audio translations, then screenshot translations: screenshots never block audio.
+    Phrase notes and their audio come last: each swaps the model on the Studio."""
     if kind == "transcripts":
         return 0
+    if kind in ("phrases", "phrase-audio"):
+        return 3 if kind == "phrases" else 4
     return 2 if job.get("screenshot") else 1
 
 
@@ -1414,7 +1482,10 @@ def _stale_claim(job, now):
 def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
              hostname=None, clock=None, probe=None, diarize=False):
     import audio_v2  # imports this module; a top-level import would be circular
+    import phrase_audio
+    import phrase_notes
     vault = Path(vault).resolve()
+    speech = {}  # the Studio speech session of this pass, opened by the first phrase-audio job
     clock = clock or (lambda: datetime.now(timezone.utc))
     supplied_now = now
     now = now if now is not None else clock()
@@ -1441,13 +1512,15 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
         force = bool(requested_at) and requested_at != state.get("last_process_now")
         prune_screenshot_backlog(vault, now)
         sweep(vault, now, state, force=force)
+        if _llm_configured(settings):
+            phrase_notes.sweep(vault, now, state, force=force)
         if force:
             state["last_process_now"] = requested_at
         state_path.parent.mkdir(parents=True, exist_ok=True)
         state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         # Read once, before any job runs: a translation requeued by a transcript in this pass waits for the next one.
         jobs = [(kind, path, json.loads(path.read_text(encoding="utf-8")))
-                for kind in ("transcripts", "translations")
+                for kind in ("transcripts", "translations", "phrases", "phrase-audio")
                 for path in sorted((vault / "_system/jobs" / kind).glob("*.json"))]
         jobs.sort(key=lambda item: _job_rank(item[0], item[2]))
         for kind, job_path, job in jobs:
@@ -1459,7 +1532,13 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
                 job_path.write_text(json.dumps(job, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
                 note = _vault_path(vault, job["note"])
                 finish = None
-                if kind == "translations" and job.get("screenshot"):
+                if kind == "phrases":
+                    phrase_notes.run_job(vault, job, settings)
+                    updated_note = None  # the daily note is only read
+                elif kind == "phrase-audio":
+                    phrase_audio.run_job(vault, job, speech)
+                    updated_note = None
+                elif kind == "translations" and job.get("screenshot"):
                     screenshot_translation(note, job, translate, settings)
                     updated_note = read_note(note)
                 elif kind == "transcripts" and job.get("engine") != "v1":
@@ -1513,8 +1592,9 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
                             reread=lambda: read_note(note),
                             context=context)
                         translations[job["target"]] = {"lines": lines, "scores": {}}
-                with note.open("w", encoding="utf-8", newline="") as stream:
-                    stream.write(updated_note)
+                if updated_note is not None:
+                    with note.open("w", encoding="utf-8", newline="") as stream:
+                        stream.write(updated_note)
                 if finish is not None:
                     audio_v2.finish_transcript(*finish)
                     context_stage(vault, job, note, *finish, settings, translate)
@@ -1536,6 +1616,7 @@ def run_once(vault, model=None, translate=None, *, now=None, state_path=None,
                 job["error"] = str(error)
             job_path.write_text(json.dumps(job, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     finally:
+        phrase_audio.close(speech)
         write_heartbeat(vault, settings, state, state_path,
                         supplied_now if supplied_now is not None else clock(),
                         hostname or socket.gethostname, probe or probe_connection)

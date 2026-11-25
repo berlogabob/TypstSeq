@@ -12,7 +12,7 @@
 #title-block(
   "Local Model Bench",
   subtitle: "Which Studio model can be trusted with TyLog coding work",
-  meta-line: "Runs 2026-10-09 to 2026-10-10 · base commit 9dbfa0f · data: tool/model_bench/results.jsonl",
+  meta-line: "Runs 2026-10-09 to 2026-10-10 · base commit 9dbfa0f · data: tool/championship/model_bench/results.jsonl",
   standfirst: [Ornith 1.5 35b passed 14 of 15 runs and finished every small
   task in about half a minute. It is the only model that fixed the real scanner bug
   more than once. No model was free of wrong work that looked finished, so
@@ -155,4 +155,4 @@ control runs gave the required outcome when re-run for this report.
   looks finished. With a stronger visible check some failures would be retried.
 - All models ran on the Studio PC, one at a time. Times include model loading
   and the local test runs on the laptop.
-- Reproduce with `tool/model_bench/run_all.sh`; the table with `report.py`.
+- Reproduce with `tool/championship/model_bench/run_all.sh`; the table with `report.py`.

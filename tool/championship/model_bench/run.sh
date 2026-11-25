@@ -2,8 +2,8 @@
 # usage: run.sh <provider> <model> [reps=3] [task ...]
 set -uo pipefail  # no -e: loops record failures and keep going
 BASE=9dbfa0f
-REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-BENCH="$REPO/tool/model_bench"
+REPO="$(cd "$(dirname "$0")/../../.." && pwd)"
+BENCH="$REPO/tool/championship/model_bench"
 WT="${BENCH_WORKTREE:-$REPO/../TypstSeq-bench}"
 PI="$HOME/.claude/skills/pi-delegate/scripts/pi-run.sh"
 provider="${1:?provider}"; model="${2:?model}"; reps="${3:-3}"; shift 3 2>/dev/null || shift $#

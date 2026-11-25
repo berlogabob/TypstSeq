@@ -5,7 +5,7 @@
 # plus one sloppy control: a same-value edit with one changed number must FAIL.
 set -uo pipefail  # no -e: loops record failures and keep going
 BASE=9dbfa0f
-REPO="$(cd "$(dirname "$0")/../.." && pwd)"; BENCH="$REPO/tool/model_bench"
+REPO="$(cd "$(dirname "$0")/../../.." && pwd)"; BENCH="$REPO/tool/championship/model_bench"
 WT="${BENCH_WORKTREE:-$REPO/../TypstSeq-bench}"
 if [ ! -d "$WT" ]; then
   git -C "$REPO" worktree add --detach "$WT" "$BASE" || exit 1

@@ -1149,3 +1149,22 @@ Plan: `~/.claude/plans/https-protege-stanford-edu-sup-foamy-finch-of-ed521f32-10
 - [ ] Competency questions 4-5 as tests; domain classes as mention types in the worker
 - [ ] Held-out, verified gold run for the exact-name rule
 
+
+
+## Wave 41 (2026-11-24/25): personal Portuguese phrases, model championship, connection priority
+
+Plan: `~/.claude/plans/lets-think-about-one-inherited-steele-of-04345ed6-f2fb-4fa5-a6e0-e98221e57efc.md`. Contract: `docs/audio-transcription.md` (Connection priority; Phrase notes). Released 0.26.0+178. The Mac workers run the installed copy in `~/.tylog/worker` (`tool/install_worker.sh`).
+
+- [x] Model championship in `tool/championship/` (`run.sh <model>` reruns all three): coding and extraction stay on Ornith 35b, Portuguese phrases go to Muse-Glimmer-30B, phrase audio to Chatterbox. Time rule: slower than the first two candidates = skipped
+- [x] Phrase notes: `#pt` / `#pt-audio` blocks -> `projects/my-portuguese/`, module "Meu português"; text, voice recording and dialogue each ran once on the real vault (audio check 1.00 and 0.79)
+- [x] Connection priority A/B/C in `ai.json` (Studio, ChatGPT subscription, Claude subscription) for translate, enrich, phrases; set in the real vault
+- [x] Studio address in the vault settings is the Tailscale name, not the home LAN address
+- [x] Screenshots schedule job points at the real vault
+- [ ] (user) Look at the three phrase notes and the Modules sheet in the Mac app and on a phone; listen to the dialogue clip (last sentence slurred)
+- [ ] (user) Decide whether any task must stay Studio-only (journal text goes to the cloud when the Studio fails)
+- [ ] Phrase notes rough edges: names transliterated letter by letter instead of using the Portuguese form, speaker labels untranslated in the Russian version, "Changes" reasons in Portuguese, failed jobs not retried, Ornith not loaded back after an audio batch. Audio: up to 4 attempts per clip (dialogue went 0.79 -> 0.89)
+- [ ] App screen for the connection priority
+- [x] Pasting a list makes a list (it became a paragraph with escaped dashes). A typed `#word` stays text by design; a real tag is the tag action. The phrase finder reads both
+- [x] Audio note summaries name the transcript language in the prompt (short Russian recordings were summarised in English)
+- [x] Mac workers hung on opening their script: macOS grants `~/Documents` access per `uv` version; the workers now run from `~/.tylog/worker`. The hang with the screen locked was not reproduced
+- [ ] Published pack `pt-pt-a2b1` 1.3.2 is not installed in the real vault

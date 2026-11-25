@@ -762,9 +762,8 @@ class TyLogEditingController extends TextEditingController {
       replacement = '';
     } else if (block?.style == TyLogBlockStyle.bulletList ||
         block?.style == TyLogBlockStyle.numberedList) {
-      final glyph = RegExp(
-        r'(?:•|\d+\.)[ \t]*',
-      ).matchAsPrefix(visible, indent.end);
+      final glyph = RegExp(r'(?:•|\d+\.)[ \t]*')
+          .matchAsPrefix(visible, indent.end);
       if (glyph == null) {
         // A continuation has no marker to preserve. A nested bullet also
         // leaves the numbering of surrounding ordered items intact.
@@ -843,7 +842,13 @@ class TyLogEditingController extends TextEditingController {
     value = value.copyWith(composing: TextRange.empty);
   }
 
-  void _format(VoidCallback change, {int Function()? selectionOffset}) {
+  /// Returns whether the change was kept. [quiet]: a failed change is undone
+  /// without reporting it, for callers that have a plainer way to do it.
+  bool _format(
+    VoidCallback change, {
+    int Function()? selectionOffset,
+    bool quiet = false,
+  }) {
     _clearComposition();
     final before = _snapshot();
     try {
@@ -866,10 +871,27 @@ class TyLogEditingController extends TextEditingController {
       _lastValue = value;
       notifyListeners();
       onSourceChanged(source);
+      return true;
     } catch (error) {
       _restore(before, emit: false);
-      onError(error);
+      if (!quiet) onError(error);
+      return false;
     }
+  }
+
+  /// Pasted plain text made only of list items ("- a", "  - b", "1. c") as
+  /// the source of one Typst list, else null.
+  static String? _pastedListSource(String pasted) {
+    final lines = <String>[];
+    for (final line in pasted.replaceAll('\r', '').trimRight().split('\n')) {
+      final item = RegExp(r'^([ \t]*)(?:[-*•]|(\d+)[.)])[ \t]+(\S.*)$')
+          .firstMatch(line);
+      if (item == null) return null;
+      lines.add(
+        '${item[1]}${item[2] == null ? '-' : '+'} ${escapeMarkup(item[3]!)}',
+      );
+    }
+    return lines.join('\n');
   }
 
   /// Adds a `- HH:MM` journal item, edited at the source level: typed into
@@ -1062,9 +1084,8 @@ class TyLogEditingController extends TextEditingController {
           (selection.extentOffset - 1).clamp(0, text.length),
         ) +
         1;
-    final prefix = RegExp(
-      r'^(?:TODO |\[\] |\[ \] )',
-    ).matchAsPrefix(text.substring(lineStart));
+    final prefix = RegExp(r'^(?:TODO |\[\] |\[ \] )')
+        .matchAsPrefix(text.substring(lineStart));
     if (prefix != null && local >= prefix.end) {
       unawaited(createTaskLine(prefixLength: prefix.end));
     }
@@ -1100,9 +1121,8 @@ class TyLogEditingController extends TextEditingController {
       final end = lineEnd < 0 ? block.visibleText.length : lineEnd;
       if (start + prefixLength > end) return;
       if (prefixLength > 0 &&
-          !RegExp(
-            r'^(?:TODO |\[\] |\[ \] )',
-          ).hasMatch(block.visibleText.substring(start))) {
+          !RegExp(r'^(?:TODO |\[\] |\[ \] )')
+              .hasMatch(block.visibleText.substring(start))) {
         return;
       }
       final oldText = text;
@@ -1457,6 +1477,22 @@ class TyLogEditingController extends TextEditingController {
       } catch (error) {
         _restore(before, emit: false);
         onError(error);
+        return;
+      }
+    }
+    // A pasted list becomes a list. As plain text it would stay a paragraph
+    // whose dashes are escaped (`\-`), which is not what was copied.
+    final list = _pastedListSource(pasted);
+    if (list != null) {
+      final sel = selection.isValid
+          ? selection
+          : TextSelection.collapsed(offset: text.length);
+      var offset = sel.end;
+      if (_format(
+        () => offset = document.insertBlock(sel, list),
+        selectionOffset: () => offset,
+        quiet: true,
+      )) {
         return;
       }
     }
@@ -1892,9 +1928,8 @@ class TyLogEditingController extends TextEditingController {
               onLongPress:
                   interactive &&
                       onProtectedLongPress != null &&
-                      RegExp(
-                        r'^#tylog\.ref-note\s*\(',
-                      ).hasMatch(part.source!.trimLeft())
+                      RegExp(r'^#tylog\.ref-note\s*\(')
+                          .hasMatch(part.source!.trimLeft())
                   ? () => onProtectedLongPress!(part.id!)
                   : null,
               unresolved: resolvedKind == 'unresolved',

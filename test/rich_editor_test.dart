@@ -10,6 +10,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/controlled_editor.dart';
 import 'package:tylog/rich_editor.dart';
+
 import 'support/temp_dir.dart';
 
 final _tinyPng = base64Decode(
@@ -1415,6 +1416,53 @@ void main() {
       ..dirty = true;
 
     expect(document.toSource, throwsFormatException);
+  });
+
+  testWidgets('a pasted list becomes a list, not an escaped paragraph', (
+    tester,
+  ) async {
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    Future<String> paste(String source, String clipboard) async {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async => call.method == 'Clipboard.getData'
+            ? <String, dynamic>{'text': clipboard}
+            : null,
+      );
+      var saved = '';
+      final controller = TyLogEditingController(
+        source: source,
+        onSourceChanged: (value) => saved = value,
+        onError: (error) => fail('$error'),
+        onProtectedTap: (_) {},
+      );
+      addTearDown(controller.dispose);
+      controller.selection = TextSelection.collapsed(
+        offset: controller.text.length,
+      );
+      await controller.paste();
+      return saved;
+    }
+
+    const dialogue =
+        '- Reception #pt-audio\n  - Me: Hi [Carlos]\n  - Carlos: Yes.\n';
+    final saved = await paste('note', dialogue);
+    expect(
+      saved,
+      contains(
+        '- Reception \\#pt-audio\n  - Me: Hi \\[Carlos\\]\n  - Carlos: Yes.',
+      ),
+    );
+    expect(saved, isNot(contains('\\-')));
+    expect(TyLogDocument.parse(saved).toSource(), saved);
+    expect(await paste('note', '1. one\n2. two'), contains('+ one\n+ two'));
+    // Not only list items: pasted as text, as before.
+    expect(await paste('note', 'intro\n- one'), contains('\\- one'));
   });
 
   test('copy and paste inside TyLog retains rich formatting', () async {

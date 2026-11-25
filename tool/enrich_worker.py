@@ -388,11 +388,12 @@ def load_task(vault):
 
 
 def make_chat(task, connections):
-    """Chat over the task's connection, then its fallback_connection; OpenAI-compatible only."""
-    order = [task.get("connection"), task.get("fallback_connection")]
+    """Chat over the task's `priority` list (A, B, C ...), else its connection then fallback_connection.
+    Kinds: OpenAI-compatible servers and the subscription clients in tw.CLI."""
+    order = task.get("priority") or [task.get("connection"), task.get("fallback_connection")]
     chosen = [next(c for c in connections if c["id"] == identifier)
               for identifier in order if identifier and any(c["id"] == identifier for c in connections)]
-    if not chosen and not task.get("connection"):
+    if not chosen and not task.get("connection") and not task.get("priority"):
         chosen = [None]  # legacy default: TYLOG_LLM_URL or the pi "studio" provider
     if not chosen:
         raise ValueError(f"Unknown enrich connection: {task.get('connection')}")
@@ -401,6 +402,12 @@ def make_chat(task, connections):
         errors = []
         for connection in chosen:
             base, key = tw.connection_credentials(connection)
+            if connection and connection.get("kind") in tw.CLI:
+                try:
+                    return tw.cli_chat(connection["kind"], messages), connection["kind"], connection["id"]
+                except Exception as error:
+                    errors.append(str(error))
+                    continue
             if not base:
                 errors.append("no url")
                 continue

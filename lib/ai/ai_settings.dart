@@ -356,7 +356,13 @@ Future<void> writeAiSettings(VaultStorage storage, AiSettings settings) async {
   all['tasks'] = {
     if (tasks is Map) ...tasks.cast<String, Object?>(),
     'transcribe': settings.transcribe.toJson(),
-    'translate': settings.translate.toJson(),
+    'translate': {
+      // The worker's connection order (A, B, C); this app does not edit it.
+      if (tasks is Map)
+        if (tasks['translate'] case {'priority': final List order})
+          'priority': order,
+      ...settings.translate.toJson(),
+    },
     'articles': mergeServerTask('articles', settings.articles),
     'screenshots': mergeServerTask('screenshots', settings.screenshots),
     'enrich':

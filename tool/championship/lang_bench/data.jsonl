@@ -1,0 +1,134 @@
+{"id": "to_pt-01", "task": "to_pt", "src_lang": "ru", "src": "Какой номер мобильного?", "ref": "Qual é o número de telemóvel?", "must": ["telemóvel"]}
+{"id": "to_pt-02", "task": "to_pt", "src_lang": "ru", "src": "Понимаю, но говорю плохо.", "ref": "Percebo, mas não falo bem.", "must": []}
+{"id": "to_pt-03", "task": "to_pt", "src_lang": "ru", "src": "Извини, не понял. Говори медленнее, пожалуйста.", "ref": "Desculpa, não percebi. Fala mais devagar, por favor.", "must": ["desculpa", "fala"]}
+{"id": "to_pt-04", "task": "to_pt", "src_lang": "ru", "src": "Сейчас работаю над новым проектом.", "ref": "Estou a trabalhar num projeto novo.", "must": ["a trabalhar"]}
+{"id": "to_pt-05", "task": "to_pt", "src_lang": "ru", "src": "Магазин закрывался.", "ref": "A loja estava a fechar.", "must": ["a fechar"]}
+{"id": "to_pt-06", "task": "to_pt", "src_lang": "ru", "src": "Мои родители на пенсии.", "ref": "Os meus pais são reformados.", "must": ["reformados", "os meus"]}
+{"id": "to_pt-07", "task": "to_pt", "src_lang": "ru", "src": "Принимаю душ и одеваюсь.", "ref": "Tomo duche e visto-me.", "must": ["duche", "visto-me"]}
+{"id": "to_pt-08", "task": "to_pt", "src_lang": "ru", "src": "Ты ничего не ешь на завтрак?", "ref": "Não comes nada ao pequeno-almoço?", "must": ["pequeno-almoço", "comes"]}
+{"id": "to_pt-09", "task": "to_pt", "src_lang": "ru", "src": "Ты поздно ложишься? — Ложусь в полночь.", "ref": "Deitas-te tarde? — Deito-me à meia-noite.", "must": ["deitas-te", "deito-me"]}
+{"id": "to_pt-10", "task": "to_pt", "src_lang": "ru", "src": "Можно задать тебе вопрос?", "ref": "Posso fazer-te uma pergunta?", "must": ["fazer-te"]}
+{"id": "to_pt-11", "task": "to_pt", "src_lang": "ru", "src": "Ты поедешь на метро или на автобусе?", "ref": "Vais de metro ou de autocarro?", "must": ["autocarro", "vais"]}
+{"id": "to_pt-12", "task": "to_pt", "src_lang": "ru", "src": "Мне нужно сделать работу.", "ref": "Tenho de fazer um trabalho.", "must": []}
+{"id": "to_pt-13", "task": "to_pt", "src_lang": "ru", "src": "Живу в Лиссабоне два года.", "ref": "Vivo em Lisboa há dois anos.", "must": ["há dois"]}
+{"id": "to_pt-14", "task": "to_pt", "src_lang": "ru", "src": "Какой твой любимый игровой движок?", "ref": "Qual é o teu motor de jogo preferido?", "must": ["o teu"]}
+{"id": "to_pt-15", "task": "to_pt", "src_lang": "ru", "src": "Извините, вы знаете, где находится станция?", "ref": "Desculpe, sabe onde fica a estação?", "must": []}
+{"id": "to_pt-16", "task": "to_pt", "src_lang": "ru", "src": "Где остановка 728-го?", "ref": "Onde é a paragem do 728?", "must": ["paragem"]}
+{"id": "to_pt-17", "task": "to_pt", "src_lang": "ru", "src": "Здесь рядом есть аптека?", "ref": "Há uma farmácia aqui perto?", "must": ["há"]}
+{"id": "to_pt-18", "task": "to_pt", "src_lang": "ru", "src": "Во сколько отправляется следующий поезд в Синтру?", "ref": "A que horas parte o próximo comboio para Sintra?", "must": ["comboio"]}
+{"id": "to_pt-19", "task": "to_pt", "src_lang": "ru", "src": "Как часто ходит автобус?", "ref": "De quanto em quanto tempo passa o autocarro?", "must": ["autocarro"]}
+{"id": "to_pt-20", "task": "to_pt", "src_lang": "ru", "src": "Где мне пересесть?", "ref": "Onde tenho de mudar?", "must": []}
+{"id": "to_pt-21", "task": "to_pt", "src_lang": "ru", "src": "Что ты делал вчера?", "ref": "O que fizeste ontem?", "must": ["fizeste"]}
+{"id": "to_pt-22", "task": "to_pt", "src_lang": "ru", "src": "Мы играли на барабанах до шести.", "ref": "Tocámos bateria até às seis.", "must": ["tocámos"]}
+{"id": "to_pt-23", "task": "to_pt", "src_lang": "ru", "src": "Я пришёл домой поздно.", "ref": "Cheguei a casa tarde.", "must": ["a casa"]}
+{"id": "to_pt-24", "task": "to_pt", "src_lang": "ru", "src": "Тебе понравилось? — Очень.", "ref": "Gostaste? — Gostei muito.", "must": ["gostaste"]}
+{"id": "to_pt-25", "task": "to_pt", "src_lang": "ru", "src": "Ты был там до конца?", "ref": "Estiveste lá até ao fim?", "must": ["estiveste", "até ao"]}
+{"id": "to_pt-26", "task": "to_pt", "src_lang": "ru", "src": "Хотел поехать на метро, но не получилось.", "ref": "Quis apanhar o metro, mas não consegui.", "must": ["apanhar"]}
+{"id": "to_pt-27", "task": "to_pt", "src_lang": "ru", "src": "Как прошли выходные?", "ref": "Como foi o fim de semana?", "must": []}
+{"id": "to_pt-28", "task": "to_pt", "src_lang": "ru", "src": "Можно примерить? Где примерочная?", "ref": "Posso experimentar? Onde é o provador?", "must": ["provador"]}
+{"id": "to_pt-29", "task": "to_pt", "src_lang": "ru", "src": "Мне идёт? — Вам очень идёт.", "ref": "Fica-me bem? — Fica-lhe muito bem.", "must": ["fica-me", "fica-lhe"]}
+{"id": "to_pt-30", "task": "to_pt", "src_lang": "ru", "src": "Я живу здесь восемь месяцев.", "ref": "Moro aqui há oito meses.", "must": ["há oito"]}
+{"id": "to_pt-31", "task": "to_pt", "src_lang": "ru", "src": "Окно выходит на улицу.", "ref": "A janela dá para a rua.", "must": []}
+{"id": "to_pt-32", "task": "to_pt", "src_lang": "ru", "src": "Раньше я ему писал; теперь уже нет.", "ref": "Dantes escrevia-lhe; agora já não.", "must": ["escrevia-lhe"]}
+{"id": "to_pt-33", "task": "to_pt", "src_lang": "ru", "src": "Нигде его не нахожу.", "ref": "Não o encontro em lado nenhum.", "must": ["não o encontro"]}
+{"id": "to_pt-34", "task": "to_pt", "src_lang": "ru", "src": "Я ему ещё ничего не сказал.", "ref": "Ainda não lhe disse nada.", "must": ["não lhe disse"]}
+{"id": "to_pt-35", "task": "to_pt", "src_lang": "ru", "src": "Он присылает нам счёт-фактуру.", "ref": "Ele envia-nos a fatura.", "must": ["envia-nos"]}
+{"id": "to_pt-36", "task": "to_pt", "src_lang": "ru", "src": "Мне хочется кофе. Мне не хочется выходить.", "ref": "Apetece-me um café. Não me apetece sair.", "must": ["apetece-me"]}
+{"id": "to_pt-37", "task": "to_pt", "src_lang": "ru", "src": "Не забудьте дату.", "ref": "Não se esqueça da data.", "must": []}
+{"id": "to_pt-38", "task": "to_pt", "src_lang": "ru", "src": "Столик на двоих, пожалуйста.", "ref": "Uma mesa para dois, se faz favor.", "must": []}
+{"id": "to_pt-39", "task": "to_pt", "src_lang": "ru", "src": "У меня приём в девять в поликлинике.", "ref": "Tenho consulta às nove no centro de saúde.", "must": ["centro de saúde"]}
+{"id": "to_pt-40", "task": "to_pt", "src_lang": "ru", "src": "Где туалет?", "ref": "Onde é a casa de banho?", "must": ["casa de banho"]}
+{"id": "to_pt-41", "task": "to_pt", "src_lang": "ru", "src": "Я сейчас читаю книгу.", "ref": "Estou a ler um livro.", "must": ["a ler"]}
+{"id": "to_pt-42", "task": "to_pt", "src_lang": "ru", "src": "Холодильник пустой.", "ref": "O frigorífico está vazio.", "must": ["frigorífico"]}
+{"id": "to_pt-43", "task": "to_pt", "src_lang": "ru", "src": "Хочу апельсиновый сок.", "ref": "Quero um sumo de laranja.", "must": ["sumo"]}
+{"id": "to_pt-44", "task": "to_pt", "src_lang": "ru", "src": "Экран телефона разбился.", "ref": "O ecrã do telemóvel partiu-se.", "must": ["ecrã", "telemóvel"]}
+{"id": "to_pt-45", "task": "to_pt", "src_lang": "ru", "src": "Мы приехали вчера и поговорили с командой.", "ref": "Chegámos ontem e falámos com a equipa.", "must": ["chegámos", "falámos", "equipa"]}
+{"id": "to_pt-46", "task": "to_pt", "src_lang": "en", "src": "I'm from Russia, from Moscow.", "ref": "Sou da Rússia, de Moscovo.", "must": ["moscovo"]}
+{"id": "to_pt-47", "task": "to_pt", "src_lang": "en", "src": "I work at a games company.", "ref": "Trabalho numa empresa de jogos.", "must": []}
+{"id": "to_pt-48", "task": "to_pt", "src_lang": "en", "src": "Where do you live? — I live in Lisbon, near Marquês.", "ref": "Onde moras? — Moro em Lisboa, perto do Marquês.", "must": ["moras"]}
+{"id": "to_pt-49", "task": "to_pt", "src_lang": "en", "src": "What time do you get up? (to a friend)", "ref": "A que horas te levantas?", "must": ["te levantas"]}
+{"id": "to_pt-50", "task": "to_pt", "src_lang": "en", "src": "I leave home at eight.", "ref": "Saio de casa às oito.", "must": []}
+{"id": "to_pt-51", "task": "to_pt", "src_lang": "en", "src": "I never remember to set the alarm.", "ref": "Nunca me lembro de pôr o despertador.", "must": ["despertador"]}
+{"id": "to_pt-52", "task": "to_pt", "src_lang": "en", "src": "Do you want to go to the concert? (to a friend)", "ref": "Queres ir ao concerto?", "must": ["queres"]}
+{"id": "to_pt-53", "task": "to_pt", "src_lang": "en", "src": "How do I get to Cais do Sodré?", "ref": "Como vou para o Cais do Sodré?", "must": []}
+{"id": "to_pt-54", "task": "to_pt", "src_lang": "en", "src": "Can I go on foot?", "ref": "Posso ir a pé?", "must": ["a pé"]}
+{"id": "to_pt-55", "task": "to_pt", "src_lang": "en", "src": "How long does the trip take?", "ref": "Quanto tempo demora a viagem?", "must": ["demora"]}
+{"id": "to_pt-56", "task": "to_pt", "src_lang": "en", "src": "Does this bus go to Marquês de Pombal?", "ref": "Este autocarro vai para o Marquês de Pombal?", "must": ["autocarro"]}
+{"id": "to_pt-57", "task": "to_pt", "src_lang": "en", "src": "I had lunch with Rui.", "ref": "Almocei com o Rui.", "must": ["com o rui"]}
+{"id": "to_pt-58", "task": "to_pt", "src_lang": "en", "src": "I had to finish a report.", "ref": "Tive de acabar um relatório.", "must": ["relatório"]}
+{"id": "to_pt-59", "task": "to_pt", "src_lang": "en", "src": "Did you do anything in the morning? (to a friend)", "ref": "Fizeste alguma coisa de manhã?", "must": ["fizeste"]}
+{"id": "to_pt-60", "task": "to_pt", "src_lang": "en", "src": "I slept until ten.", "ref": "Dormi até às dez.", "must": ["até às"]}
+{"id": "to_pt-61", "task": "to_pt", "src_lang": "en", "src": "You have to sign here. (formal)", "ref": "Tem de assinar aqui.", "must": []}
+{"id": "to_pt-62", "task": "to_pt", "src_lang": "en", "src": "It takes about a week.", "ref": "Demora cerca de uma semana.", "must": []}
+{"id": "to_pt-63", "task": "to_pt", "src_lang": "en", "src": "How long have you been living here? (to a friend)", "ref": "Há quanto tempo moras aqui?", "must": ["moras"]}
+{"id": "to_pt-64", "task": "to_pt", "src_lang": "en", "src": "I'd like to book an appointment with the family doctor.", "ref": "Queria marcar uma consulta com o médico de família.", "must": ["consulta"]}
+{"id": "to_pt-65", "task": "to_pt", "src_lang": "en", "src": "I've been using Godot lately.", "ref": "Ultimamente tenho usado o Godot.", "must": ["tenho usado"]}
+{"id": "to_pt-66", "task": "to_pt", "src_lang": "en", "src": "I'm having breakfast right now.", "ref": "Estou a tomar o pequeno-almoço agora.", "must": ["a tomar", "pequeno-almoço"]}
+{"id": "to_pt-67", "task": "to_pt", "src_lang": "en", "src": "My mobile phone is in the bathroom.", "ref": "O meu telemóvel está na casa de banho.", "must": ["telemóvel", "casa de banho", "o meu"]}
+{"id": "to_pt-68", "task": "to_pt", "src_lang": "en", "src": "The train is late and the bus stop is far.", "ref": "O comboio está atrasado e a paragem de autocarro fica longe.", "must": ["comboio", "paragem", "autocarro"]}
+{"id": "to_pt-69", "task": "to_pt", "src_lang": "en", "src": "Are you watching the game? What a goal! (to a friend)", "ref": "Estás a ver o jogo? Que golo!", "must": ["a ver", "golo"]}
+{"id": "to_pt-70", "task": "to_pt", "src_lang": "en", "src": "The fridge is empty, I only have orange juice.", "ref": "O frigorífico está vazio, só tenho sumo de laranja.", "must": ["frigorífico", "sumo"]}
+{"id": "fix-01", "task": "fix", "src": "Eu moro em Lisboa faz dois anos.", "ref": "Eu moro em Lisboa há dois anos.", "errors": [["faz", "há"]]}
+{"id": "fix-02", "task": "fix", "src": "Estou trabalhando num projeto novo.", "ref": "Estou a trabalhar num projeto novo.", "errors": [["trabalhando", "a trabalhar"]]}
+{"id": "fix-03", "task": "fix", "src": "Perdi o meu celular no ônibus.", "ref": "Perdi o meu telemóvel no autocarro.", "errors": [["celular", "telemóvel"], ["ônibus", "autocarro"]]}
+{"id": "fix-04", "task": "fix", "src": "Eu gosto muito de o Porto.", "ref": "Eu gosto muito do Porto.", "errors": [["de o porto", "do porto"]]}
+{"id": "fix-05", "task": "fix", "src": "Vou em a escola de manhã.", "ref": "Vou à escola de manhã.", "errors": [["em a escola", "à escola"]]}
+{"id": "fix-06", "task": "fix", "src": "A problema é muito grande.", "ref": "O problema é muito grande.", "errors": [["a problema", "o problema"]]}
+{"id": "fix-07", "task": "fix", "src": "Eu tem aula às dez.", "ref": "Eu tenho aula às dez.", "errors": [["tem", "tenho"]]}
+{"id": "fix-08", "task": "fix", "src": "Nós vai ao concerto amanhã.", "ref": "Nós vamos ao concerto amanhã.", "errors": [["vai", "vamos"]]}
+{"id": "fix-09", "task": "fix", "src": "Ontem eu vou ao médico.", "ref": "Ontem eu fui ao médico.", "errors": [["vou", "fui"]]}
+{"id": "fix-10", "task": "fix", "src": "Me chamo Alex e sou da Rússia.", "ref": "Chamo-me Alex e sou da Rússia.", "errors": [["me chamo", "chamo-me"]]}
+{"id": "fix-11", "task": "fix", "src": "Eu tomo café da manhã às oito.", "ref": "Eu tomo o pequeno-almoço às oito.", "errors": [["café da manhã", "pequeno-almoço"]]}
+{"id": "fix-12", "task": "fix", "src": "Onde fica o banheiro?", "ref": "Onde fica a casa de banho?", "errors": [["banheiro", "casa de banho"]]}
+{"id": "fix-13", "task": "fix", "src": "O trem para Sintra parte às nove.", "ref": "O comboio para Sintra parte às nove.", "errors": [["trem", "comboio"]]}
+{"id": "fix-14", "task": "fix", "src": "Eu sou cansado hoje.", "ref": "Eu estou cansado hoje.", "errors": [["sou", "estou"]]}
+{"id": "fix-15", "task": "fix", "src": "Ela é em casa agora.", "ref": "Ela está em casa agora.", "errors": [["é", "está"]]}
+{"id": "fix-16", "task": "fix", "src": "Os meus pais é reformados.", "ref": "Os meus pais são reformados.", "errors": [["é", "são"]]}
+{"id": "fix-17", "task": "fix", "src": "Eu não sabo onde fica a estação.", "ref": "Eu não sei onde fica a estação.", "errors": [["sabo", "sei"]]}
+{"id": "fix-18", "task": "fix", "src": "Ontem jantámos no restaurante e eu fazi a reserva.", "ref": "Ontem jantámos no restaurante e eu fiz a reserva.", "errors": [["fazi", "fiz"]]}
+{"id": "fix-19", "task": "fix", "src": "Preciso de comprar uma bilhete.", "ref": "Preciso de comprar um bilhete.", "errors": [["uma bilhete", "um bilhete"]]}
+{"id": "fix-20", "task": "fix", "src": "Pode me ajudar, por favor?", "ref": "Pode ajudar-me, por favor?", "errors": [["me ajudar", "ajudar-me"]]}
+{"id": "fix-21", "task": "fix", "src": "Eu vou a casa de o Rui.", "ref": "Eu vou a casa do Rui.", "errors": [["de o rui", "do rui"]]}
+{"id": "fix-22", "task": "fix", "src": "As minhas amigas são muito simpáticos.", "ref": "As minhas amigas são muito simpáticas.", "errors": [["simpáticos", "simpáticas"]]}
+{"id": "fix-23", "task": "fix", "src": "Eu quero um suco de laranja.", "ref": "Eu quero um sumo de laranja.", "errors": [["suco", "sumo"]]}
+{"id": "fix-24", "task": "fix", "src": "A tela do computador está suja.", "ref": "O ecrã do computador está sujo.", "errors": [["tela", "ecrã"]]}
+{"id": "fix-25", "task": "fix", "src": "Eu jogo futebol com o meu time.", "ref": "Eu jogo futebol com a minha equipa.", "errors": [["time", "equipa"]]}
+{"id": "fix-26", "task": "fix", "src": "Eu mora aqui há um ano.", "ref": "Eu moro aqui há um ano.", "errors": [["mora", "moro"]]}
+{"id": "fix-27", "task": "fix", "src": "Amanhã vou no supermercado.", "ref": "Amanhã vou ao supermercado.", "errors": [["no supermercado", "ao supermercado"]]}
+{"id": "fix-28", "task": "fix", "src": "Obrigado por a ajuda.", "ref": "Obrigado pela ajuda.", "errors": [["por a ajuda", "pela ajuda"]]}
+{"id": "fix-29", "task": "fix", "src": "Estive doente, por isso não vim a aula.", "ref": "Estive doente, por isso não vim à aula.", "errors": [["a aula", "à aula"]]}
+{"id": "fix-30", "task": "fix", "src": "Ficámos em casa porque estava chovendo.", "ref": "Ficámos em casa porque estava a chover.", "errors": [["chovendo", "a chover"]]}
+{"id": "fix-31", "task": "fix", "src": "Deito-me à meia-noite e levanto-me às sete.", "ref": "Deito-me à meia-noite e levanto-me às sete.", "errors": []}
+{"id": "fix-32", "task": "fix", "src": "Não o encontro em lado nenhum.", "ref": "Não o encontro em lado nenhum.", "errors": []}
+{"id": "fix-33", "task": "fix", "src": "Apetece-me um café, mas não me apetece sair.", "ref": "Apetece-me um café, mas não me apetece sair.", "errors": []}
+{"id": "fix-34", "task": "fix", "src": "Tocámos bateria até às seis.", "ref": "Tocámos bateria até às seis.", "errors": []}
+{"id": "from_pt-01", "task": "from_pt", "target": "ru", "src": "Sou professor. Dou aulas de programação.", "ref": "Я преподаватель. Веду занятия по программированию."}
+{"id": "from_pt-02", "task": "from_pt", "target": "ru", "src": "Tenho aula às dez.", "ref": "У меня занятие в десять."}
+{"id": "from_pt-03", "task": "from_pt", "target": "ru", "src": "Tens família em Portugal?", "ref": "У тебя есть семья в Португалии?"}
+{"id": "from_pt-04", "task": "from_pt", "target": "ru", "src": "Olha, esta é a foto dela.", "ref": "Смотри, это её фото."}
+{"id": "from_pt-05", "task": "from_pt", "target": "ru", "src": "Quero, mas não posso.", "ref": "Хочу, но не могу."}
+{"id": "from_pt-06", "task": "from_pt", "target": "ru", "src": "Eu faço o jantar.", "ref": "Я приготовлю ужин."}
+{"id": "from_pt-07", "task": "from_pt", "target": "ru", "src": "Porque é que vives em Portugal?", "ref": "Почему ты живёшь в Португалии?"}
+{"id": "from_pt-08", "task": "from_pt", "target": "ru", "src": "Ontem trabalhei em casa.", "ref": "Вчера я работал дома."}
+{"id": "from_pt-09", "task": "from_pt", "target": "ru", "src": "Só acabei às sete.", "ref": "Я закончил только в семь."}
+{"id": "from_pt-10", "task": "from_pt", "target": "ru", "src": "Não fiz nada de especial.", "ref": "Ничего особенного не делал."}
+{"id": "from_pt-11", "task": "from_pt", "target": "ru", "src": "O professor era muito paciente.", "ref": "Учитель был очень терпеливый."}
+{"id": "from_pt-12", "task": "from_pt", "target": "ru", "src": "Tinha o cabelo comprido.", "ref": "У него были длинные волосы."}
+{"id": "from_pt-13", "task": "from_pt", "target": "ru", "src": "Não tenho tempo para o fazer.", "ref": "У меня нет времени это сделать."}
+{"id": "from_pt-14", "task": "from_pt", "target": "ru", "src": "Faz-nos falta um pedal novo.", "ref": "Нам не хватает новой педали."}
+{"id": "from_pt-15", "task": "from_pt", "target": "ru", "src": "Dá-me jeito à tarde.", "ref": "Мне удобно после обеда."}
+{"id": "from_pt-16", "task": "from_pt", "target": "ru", "src": "Tome um de oito em oito horas, depois das refeições.", "ref": "Принимайте по одной каждые восемь часов, после еды."}
+{"id": "from_pt-17", "task": "from_pt", "target": "ru", "src": "Toco bateria desde os quinze anos.", "ref": "Играю на барабанах с пятнадцати лет."}
+{"id": "from_pt-18", "task": "from_pt", "target": "ru", "src": "Há dois anos que dou aulas aqui.", "ref": "Уже два года как я здесь преподаю."}
+{"id": "from_pt-19", "task": "from_pt", "target": "en", "src": "Falo russo e um pouco de português.", "ref": "I speak Russian and a little Portuguese."}
+{"id": "from_pt-20", "task": "from_pt", "target": "en", "src": "Não percebo nada de alemão.", "ref": "I don't understand any German."}
+{"id": "from_pt-21", "task": "from_pt", "target": "en", "src": "Sou estudante de design.", "ref": "I'm a design student."}
+{"id": "from_pt-22", "task": "from_pt", "target": "en", "src": "Fica perto do metro.", "ref": "It's close to the metro."}
+{"id": "from_pt-23", "task": "from_pt", "target": "en", "src": "Já trabalhei com Unity.", "ref": "I have already worked with Unity."}
+{"id": "from_pt-24", "task": "from_pt", "target": "en", "src": "Diga, em que posso ajudar?", "ref": "Yes, how can I help?"}
+{"id": "from_pt-25", "task": "from_pt", "target": "en", "src": "Tenha um bom dia.", "ref": "Have a good day."}
+{"id": "from_pt-26", "task": "from_pt", "target": "en", "src": "Mais alguma coisa? — Por agora é tudo.", "ref": "Anything else? — That's all for now."}
+{"id": "from_pt-27", "task": "from_pt", "target": "en", "src": "Vou tentar mudar para o Godot.", "ref": "I'm going to try to switch to Godot."}
+{"id": "from_pt-28", "task": "from_pt", "target": "en", "src": "É um T2 no terceiro andar.", "ref": "It's a two-bedroom flat on the third floor."}
+{"id": "from_pt-29", "task": "from_pt", "target": "en", "src": "Era só um passatempo.", "ref": "It was just a hobby."}
+{"id": "from_pt-30", "task": "from_pt", "target": "en", "src": "A que horas chega ao Porto?", "ref": "What time does it arrive in Porto?"}

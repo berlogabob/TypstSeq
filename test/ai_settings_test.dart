@@ -371,6 +371,26 @@ void main() {
     expect(cleared['tasks']['articles'], {'fallback_model': 'fallback/model'});
     expect(cleared['tasks']['screenshots'], {'custom': true});
     expect(cleared['other'], {'enabled': true});
+    await storage.writeText(
+      aiSettingsPath,
+      jsonEncode({
+        'schema': 1,
+        'tasks': {
+          'translate': {
+            'priority': ['studio', 'claude'],
+          },
+        },
+      }),
+    );
+    await writeAiSettings(storage, const AiSettings());
+    expect(
+      (jsonDecode(await storage.readText(aiSettingsPath))
+          as Map)['tasks']['translate'],
+      {
+        'priority': ['studio', 'claude'],
+        'quality': 'best',
+      },
+    );
   });
 
   test(

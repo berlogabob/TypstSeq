@@ -188,6 +188,50 @@ that profile. Missing or unknown quality defaults to the 35b preference.
 Automatic selection/loading follows the rules below; without `ai.json`,
 translation retains its existing environment and Studio behavior.
 
+### Connection priority (A, B, C)
+
+A task may carry `"priority": ["studio", "chatgpt", "claude"]`, a list of connection ids. The worker asks the
+first one and moves to the next only when a connection fails (unreachable, model will not load, empty reply,
+quota). Read for `tasks.translate`, `tasks.enrich` and `tasks.phrases`; without it the task's `connection`
+(and, for enrich, `fallback_connection`) applies as before. The task's `model` belongs to the first connection;
+the others choose their own. A connection that could not start is not asked again within one stage of a job.
+
+Two connection kinds are subscription clients, not servers. They need no key; the worker runs the logged-in
+command-line client in an empty folder and passes the prompt on stdin:
+
+| `kind` | Runs | `url` |
+|---|---|---|
+| `codex-cli` | `codex exec` (ChatGPT subscription) | any non-empty text, e.g. `cli:codex` |
+| `claude-cli` | `claude -p` (Claude subscription) | e.g. `cli:claude` |
+
+Mark them `"cloud": true`. With such a connection in a priority list, note text leaves the machine whenever the
+earlier connections fail. Speech (transcription, phrase audio) never uses them. The heartbeat reports them as
+reachable without probing. The app has no screen for `priority`; saving settings in the app keeps the list.
+
+## Phrase notes (`#pt`, `#pt-audio`)
+
+`tool/phrase_notes.py`, `tool/phrase_audio.py`. A block of a daily note tagged `#pt` (text) or `#pt-audio`
+(text and audio) becomes a practice note in the personal module "Meu português" (`my-portuguese`). The worker
+never edits the daily note.
+
+- Tag forms: `#tylog.tag("pt")` or the typed hashtag the editor keeps as text (`\#pt`).
+- Block: the tagged line and the more-indented lines under it; a tag alone on a line belongs to the lines above
+  it. A dialogue is one line per speaker written `Name: text`; two names get two voices, and an unnamed reply
+  goes to the other speaker. A tagged voice recording stands for its transcript (from `notes/Audio <name>.typ`)
+  and waits until that transcript exists.
+- When: once a day from `processing.json` `audio.time` (default 03:00) or on "process now"; daily notes of the
+  last 14 days, untouched for 10 minutes. Jobs: `_system/jobs/phrases/`, then `_system/jobs/phrase-audio/`.
+- Output: `projects/my-portuguese/<date>-<hash8>.typ` with `== Original`, then `== Corrected` and `== Changes`
+  when the block was written in Portuguese, and `== Translation <lang>` for the other languages of ru/en/pt.
+  Audio: `assets/modules/my-portuguese/audio/<date>-<hash8>.mp3` plus `.peaks`, attached under the Portuguese
+  section. Module record: `_system/modules/my-portuguese.json`.
+- Model: `tasks.phrases` in `ai.json` (champion and method: `tool/championship/`). Portuguese is European only:
+  each line is checked against a list of Brazilian forms, asked again once, and flagged in the note if it stays.
+- Audio is made on the Studio (Chatterbox, language model unloaded meanwhile) and checked by transcribing it
+  back; under 0.9 it is made again, up to 4 times, and the best clip is kept with its score in the job.
+- Limits: editing a processed block makes a second note (blocks are identified by their text); a failed job is
+  not retried on its own; names are transliterated as written.
+
 At the end of every run the worker attempts to write
 `<vault>/_system/workers/<hostname>.json`:
 
@@ -360,3 +404,8 @@ scikit-learn is absent.
 
 A launchd agent (`~/Library/LaunchAgents/org.tylog.transcribe.plist`, every
 60 s) runs this; its log is `/tmp/tylog-transcribe.log`.
+
+The launchd jobs run the copy in `~/.tylog/worker/`, not the repository: run `tool/install_worker.sh` after
+changing worker code (transcribe and enrich; it copies the modules and reloads both jobs). The repository
+lives under `~/Documents`, a folder macOS protects per program version, so after every `uv` upgrade a job
+started from there blocked on a permission prompt, and hung when the screen was locked.

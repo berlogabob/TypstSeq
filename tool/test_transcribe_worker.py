@@ -2731,7 +2731,7 @@ def test_context_sections_rendered_in_target_language(tmp_path, monkeypatch, lan
     worker.run_once(tmp_path, translate=translate, state_path=tmp_path / "state.json", probe=quiet_probe)
     assert read_job(tmp_path)["status"] == "done"
     # The context pass answers in the transcript's language; the translation is what names the target.
-    assert "in the language of the transcript" in sent[0][0]["content"]
+    assert f"in {worker.LANGUAGE_NAMES[lang]}, the language of the transcript" in sent[0][0]["content"]
     # One speech line here, so the reference on line 2 is dropped by the parser; its explanation is not sent.
     targets = worker.translation_targets([lang], [])
     assert calls == [(["Resumo da peça.", "Monólogo"], lang, target, [lang]) for target in targets]
