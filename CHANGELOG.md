@@ -5,6 +5,20 @@ their history is in the commit log and the GitHub release notes.
 
 ## Unreleased
 
+## 0.26.0+178
+
+### New
+
+- Personal Portuguese phrases. End a logbook line with `#pt`, or `#pt-audio` for a spoken version, and the Mac worker writes a practice note with the text in Russian, English and European Portuguese. A line written in Portuguese gets a corrected version and the list of changes. A dialogue (one line per speaker, `Name: text`) is read with two voices, and a tagged voice recording uses what was said. The notes collect in the module "Meu português".
+- AI connections in order of preference. A task can list several connections; the worker asks the first and moves to the next only when one fails. A ChatGPT or Claude subscription can be a connection through its command-line client, with no API key. Set in `ai.json` (`priority`); there is no settings screen for it yet.
+
+### Fixed
+
+- Pasting a list makes a list. It used to become a paragraph with the dashes kept as text.
+- Audio note summaries are written in the language of the recording. Short Russian recordings got an English summary under "Summary ru".
+- Saving AI settings in the app keeps the connection order of the translate task.
+- The Mac workers run from `~/.tylog/worker` (`tool/install_worker.sh`). Started from the repository they waited for a macOS folder permission after every `uv` upgrade and stopped working.
+
 ## 0.25.0+177
 
 ### New
