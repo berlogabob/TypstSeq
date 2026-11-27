@@ -230,9 +230,11 @@ Future<void> downloadAndApply(
 
   if (windows) {
     final launcherPath = Platform.environment['TYLOG_LAUNCHER']!;
-    final newPath =
-        '${Directory.systemTemp.path}/TyLog-update-${info.version}.exe';
-    final helperPath = '${Directory.systemTemp.path}/tylog-update.cmd';
+    // Backslashes only: cmd's `move` rejects "C:\…\Temp/file.exe" with
+    // "The system cannot find the path specified".
+    final temp = Directory.systemTemp.path;
+    final newPath = windowsPath(temp, 'TyLog-update-${info.version}.exe');
+    final helperPath = windowsPath(temp, 'tylog-update.cmd');
     final http = HttpClient()..connectionTimeout = const Duration(seconds: 30);
     try {
       final request = await http.getUrl(Uri.parse(info.zipUrl));
@@ -262,13 +264,19 @@ Future<void> downloadAndApply(
       http.close(force: true);
     }
     onProgress?.call(1);
-    await File(helperPath).writeAsString(windowsUpdateScript());
-    await Process.start(
-      'cmd',
-      ['/c', helperPath, '$pid', newPath, launcherPath],
-      mode: ProcessStartMode.detached,
-      runInShell: false,
+    await File(helperPath).writeAsString(
+      windowsUpdateScript().replaceAll('\r\n', '\n').replaceAll('\n', '\r\n'),
     );
+    // Not detached: a detached cmd has no console, and tasklist then prints
+    // nothing, so the helper never sees this process (and `tasklist | find`
+    // hung forever). A normal child outlives this process on Windows.
+    await Process.start('cmd', [
+      '/c',
+      helperPath,
+      '$pid',
+      newPath,
+      launcherPath,
+    ], runInShell: false);
     exit(0);
   }
 
@@ -364,35 +372,47 @@ rm -rf "\$STAGE" "\$WORK"
   exit(0);
 }
 
+/// [name] in the Windows directory [dir], joined with a backslash.
+String windowsPath(String dir, String name) {
+  final base = dir.replaceAll('/', r'\');
+  return base.endsWith(r'\') ? '$base$name' : '$base\\$name';
+}
+
 // %~2/%~3 strip the quotes the paths arrive with (spaces in user names);
-// `ping` pauses where `timeout` refuses to run (detached: no console).
+// `ping` pauses where `timeout` refuses to run without a console. Tools are
+// called by full path (a PATH with Git's usr\bin first has a Unix `find`), and
+// tasklist writes to a file: through a pipe, `find` could wait forever.
 String windowsUpdateScript() => r'''@echo off
 title TyLog update
 set LOG=%TEMP%\tylog-update.log
+set TASKS=%TEMP%\tylog-update-%1.txt
+set SYS=%SystemRoot%\System32
 echo %date% %time% waiting for pid %1 >> "%LOG%"
 set /a n=0
 :wait
-tasklist /FI "PID eq %1" /FO CSV /NH | find """%1""" >nul
+"%SYS%\tasklist.exe" /FI "PID eq %1" /FO CSV /NH > "%TASKS%" 2>nul < nul
+"%SYS%\findstr.exe" /L /C:"\"%1\"" "%TASKS%" > nul < nul
 if errorlevel 1 goto gone
 set /a n+=1
 rem A process that ignores exit() is ended after a few seconds; give up at 2 min.
-if %n% GEQ 8 taskkill /F /PID %1 >> "%LOG%" 2>&1
+if %n% GEQ 8 "%SYS%\taskkill.exe" /F /PID %1 >> "%LOG%" 2>&1 < nul
 if %n% GEQ 60 goto gone
-ping -n 2 127.0.0.1 >nul
+"%SYS%\ping.exe" -n 2 127.0.0.1 > nul < nul
 goto wait
 :gone
+del "%TASKS%" 2>nul
 set /a m=0
 :swap
 move /y "%~2" "%~3" >> "%LOG%" 2>&1 && goto done
 set /a m+=1
 if %m% GEQ 20 goto failed
-ping -n 2 127.0.0.1 >nul
+"%SYS%\ping.exe" -n 2 127.0.0.1 > nul < nul
 goto swap
 :failed
 echo %date% %time% could not replace %~3 >> "%LOG%"
 :done
 echo %date% %time% starting %~3 >> "%LOG%"
-start "" "%~3"
+if not defined TYLOG_UPDATE_NO_START start "" "%~3"
 del "%~f0"
 ''';
 

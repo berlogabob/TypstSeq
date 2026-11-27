@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/desktop_updater.dart';
@@ -166,14 +167,67 @@ void main() {
       'script waits, kills a stuck process, replaces, relaunches, deletes',
       () {
         final script = windowsUpdateScript();
-        expect(script, contains('tasklist /FI "PID eq %1" /FO CSV /NH'));
-        expect(script, contains('taskkill /F /PID %1'));
+        expect(
+          script,
+          contains(r'tasklist.exe" /FI "PID eq %1" /FO CSV /NH > "%TASKS%"'),
+        );
+        expect(script, isNot(contains('| find')));
+        expect(script, contains(r'taskkill.exe" /F /PID %1'));
         expect(script, contains('move /y "%~2" "%~3"'));
         expect(script, isNot(contains('timeout')));
         expect(script, contains('start "" "%~3"'));
         expect(script, contains('del "%~f0"'));
         expect(script, contains('tylog-update.log'));
       },
+    );
+
+    test('Windows paths use backslashes only', () {
+      expect(
+        windowsPath(r'C:\Users\a b\AppData\Local\Temp', 'x.exe'),
+        r'C:\Users\a b\AppData\Local\Temp\x.exe',
+      );
+      expect(windowsPath('C:/Temp/', 'x.exe'), r'C:\Temp\x.exe');
+    });
+
+    test(
+      'script waits for a running process, then swaps and relaunches',
+      () async {
+        final dir = Directory.systemTemp.createTempSync('tylog-upd-test-');
+        addTearDown(() => dir.deleteSync(recursive: true));
+        final helper = windowsPath(dir.path, 'helper.cmd');
+        final fresh = windowsPath(dir.path, 'new.txt');
+        final target = windowsPath(dir.path, 'target.txt');
+        File(helper).writeAsStringSync(
+          windowsUpdateScript()
+              .replaceAll('\r\n', '\n')
+              .replaceAll('\n', '\r\n'),
+        );
+        File(fresh).writeAsStringSync('new');
+        File(target).writeAsStringSync('old');
+        final running = await Process.start('ping', ['-n', '30', '127.0.0.1']);
+        running.stdout.drain<void>();
+        running.stderr.drain<void>();
+        final helperRun = await Process.start(
+          'cmd',
+          ['/c', helper, '${running.pid}', fresh, target],
+          environment: {
+            'TEMP': dir.path,
+            'TMP': dir.path,
+            'TYLOG_UPDATE_NO_START': '1',
+          },
+        );
+        helperRun.stdout.drain<void>();
+        helperRun.stderr.drain<void>();
+        await Future<void>.delayed(const Duration(seconds: 3));
+        expect(File(target).readAsStringSync(), 'old'); // still waiting
+        running.kill();
+        await helperRun.exitCode.timeout(const Duration(seconds: 40));
+        final log = File(windowsPath(dir.path, 'tylog-update.log'));
+        expect(File(target).readAsStringSync(), 'new');
+        expect(log.readAsStringSync(), isNot(contains('could not replace')));
+      },
+      skip: Platform.isWindows ? false : 'runs the Windows helper',
+      timeout: const Timeout(Duration(minutes: 1)),
     );
   });
 }
