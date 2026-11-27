@@ -5,6 +5,12 @@ their history is in the commit log and the GitHub release notes.
 
 ## Unreleased
 
+## 0.26.2+181
+
+### Fixed
+
+- Windows: "Update & restart" installs the new version. The updater could not see the app close and never swapped the file. Versions before this one still need a one-time manual install.
+
 ## 0.26.1+180
 
 ### New
