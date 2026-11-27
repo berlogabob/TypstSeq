@@ -102,6 +102,7 @@ extension _VaultLifecycle on _HomeScreenState {
       return _openVault(vaultRegistry!.active, trigger: trigger);
     }
     await workspace.openVault(entry, trigger: trigger);
+    unawaited(_startP2p());
     if (mounted) {
       _rebuild(() {
         selectedTag = null;

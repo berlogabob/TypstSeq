@@ -33,6 +33,7 @@ class SettingsSheet extends StatefulWidget {
     required this.syncing,
     required this.syncStatusSubtitle,
     required this.onNextcloud,
+    this.onDevices,
     required this.vaultCount,
     required this.themeMode,
     required this.onThemeModeChanged,
@@ -96,6 +97,9 @@ class SettingsSheet extends StatefulWidget {
   final bool syncing;
   final String syncStatusSubtitle;
   final VoidCallback onNextcloud;
+
+  /// Opens P2P device pairing; null hides it.
+  final VoidCallback? onDevices;
   final int vaultCount;
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeModeChanged;

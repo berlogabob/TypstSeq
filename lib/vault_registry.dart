@@ -626,6 +626,13 @@ class VaultRegistry {
     await save();
   }
 
+  Future<void> setPeers(String vaultId, List<PeerEntry> peers) async {
+    final index = entries.indexWhere((item) => item.id == vaultId);
+    if (index < 0) return;
+    entries[index] = entries[index].copyWith(peers: peers);
+    await save();
+  }
+
   static const _maxRecentNotes = 30;
 
   /// [fallbackProgress] seeds the position when this device has no record of

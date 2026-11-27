@@ -4,7 +4,9 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tylog/nextcloud_sync.dart';
+import 'package:tylog/p2p/peer_entry.dart';
 import 'package:tylog/p2p/vault_dav_server.dart';
+import 'package:tylog/vault_registry.dart';
 import 'package:tylog/vault.dart';
 import 'support/temp_dir.dart';
 
@@ -164,5 +166,35 @@ void main() {
     expect(vault.pendingSyncWrites, contains('notes/late.typ'));
     expect(vault.pendingSyncWritesFor('peer-1'), contains('notes/late.typ'));
     expect(vault.writeGeneration('notes/late.typ'), greaterThan(0));
+  });
+
+  test('paired peers survive a vaults.json round trip', () {
+    final entry = VaultEntry(
+      id: 'v1',
+      name: 'Vault',
+      path: '/tmp/v',
+      peers: [
+        PeerEntry(
+          nodeId: 'node-a',
+          name: 'Mac',
+          pairedAt: DateTime.utc(2026, 11, 27),
+          lastSyncAt: DateTime.utc(2026, 11, 27, 12),
+          lastRoute: 'direct',
+        ),
+      ],
+    );
+    final back = VaultEntry.fromJson(entry.toJson());
+    expect(back.peers.single.nodeId, 'node-a');
+    expect(back.peers.single.name, 'Mac');
+    expect(back.peers.single.lastRoute, 'direct');
+    expect(back.peers.single.lastSyncAt, DateTime.utc(2026, 11, 27, 12));
+    // A damaged entry un-pairs that device instead of failing the registry.
+    final damaged = entry.toJson()
+      ..['peers'] = [
+        {'name': 'no id'},
+        ...(entry.toJson()['peers'] as List),
+      ];
+    expect(VaultEntry.fromJson(damaged).peers.map((p) => p.nodeId), ['node-a']);
+    expect(VaultEntry.fromJson({'id': 'v2', 'name': 'x'}).peers, isEmpty);
   });
 }

@@ -63,6 +63,8 @@ import 'widgets/external_entity_page.dart';
 import 'models.dart';
 import 'month_calendar.dart';
 import 'nextcloud_sync.dart';
+import 'p2p/p2p_service.dart';
+import 'widgets/settings/devices_page.dart';
 import 'nextcloud_sync/conflict_choice.dart';
 import 'package:tylog_core/validation.dart';
 import 'platform_file_actions.dart';
@@ -164,6 +166,7 @@ part 'app_mobile/magic_flow.dart';
 part 'app_mobile/share_flow.dart';
 part 'app_mobile/navigation_flow.dart';
 part 'app_mobile/reading_flow.dart';
+part 'app_mobile/p2p_flow.dart';
 
 String? _equipmentLoanSummary(VaultIndex index, String equipmentId) {
   final usage = equipmentUsage(index)[equipmentId];
@@ -356,6 +359,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final _plainHistoryRevision = ValueNotifier<int>(0);
   late final TyLogEditingController richController;
   late final WorkspaceController workspace;
+  P2pService? _p2p;
+  Timer? _p2pTimer;
+  Timer? _p2pRescanTimer;
   // Launch lands in the journal editor with today's file open.
   String mode = 'normal';
   bool _editScreenshot = false;
@@ -979,6 +985,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    unawaited(_stopP2p());
     _screenshotsApplyTimer?.cancel();
     _openGeneration++;
     _captureFocus.dispose();

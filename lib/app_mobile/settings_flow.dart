@@ -229,6 +229,10 @@ extension _SettingsFlow on _HomeScreenState {
                     _closeSettings(context);
                     unawaited(_showSyncDashboard());
                   },
+                  onDevices: () {
+                    _closeSettings(context);
+                    unawaited(_showDevices());
+                  },
                   onEnableReminders: () async {
                     await taskScheduler.requestPermission();
                     await taskScheduler.reconcile(index?.tasks ?? const []);

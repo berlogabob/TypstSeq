@@ -38,6 +38,13 @@ class SyncStoragePage extends StatelessWidget {
         subtitle: settings.syncStatusSubtitle,
         onTap: settings.onNextcloud,
       ),
+      if (settings.onDevices != null)
+        AppTile(
+          icon: AppIcons.syncManaged,
+          title: 'Devices',
+          subtitle: 'Sync directly with your other devices',
+          onTap: settings.onDevices,
+        ),
     ],
   );
 }
