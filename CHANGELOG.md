@@ -7,7 +7,7 @@ their history is in the commit log and the GitHub release notes.
 
 ### New
 
-- Pasting a Markdown table into a note turns it into a Typst table, and selecting one in the editor offers **Make table**.
+- Pasting a Markdown table into a note turns it into a Typst table, and selecting one in the editor offers **Make table**. Plain tables now show as a table in the note instead of a "Table" chip.
 
 ## 0.26.2+181
 

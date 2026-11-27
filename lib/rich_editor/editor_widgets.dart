@@ -2285,6 +2285,68 @@ class _InlineImageState extends State<_InlineImage> {
   }
 }
 
+/// A plain `#table(...)` drawn as a table. Tapping it opens the Typst source,
+/// the same as the chip it replaces.
+class _TypstTableView extends StatelessWidget {
+  const _TypstTableView({required this.rows, required this.onTap});
+
+  final List<List<(String, bool)>> rows;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final style = theme.textTheme.bodyMedium;
+    final border = BorderSide(color: scheme.outlineVariant);
+    return Semantics(
+      button: onTap != null,
+      label: 'Table, ${rows.length} rows',
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(kRadiusSmall),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Table(
+              defaultColumnWidth: const IntrinsicColumnWidth(),
+              border: TableBorder(
+                top: border,
+                bottom: border,
+                left: border,
+                right: border,
+                horizontalInside: border,
+                verticalInside: border,
+              ),
+              children: [
+                for (final row in rows)
+                  TableRow(
+                    children: [
+                      for (final (text, bold) in row)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          child: Text(
+                            text,
+                            style: bold
+                                ? style?.copyWith(fontWeight: FontWeight.w600)
+                                : style,
+                          ),
+                        ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ProtectedChip extends StatelessWidget {
   const _ProtectedChip({
     required this.label,

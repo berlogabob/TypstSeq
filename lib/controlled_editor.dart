@@ -680,6 +680,57 @@ String? markdownTableSource(String text) {
   ].join('\n');
 }
 
+/// The cells of a plain `#table(columns: N, [a], [b], ...)` block, row by row,
+/// so the editor can draw it as a table instead of a chip. Each cell is
+/// `(text, bold)`; a cell written `[*x*]` is bold. Null for anything richer
+/// (other arguments, code in a cell): that stays a protected chip.
+List<List<(String, bool)>>? typstTableCells(String source) {
+  final text = source.trim();
+  if (!text.startsWith('#table(') || !text.endsWith(')')) return null;
+  final body = text.substring(7, text.length - 1);
+  final columns = RegExp(r'^\s*columns:\s*(\d+)\s*,').firstMatch(body);
+  if (columns == null) return null;
+  final count = int.parse(columns[1]!);
+  if (count < 1) return null;
+  final cells = <(String, bool)>[];
+  var i = columns.end;
+  while (i < body.length) {
+    final c = body[i];
+    if (c == ',' || c.trim().isEmpty) {
+      i++;
+      continue;
+    }
+    if (c != '[') return null;
+    var depth = 0;
+    final start = i + 1;
+    for (; i < body.length; i++) {
+      final ch = body[i];
+      if (ch == r'\') {
+        i++;
+      } else if (ch == '[') {
+        depth++;
+      } else if (ch == ']' && --depth == 0) {
+        break;
+      }
+    }
+    if (i >= body.length) return null;
+    var cell = body.substring(start, i).trim();
+    i++;
+    if (RegExp(r'(?<!\\)[#$]').hasMatch(cell)) return null;
+    final bold = RegExp(r'^\*(.*)(?<!\\)\*$', dotAll: true).firstMatch(cell);
+    if (bold != null) cell = bold[1]!;
+    cells.add((unescapeMarkup(cell), bold != null));
+  }
+  if (cells.isEmpty) return null;
+  return [
+    for (var r = 0; r < cells.length; r += count)
+      [
+        for (var c = 0; c < count; c++)
+          r + c < cells.length ? cells[r + c] : ('', false),
+      ],
+  ];
+}
+
 String _citationKey(String value) {
   // Typst label charset; Better BibTeX keys commonly contain ':' and '.'.
   final key = value.trim();

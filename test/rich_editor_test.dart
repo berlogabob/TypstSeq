@@ -1489,6 +1489,24 @@ void main() {
     expect(markdownTableSource('| only |\n| --- |'), isNull); // one column
   });
 
+  test('a plain Typst table reads back as cells', () {
+    expect(typstTableCells(typstTable), [
+      [('По-португальски', true), ('Произношение', true), ('Перевод', true)],
+      [
+        ('Estou bem, e tu?', false),
+        ('Штоу бэйм, и ту?', false),
+        ('Хорошо, а ты?', false),
+      ],
+      [('Tudo fixe!', false), ('Туду фиш!', false), ('Всё [отлично]!', false)],
+    ]);
+    expect(typstTableCells('#table(columns: 2, [a], [b], [c])'), [
+      [('a', false), ('b', false)],
+      [('c', false), ('', false)],
+    ]);
+    expect(typstTableCells('#table(stroke: none, [a])'), isNull);
+    expect(typstTableCells('#table(columns: 1, [#link("x")[y]])'), isNull);
+  });
+
   testWidgets('a pasted Markdown table becomes a table', (tester) async {
     addTearDown(
       () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(

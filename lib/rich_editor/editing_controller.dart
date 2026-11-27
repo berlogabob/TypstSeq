@@ -1835,6 +1835,26 @@ class TyLogEditingController extends TextEditingController {
           ),
         );
         global += block.visibleText.length;
+      } else if ((block.isProtected
+              ? typstTableCells(block.originalSource)
+              : null)
+          case final rows?) {
+        children.add(
+          widgetSpan(
+            offset: global,
+            alignment: PlaceholderAlignment.middle,
+            child: Padding(
+              padding: EdgeInsets.only(top: stripHeight),
+              child: _TypstTableView(
+                rows: rows,
+                onTap: interactive || tappable
+                    ? () => onProtectedTap(block.id)
+                    : null,
+              ),
+            ),
+          ),
+        );
+        global++;
       } else if (block.isProtected) {
         children.add(
           widgetSpan(
