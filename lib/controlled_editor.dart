@@ -639,7 +639,8 @@ String? markdownTableSource(String text) {
       .split('\n')
       .map((line) => line.trim())
       .toList();
-  if (lines.length < 2 || lines.any((line) => !line.contains('|'))) {
+  // Header and rule need a pipe; a body row may be a bare cell, as in GFM.
+  if (lines.length < 2 || lines.take(2).any((line) => !line.contains('|'))) {
     return null;
   }
   List<String> cells(String line) {

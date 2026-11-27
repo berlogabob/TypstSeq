@@ -2303,7 +2303,7 @@ class _TypstTableView extends StatelessWidget {
       button: onTap != null,
       label: 'Table, ${rows.length} rows',
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(vertical: kSpace4),
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(kRadiusSmall),
@@ -2326,8 +2326,8 @@ class _TypstTableView extends StatelessWidget {
                       for (final (text, bold) in row)
                         Padding(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
+                            horizontal: kSpace8,
+                            vertical: kSpace4,
                           ),
                           child: Text(
                             text,

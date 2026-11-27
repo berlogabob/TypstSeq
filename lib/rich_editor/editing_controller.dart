@@ -811,7 +811,18 @@ class TyLogEditingController extends TextEditingController {
     final table = selectedTableSource;
     if (table == null) return false;
     _clearComposition();
-    final sel = selection;
+    // Trim surrounding blank lines off the selection: a selection that runs
+    // into the next paragraph would merge it into the table's block, and the
+    // table would land after that paragraph instead of in place.
+    var start = selection.start;
+    var end = selection.end;
+    while (end > start && text[end - 1].trim().isEmpty) {
+      end--;
+    }
+    while (start < end && text[start].trim().isEmpty) {
+      start++;
+    }
+    final sel = TextSelection(baseOffset: start, extentOffset: end);
     var offset = sel.end;
     return _format(() {
       offset = document.insertBlock(sel, table);
