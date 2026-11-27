@@ -144,7 +144,12 @@ class VirtualPlainEditorState extends State<VirtualPlainEditor> {
   Widget build(BuildContext context) => ListView.builder(
     controller: _scrollController,
     keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
-    padding: const EdgeInsets.fromLTRB(18, kSpace8, 18, kSpace24),
+    padding: const EdgeInsets.fromLTRB(
+      kEditorInset,
+      kSpace8,
+      kEditorInset,
+      kSpace24,
+    ),
     itemCount: _controllers.length,
     itemBuilder: (context, index) => TextField(
       readOnly: widget.readOnly,

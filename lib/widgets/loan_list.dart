@@ -1,6 +1,8 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:tylog_core/tylog_core.dart'
     show TaskRef, isOpenLoan, loanEquipmentIds, loanOutFor;
+import 'constants.dart';
+import 'ds/app_sheet.dart';
 
 class LoanList extends StatelessWidget {
   const LoanList({
@@ -23,7 +25,7 @@ class LoanList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (loans.isEmpty) {
-      return Padding(padding: const EdgeInsets.all(24), child: Text(empty));
+      return ListTile(title: Text(empty));
     }
     return ListView.separated(
       shrinkWrap: true,
@@ -32,7 +34,7 @@ class LoanList extends StatelessWidget {
       itemBuilder: (context, i) {
         if (summary != null && i == 0) {
           return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(vertical: kSpace12),
             child: Text(
               summary!,
               style: Theme.of(context).textTheme.titleSmall,
@@ -78,28 +80,21 @@ Future<void> showLoanSheet(
   required ValueChanged<TaskRef> onOpen,
   String? summary,
 }) async {
-  await showModalBottomSheet<void>(
-    context: context,
+  await showAppSheet<void>(
+    context,
     isScrollControlled: true,
-    builder: (context) => SafeArea(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * 0.7,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(title: Text(title)),
-            Flexible(
-              child: LoanList(
-                loans: loans,
-                titleOf: titleOf,
-                now: DateTime.now(),
-                onOpen: onOpen,
-                summary: summary,
-              ),
-            ),
-          ],
+    builder: (context) => ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.7,
+      ),
+      child: AppSheet.body(
+        title: title,
+        child: LoanList(
+          loans: loans,
+          titleOf: titleOf,
+          now: DateTime.now(),
+          onOpen: onOpen,
+          summary: summary,
         ),
       ),
     ),

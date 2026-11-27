@@ -22,6 +22,9 @@ import 'snack.dart';
 import 'processing_screen.dart';
 import 'constants.dart';
 import 'text_note_widgets.dart';
+import 'ds/app_sheet.dart';
+import 'ds/app_empty_state.dart';
+import 'loading.dart';
 export 'text_note_widgets.dart' show AudioLanguageBar, AudioTranscriptRow;
 
 /// Sections of the expanded audio screen.
@@ -443,7 +446,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
       if (mounted) setState(() {});
       if (_waveformAvailable && _peaks.isEmpty) unawaited(_backfillPeaks(file));
     } catch (error) {
-      if (mounted) setState(() => _error = 'Could not load audio: $error');
+      if (mounted) setState(() => _error = '$error');
     }
   }
 
@@ -687,7 +690,20 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
       ),
       body: SafeArea(
         child: _error != null
-            ? Center(child: Text(_error!))
+            ? AppEmptyState.error(
+                title: 'Could not open this recording',
+                hint:
+                    'The audio file may still be syncing, or it was moved '
+                    'or removed.',
+                details: _error,
+                primaryAction: FilledButton(
+                  onPressed: () {
+                    setState(() => _error = null);
+                    unawaited(_load());
+                  },
+                  child: const Text('Retry'),
+                ),
+              )
             : Column(
                 children: [
                   Padding(
@@ -728,7 +744,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
                             child: SizedBox(
                               width: 20,
                               height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
+                              child: LoadingIndicator(strokeWidth: 2),
                             ),
                           )
                         : switch (_tab) {
@@ -846,7 +862,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
             icon: const Icon(Icons.replay_10),
             onPressed: () => _seek(_position - const Duration(seconds: 10)),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: kSpace4),
           StreamBuilder<PlayerState>(
             stream: _player.playerStateStream,
             builder: (context, snap) {
@@ -869,7 +885,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
               );
             },
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: kSpace4),
           IconButton(
             iconSize: 28,
             tooltip: 'Forward 10 s',
@@ -902,7 +918,11 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
 
   Widget _commentList(int active) {
     if (_comments.isEmpty) {
-      return const Center(child: Text('No comments yet'));
+      return const AppEmptyState(
+        icon: Icons.mode_comment_outlined,
+        title: 'No comments yet',
+        hint: 'Add a comment while listening to mark a moment.',
+      );
     }
     return ListView.builder(
       itemCount: _comments.length,
@@ -916,7 +936,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
           onTap: () => _seek(Duration(milliseconds: c.ms)),
           trailing: IconButton(
             tooltip: 'Delete comment',
-            icon: const Icon(AppIcons.close, size: 18),
+            icon: const Icon(AppIcons.close, size: kIconDense),
             onPressed: () => unawaited(_deleteComment(c)),
           ),
         );
@@ -929,29 +949,26 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
       final waiting =
           _transcriptState == 'queued' || _transcriptState == 'processing';
       final done = _transcriptState == 'done';
-      return Center(
-        child: waiting
-            ? Text('Transcription $_transcriptState…')
-            : Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    done
-                        ? 'No speech found, or the transcript is still syncing'
-                        : _transcriptState == 'failed'
-                        ? 'Last transcription failed'
-                        : 'No transcript yet',
-                  ),
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    onPressed: () => unawaited(_requestTranscript()),
-                    icon: const Icon(Icons.subtitles_outlined),
-                    label: Text(
-                      done ? 'Transcribe again' : 'Request transcription',
-                    ),
-                  ),
-                ],
-              ),
+      if (waiting) {
+        return AppEmptyState(
+          icon: AppIcons.queued,
+          title: 'Transcription $_transcriptState…',
+          hint: 'The text appears here when your computer finishes.',
+        );
+      }
+      return AppEmptyState(
+        icon: Icons.subtitles_outlined,
+        title: done
+            ? 'No speech found, or the transcript is still syncing'
+            : _transcriptState == 'failed'
+            ? 'Last transcription failed'
+            : 'No transcript yet',
+        hint: 'Your computer turns this recording into text.',
+        primaryAction: OutlinedButton.icon(
+          onPressed: () => unawaited(_requestTranscript()),
+          icon: const Icon(Icons.subtitles_outlined),
+          label: Text(done ? 'Transcribe again' : 'Request transcription'),
+        ),
       );
     }
     final view = _view ?? _translations.keys.firstOrNull ?? _lang;
@@ -1042,6 +1059,9 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
       originalAvailable: transcript.isNotEmpty,
       languages: translations.keys,
       target: target,
+      current: _view != _lang && translations.containsKey(_view)
+          ? _view
+          : 'original',
       allowParallel: allowParallel,
     );
   }
@@ -1074,21 +1094,19 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
     if (_sharing) return;
     setState(() => _sharing = true);
     try {
-      final format = await showModalBottomSheet<AudioExportFormat>(
-        context: context,
-        builder: (context) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final format in AudioExportFormat.values)
-                ListTile(
-                  title: Text(
-                    format == AudioExportFormat.markdown ? 'Markdown' : 'PDF',
-                  ),
-                  onTap: () => Navigator.pop(context, format),
+      final format = await showAppSheet<AudioExportFormat>(
+        context,
+        builder: (context) => AppSheet(
+          title: 'Export as',
+          children: [
+            for (final format in AudioExportFormat.values)
+              ListTile(
+                title: Text(
+                  format == AudioExportFormat.markdown ? 'Markdown' : 'PDF',
                 ),
-            ],
-          ),
+                onTap: () => Navigator.pop(context, format),
+              ),
+          ],
         ),
       );
       if (format == null || !mounted) return;
@@ -1166,9 +1184,9 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
             unawaited(_saveMeta());
           },
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: kSpace16),
         Wrap(
-          spacing: 8,
+          spacing: kSpace8,
           children: [
             for (final t in _tags)
               InputChip(
@@ -1192,7 +1210,7 @@ class _AudioNoteScreenState extends State<AudioNoteScreen> {
             unawaited(_saveMeta());
           },
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: kSpace16),
         Text('File', style: Theme.of(context).textTheme.titleSmall),
         row('Format', info?.format),
         row('Duration', formatClock(_duration)),

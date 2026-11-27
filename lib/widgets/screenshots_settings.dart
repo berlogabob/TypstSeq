@@ -180,7 +180,7 @@ class _ScreenshotsSettingsState extends State<ScreenshotsSettings> {
             subtitle: Text(
               widget.folder ?? '~/Nextcloud/InstantUpload/Screenshots',
             ),
-            trailing: const Icon(Icons.folder_open),
+            trailing: const Icon(AppIcons.folderOpen),
             onTap: () async {
               final path = await FilePicker.getDirectoryPath();
               if (path != null) {

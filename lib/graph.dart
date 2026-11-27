@@ -9,6 +9,9 @@ import 'package:tylog_core/tylog_core.dart' show KnowledgeStatus;
 
 import 'widgets/graph_label.dart';
 import 'widgets/banner.dart';
+import 'widgets/app_icons.dart';
+import 'widgets/ds/app_empty_state.dart';
+import 'widgets/loading.dart';
 
 export 'package:tylog_core/graph.dart'
     show
@@ -331,7 +334,11 @@ class _GraphViewState extends State<GraphView>
   @override
   Widget build(BuildContext context) {
     if (widget.graph.nodes.isEmpty) {
-      return const Center(child: Text('Graph is empty'));
+      return const AppEmptyState(
+        icon: AppIcons.graph,
+        title: 'Graph is empty',
+        hint: 'Link notes to each other and they appear here.',
+      );
     }
     final stats = computeGraphStats(widget.graph);
     final sourceCounts = <String, int>{};
@@ -376,7 +383,7 @@ class _GraphViewState extends State<GraphView>
             vertical: 6,
           ),
           child: Wrap(
-            spacing: 12,
+            spacing: kSpace12,
             runSpacing: 6,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
@@ -433,7 +440,7 @@ class _GraphViewState extends State<GraphView>
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: kSpace12),
             child: Wrap(
-              spacing: 8,
+              spacing: kSpace8,
               children: [
                 for (final source in sources)
                   FilterChip(
@@ -547,7 +554,7 @@ class _GraphViewState extends State<GraphView>
                                   child: TextButton.icon(
                                     onPressed: () =>
                                         widget.onRejectSuggestion!(from, to),
-                                    icon: const Icon(Icons.close),
+                                    icon: const Icon(AppIcons.close),
                                     label: const Text('Reject'),
                                   ),
                                 ),
@@ -581,7 +588,7 @@ class _GraphViewState extends State<GraphView>
         final positions = _positions;
         final canvas = _positionsCanvas;
         if (positions == null || canvas == null) {
-          return const Center(child: CircularProgressIndicator());
+          return const Center(child: LoadingIndicator());
         }
         _fitWhenLayoutChanges(viewport, canvas);
         return Stack(
@@ -1760,7 +1767,7 @@ class GraphLegend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Wrap(
-    spacing: 8,
+    spacing: kSpace8,
     crossAxisAlignment: WrapCrossAlignment.center,
     children: [
       if (presentKinds.contains(GraphEdgeKind.link))

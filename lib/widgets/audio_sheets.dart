@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:tylog_audio/tylog_audio.dart';
 import 'ds/app_sheet.dart';
+import 'constants.dart';
 
 const _audioExtensions = ['.mp3', '.m4a', '.aac', '.wav', '.ogg', '.opus'];
 
@@ -84,9 +85,8 @@ Future<AudioTake?> showAudioRecorder(
   BuildContext context, {
   Future<void> Function(AudioTake part)? onPart,
 }) {
-  return showModalBottomSheet<AudioTake>(
-    context: context,
-    showDragHandle: false,
+  return showAppSheet<AudioTake>(
+    context,
     isDismissible: false,
     enableDrag: false,
     builder: (_) => _RecorderSheet(onPart),
@@ -200,7 +200,7 @@ class _RecorderSheetState extends State<_RecorderSheet> {
       children: [
         if (_error != null) ...[
           Text(_error!),
-          const SizedBox(height: 16),
+          const SizedBox(height: kSpace16),
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Close'),
@@ -211,7 +211,7 @@ class _RecorderSheetState extends State<_RecorderSheet> {
             '${formatClock(const Duration(seconds: kMaxRecordingSeconds))}',
             style: Theme.of(context).textTheme.displaySmall,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: kSpace12),
           SizedBox(
             height: 56,
             child: CustomPaint(

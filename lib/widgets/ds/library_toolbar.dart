@@ -1,8 +1,14 @@
 import 'package:material_ui/material_ui.dart';
 
-import '../app_icons.dart';
 import '../constants.dart';
+import 'app_search_field.dart';
 
+/// The search-and-filter header shared by every Library tab: an always-visible
+/// search field with a clear button, optional [trailing] sort/group buttons,
+/// and one horizontally scrolling row of [chips] ([LibraryFilterChip]).
+///
+/// On phone landscape (under 480dp tall) it drops its vertical gaps so the
+/// list keeps the height.
 class LibraryToolbar extends StatelessWidget {
   const LibraryToolbar({
     super.key,
@@ -36,36 +42,11 @@ class LibraryToolbar extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: ValueListenableBuilder<TextEditingValue>(
-                  valueListenable: controller,
-                  builder: (context, value, _) => TextField(
-                    key: searchKey,
-                    controller: controller,
-                    onChanged: onChanged,
-                    decoration: InputDecoration(
-                      isDense: true,
-                      hintText: hintText,
-                      prefixIcon: const Icon(Icons.search, size: kIconSmall),
-                      border: const OutlineInputBorder(
-                        borderRadius: BorderRadius.all(
-                          Radius.circular(kRadiusMedium),
-                        ),
-                      ),
-                      suffixIcon: value.text.isEmpty
-                          ? null
-                          : IconButton(
-                              tooltip: 'Clear search',
-                              icon: const Icon(
-                                AppIcons.close,
-                                size: kIconSmall,
-                              ),
-                              onPressed: () {
-                                controller.clear();
-                                onChanged('');
-                              },
-                            ),
-                    ),
-                  ),
+                child: AppSearchField(
+                  controller: controller,
+                  fieldKey: searchKey,
+                  hintText: hintText,
+                  onChanged: onChanged,
                 ),
               ),
               ...trailing,
@@ -93,6 +74,8 @@ class LibraryToolbar extends StatelessWidget {
   }
 }
 
+/// One choice in a [LibraryToolbar] chip row. [count] appends "· n" to the
+/// label; [icon] shows a kind icon before it.
 class LibraryFilterChip extends StatelessWidget {
   const LibraryFilterChip({
     super.key,

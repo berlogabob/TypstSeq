@@ -95,7 +95,7 @@ class _LinkedReferencesState extends State<LinkedReferences> {
               ),
               child: Row(
                 children: [
-                  const Icon(AppIcons.backlinks, size: 18),
+                  const Icon(AppIcons.backlinks, size: kIconDense),
                   const SizedBox(width: kSpace8),
                   Expanded(
                     child: Text(
@@ -170,7 +170,7 @@ class _Reference extends StatelessWidget {
               children: [
                 Icon(
                   iconForKind(kind),
-                  size: 16,
+                  size: kIconInline,
                   color: scheme.onSurfaceVariant,
                 ),
                 const SizedBox(width: 6),

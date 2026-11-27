@@ -8,6 +8,8 @@ import '../audio/audio_note_doc.dart';
 import '../audio/processing_policy.dart' show kLanguageNames;
 import 'constants.dart';
 import 'snack.dart';
+import 'ds/app_sheet.dart';
+import 'loading.dart';
 
 Future<void> copyNoteText(BuildContext context, String text) async {
   await Clipboard.setData(ClipboardData(text: text));
@@ -71,7 +73,7 @@ class AudioLanguageBar extends StatelessWidget {
         vertical: kSpace4,
       ),
       child: Row(
-        spacing: 8,
+        spacing: kSpace8,
         children: [
           if (parallel != null) ...[
             FilterChip(
@@ -120,7 +122,7 @@ class AudioLanguageBar extends StatelessWidget {
                     ? const SizedBox(
                         width: kIconSmall,
                         height: kIconSmall,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: LoadingIndicator(strokeWidth: 2),
                       )
                     : null,
                 label: Text(l.toUpperCase()),
@@ -230,40 +232,47 @@ class AudioTranscriptRow extends StatelessWidget {
 }
 
 /// Copy/page actions share the same original, translated and parallel choices.
+/// [current] is the text on screen now ('original' or a language code); its
+/// row is marked.
 Future<String?> chooseNoteText(
   BuildContext context, {
   required bool originalAvailable,
   required Iterable<String> languages,
   required String? target,
+  String? current,
   bool allowParallel = true,
 }) async {
-  return showModalBottomSheet<String>(
-    context: context,
-    builder: (context) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
+  Widget? mark(String value) =>
+      value == current ? const Icon(Icons.check) : null;
+  return showAppSheet<String>(
+    context,
+    builder: (context) => AppSheet(
+      title: 'Which text?',
+      children: [
+        ListTile(
+          title: const Text('Original'),
+          enabled: originalAvailable,
+          selected: current == 'original',
+          trailing: mark('original'),
+          onTap: () => Navigator.pop(context, 'original'),
+        ),
+        for (final lang in languages)
           ListTile(
-            title: const Text('Original'),
-            enabled: originalAvailable,
-            onTap: () => Navigator.pop(context, 'original'),
+            title: Text(kLanguageNames[lang] ?? lang.toUpperCase()),
+            selected: current == lang,
+            trailing: mark(lang),
+            onTap: () => Navigator.pop(context, lang),
           ),
-          for (final lang in languages)
-            ListTile(
-              title: Text(kLanguageNames[lang] ?? lang.toUpperCase()),
-              onTap: () => Navigator.pop(context, lang),
-            ),
-          if (allowParallel)
-            ListTile(
-              title: const Text('Side by side'),
-              subtitle: target == null
-                  ? null
-                  : Text(kLanguageNames[target] ?? target.toUpperCase()),
-              enabled: target != null && originalAvailable,
-              onTap: () => Navigator.pop(context, 'parallel'),
-            ),
-        ],
-      ),
+        if (allowParallel)
+          ListTile(
+            title: const Text('Side by side'),
+            subtitle: target == null
+                ? null
+                : Text(kLanguageNames[target] ?? target.toUpperCase()),
+            enabled: target != null && originalAvailable,
+            onTap: () => Navigator.pop(context, 'parallel'),
+          ),
+      ],
     ),
   );
 }

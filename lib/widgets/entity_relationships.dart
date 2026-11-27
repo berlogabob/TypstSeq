@@ -2,6 +2,8 @@ import 'package:material_ui/material_ui.dart';
 
 import '../models.dart';
 import 'constants.dart';
+import 'app_icons.dart';
+import 'ds/app_sheet.dart';
 
 /// Parent chips and the reverse, grouped view of an entity's children.
 class EntityRelationships extends StatefulWidget {
@@ -72,13 +74,16 @@ class _EntityRelationshipsState extends State<EntityRelationships> {
             builder: (context) {
               final parent = _byId[parentId] ?? _byName[parentId.toLowerCase()];
               return InputChip(
-                avatar: Icon(iconForKind(parent?.kind ?? 'note'), size: 18),
+                avatar: Icon(
+                  iconForKind(parent?.kind ?? 'note'),
+                  size: kIconDense,
+                ),
                 label: Text(
                   parent?.title ?? parentId,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                deleteIcon: const Icon(Icons.close, size: 18),
+                deleteIcon: const Icon(AppIcons.close, size: kIconDense),
                 visualDensity: VisualDensity.compact,
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 onPressed: parent == null
@@ -98,34 +103,32 @@ class _EntityRelationshipsState extends State<EntityRelationships> {
           label: Text('Contains ${children.length}'),
           visualDensity: VisualDensity.compact,
           materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          onPressed: () => showModalBottomSheet<void>(
-            context: context,
-            builder: (sheetContext) => SafeArea(
-              child: ListView(
-                shrinkWrap: true,
-                children: [
-                  for (final kind in kinds) ...[
+          onPressed: () => showAppSheet<void>(
+            context,
+            builder: (sheetContext) => AppSheet(
+              title: 'Contains',
+              children: [
+                for (final kind in kinds) ...[
+                  ListTile(
+                    dense: true,
+                    leading: Icon(iconForKind(kind), size: kIconDense),
+                    title: Text(
+                      '${labelForKind(kind) == 'Entity' ? kind : labelForKind(kind)} (${groups[kind]!.length})',
+                    ),
+                  ),
+                  for (final child in groups[kind]!)
                     ListTile(
                       dense: true,
-                      leading: Icon(iconForKind(kind), size: 18),
-                      title: Text(
-                        '${labelForKind(kind) == 'Entity' ? kind : labelForKind(kind)} (${groups[kind]!.length})',
-                      ),
+                      title: Text(child.title),
+                      onTap: () {
+                        Navigator.pop(sheetContext);
+                        widget.onOpen(child.path);
+                      },
                     ),
-                    for (final child in groups[kind]!)
-                      ListTile(
-                        dense: true,
-                        title: Text(child.title),
-                        onTap: () {
-                          Navigator.pop(sheetContext);
-                          widget.onOpen(child.path);
-                        },
-                      ),
-                  ],
-                  if (children.isEmpty)
-                    const ListTile(title: Text('No children')),
                 ],
-              ),
+                if (children.isEmpty)
+                  const ListTile(title: Text('No children')),
+              ],
             ),
           ),
         ),

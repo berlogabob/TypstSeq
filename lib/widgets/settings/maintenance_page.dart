@@ -7,6 +7,11 @@ import '../app_icons.dart';
 import '../ds/app_tile.dart';
 import '../settings_sheet.dart';
 import 'settings_page.dart';
+import '../constants.dart';
+import '../snack.dart';
+import '../ds/app_empty_state.dart';
+import '../dialogs.dart';
+import '../loading.dart';
 
 class MaintenancePage extends StatelessWidget {
   const MaintenancePage({super.key, required this.settings});
@@ -153,7 +158,10 @@ class _DuplicatesPageState extends State<_DuplicatesPage> {
         title: const Text('Choose a page to keep'),
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+            padding: const EdgeInsets.symmetric(
+              horizontal: kSpace24,
+              vertical: kSpace8,
+            ),
             child: Text('Page to remove: ${loser.title} · ${loser.path}'),
           ),
           for (final n in group.where((n) => n.path != loser.path))
@@ -175,35 +183,23 @@ class _DuplicatesPageState extends State<_DuplicatesPage> {
         loser.path,
       );
       if (!mounted) return;
-      final confirmed = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Preview merge'),
-          content: SingleChildScrollView(
-            child: Text(
-              'Keep: ${survivor.path}\nRemove: ${loser.path}\n\nOnly indexed #tylog.ref-note links are updated. Check other link forms before merging.\n\nFiles to change:\n${preview.files.join('\n')}',
-            ),
+      final confirmed = await showConfirmDialog(
+        context,
+        title: 'Preview merge',
+        contentBuilder: (context) => SingleChildScrollView(
+          child: Text(
+            'Keep: ${survivor.path}\nRemove: ${loser.path}\n\nOnly indexed #tylog.ref-note links are updated. Check other link forms before merging.\n\nFiles to change:\n${preview.files.join('\n')}',
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Merge'),
-            ),
-          ],
         ),
+        confirmLabel: 'Merge',
+        destructive: true,
       );
       if (confirmed != true) return;
       await widget.workspace.mergeDuplicate(preview);
       if (mounted) setState(() {});
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Merge could not finish: $error')),
-        );
+        showSnack(context, 'Merge could not finish: $error');
       }
     }
   }
@@ -225,7 +221,7 @@ class _DuplicatesPageState extends State<_DuplicatesPage> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           const Text('Index could not be loaded'),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: kSpace8),
                           TextButton(
                             onPressed: () => widget.workspace.rebuildIndex(),
                             child: const Text('Retry'),
@@ -233,7 +229,7 @@ class _DuplicatesPageState extends State<_DuplicatesPage> {
                         ],
                       )
                     : widget.workspace.awaitingIndex
-                    ? const CircularProgressIndicator()
+                    ? const LoadingIndicator()
                     : const Text('No index available'),
               )
             : _duplicateList(index),
@@ -243,7 +239,13 @@ class _DuplicatesPageState extends State<_DuplicatesPage> {
 
   Widget _duplicateList(VaultIndex index) {
     final groups = findDuplicates(index);
-    if (groups.isEmpty) return const Center(child: Text('No duplicates found'));
+    if (groups.isEmpty) {
+      return const AppEmptyState(
+        icon: Icons.check_circle_outline,
+        title: 'No duplicates found',
+        hint: 'Every note in this vault has its own title.',
+      );
+    }
     return ListView.builder(
       itemCount: groups.length,
       itemBuilder: (context, i) => Card(

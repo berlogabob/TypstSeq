@@ -40,7 +40,7 @@ class LinksPanel extends StatelessWidget {
       padding: const EdgeInsets.all(kSpace12),
       children: [
         Text('Context', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 8),
+        const SizedBox(height: kSpace8),
         Text(current ?? '-', maxLines: 2, overflow: TextOverflow.ellipsis),
         TextButton.icon(
           onPressed: current == null ? null : onEditMetadata,
@@ -70,7 +70,7 @@ class LinksPanel extends StatelessWidget {
                 title: Text(link),
                 subtitle: Text(subtitle),
                 trailing: Icon(icon),
-                shape: RoundedRectangleBorder(borderRadius: listTileRadius),
+                shape: RoundedRectangleBorder(borderRadius: kRadiusListTile),
                 onTap: resolved.status == LinkResolutionStatus.ambiguous
                     ? null
                     : () => onOpenLink(link),
@@ -87,7 +87,7 @@ class LinksPanel extends StatelessWidget {
             leading: const Icon(Icons.attach_file),
             title: Text(path.split('/').last),
             subtitle: Text(path),
-            shape: RoundedRectangleBorder(borderRadius: listTileRadius),
+            shape: RoundedRectangleBorder(borderRadius: kRadiusListTile),
             onTap: () => onOpenFile(path),
           ),
         if (dayItems.isNotEmpty) ...[
@@ -112,7 +112,7 @@ class LinksPanel extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-              shape: RoundedRectangleBorder(borderRadius: listTileRadius),
+              shape: RoundedRectangleBorder(borderRadius: kRadiusListTile),
               onTap: () => onOpenPath(item.notePath),
             ),
         ],
@@ -131,7 +131,7 @@ class LinksPanel extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
             subtitle: Text(path, maxLines: 1, overflow: TextOverflow.ellipsis),
-            shape: RoundedRectangleBorder(borderRadius: listTileRadius),
+            shape: RoundedRectangleBorder(borderRadius: kRadiusListTile),
             onTap: () => onOpenPath(path),
           ),
       ],

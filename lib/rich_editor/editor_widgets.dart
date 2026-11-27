@@ -952,7 +952,7 @@ class _TyLogRichEditorState extends State<TyLogRichEditor>
     if (state.loading && state.mentionItems.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(kSpace16),
-        child: LoadingIndicator(size: 20, strokeWidth: 2),
+        child: LoadingIndicator(size: kIconSmall, strokeWidth: 2),
       );
     }
     if (state.mentionItems.isEmpty) {
@@ -2083,7 +2083,7 @@ class _InlineImageState extends State<_InlineImage> {
                           ),
                           (
                             'Delete image',
-                            Icons.delete_outline,
+                            AppIcons.delete,
                             () => _edit(delete: true),
                           ),
                           (
@@ -2149,7 +2149,7 @@ class _InlineImageState extends State<_InlineImage> {
           return const SizedBox(
             height: 18,
             width: 18,
-            child: CircularProgressIndicator(strokeWidth: 2),
+            child: LoadingIndicator(strokeWidth: 2),
           );
         }
         final data = snapshot.data;

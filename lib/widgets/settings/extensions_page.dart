@@ -12,6 +12,10 @@ import '../ds/app_tile.dart';
 import 'settings_page.dart';
 import 'github_sign_in.dart';
 import 'olt_page.dart';
+import '../app_icons.dart';
+import '../constants.dart';
+import '../snack.dart';
+import '../dialogs.dart';
 
 class ExtensionsPage extends StatefulWidget {
   const ExtensionsPage({
@@ -78,9 +82,7 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
       await action();
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not update extensions: $error')),
-        );
+        showSnack(context, 'Could not update extensions: $error');
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -169,53 +171,75 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
                                 context: context,
                                 builder: (context) => AlertDialog(
                                   title: Text(note.title),
-                                  content: SingleChildScrollView(
-                                    child: SelectableText(text),
+                                  content: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      Flexible(
+                                        child: SingleChildScrollView(
+                                          child: SelectableText(text),
+                                        ),
+                                      ),
+                                      if (RegExp(
+                                        r'^ext/[^/]+/items/item-[a-zA-Z0-9_-]+\.typ$',
+                                      ).hasMatch(note.path))
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            top: kSpace16,
+                                          ),
+                                          child: Wrap(
+                                            spacing: kSpace8,
+                                            runSpacing: kSpace8,
+                                            children: [
+                                              for (final decision in {
+                                                'Accept': 'accepted',
+                                                'Reject': 'rejected',
+                                                'Dismiss': 'dismissed',
+                                              }.entries)
+                                                OutlinedButton(
+                                                  onPressed: () async {
+                                                    try {
+                                                      final itemId = note.path
+                                                          .split('/')
+                                                          .last
+                                                          .replaceFirst(
+                                                            RegExp(r'\.typ$'),
+                                                            '',
+                                                          );
+                                                      await BotVaultDecisions(
+                                                        Directory(
+                                                          mount.source.path!,
+                                                        ),
+                                                      ).record(
+                                                        itemId,
+                                                        decision.value,
+                                                      );
+                                                      if (context.mounted) {
+                                                        setDialogState(
+                                                          () => notes.remove(
+                                                            note,
+                                                          ),
+                                                        );
+                                                        Navigator.pop(context);
+                                                      }
+                                                    } catch (error) {
+                                                      if (context.mounted) {
+                                                        showSnack(
+                                                          context,
+                                                          'Could not send decision: $error',
+                                                        );
+                                                      }
+                                                    }
+                                                  },
+                                                  child: Text(decision.key),
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                    ],
                                   ),
                                   actions: [
-                                    if (RegExp(
-                                      r'^ext/[^/]+/items/item-[a-zA-Z0-9_-]+\.typ$',
-                                    ).hasMatch(note.path))
-                                      for (final decision in {
-                                        'Accept': 'accepted',
-                                        'Reject': 'rejected',
-                                        'Dismiss': 'dismissed',
-                                      }.entries)
-                                        TextButton(
-                                          onPressed: () async {
-                                            try {
-                                              final itemId = note.path
-                                                  .split('/')
-                                                  .last
-                                                  .replaceFirst(
-                                                    RegExp(r'\.typ$'),
-                                                    '',
-                                                  );
-                                              await BotVaultDecisions(
-                                                Directory(mount.source.path!),
-                                              ).record(itemId, decision.value);
-                                              if (context.mounted) {
-                                                setDialogState(
-                                                  () => notes.remove(note),
-                                                );
-                                                Navigator.pop(context);
-                                              }
-                                            } catch (error) {
-                                              if (context.mounted) {
-                                                ScaffoldMessenger.of(
-                                                  context,
-                                                ).showSnackBar(
-                                                  SnackBar(
-                                                    content: Text(
-                                                      'Could not send decision: $error',
-                                                    ),
-                                                  ),
-                                                );
-                                              }
-                                            }
-                                          },
-                                          child: Text(decision.key),
-                                        ),
                                     TextButton(
                                       onPressed: () => Navigator.pop(context),
                                       child: const Text('Close'),
@@ -288,7 +312,7 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
             onPressed: () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
-          TextButton(
+          FilledButton(
             onPressed: () => Navigator.pop(context, [
               repo.text.trim(),
               ref.text.trim(),
@@ -346,24 +370,14 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
   }
 
   Future<void> _remove(Mount mount) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Remove ${mount.name}?'),
-        content: const Text('The source files will not be deleted.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Remove'),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: 'Remove ${mount.name}?',
+      message: 'The source files will not be deleted.',
+      confirmLabel: 'Remove',
+      destructive: true,
     );
-    if (confirmed == true) {
+    if (confirmed) {
       await _run(() => widget.workspace!.removeMount(mount.id));
     }
   }
@@ -444,7 +458,7 @@ class _ExtensionsPageState extends State<ExtensionsPage> {
                       ),
                     IconButton(
                       tooltip: 'Remove ${mount.name}',
-                      icon: const Icon(Icons.delete_outline),
+                      icon: const Icon(AppIcons.delete),
                       onPressed: _busy ? null : () => _remove(mount),
                     ),
                   ],

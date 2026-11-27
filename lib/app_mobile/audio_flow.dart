@@ -27,9 +27,8 @@ extension _AudioFlow on _HomeScreenState {
   /// Magic > Audio: record or import, then drop the player card into the open
   /// note (the day's page, say) instead of navigating away.
   Future<void> _insertAudio() async {
-    final choice = await showModalBottomSheet<bool>(
-      context: context,
-      showDragHandle: false,
+    final choice = await showAppSheet<bool>(
+      context,
       builder: (context) => AppSheet(
         title: 'Audio',
         children: [
@@ -409,8 +408,8 @@ extension _AudioFlow on _HomeScreenState {
     final notes =
         await _pagedPickerNotes() ?? index?.notes ?? const <NoteRef>[];
     if (!mounted || vault != target) return;
-    final person = await showModalBottomSheet<NoteRef>(
-      context: context,
+    final person = await showAppSheet<NoteRef>(
+      context,
       isScrollControlled: true,
       builder: (_) => ShareFromSheet(notes: notes, recent: recent),
     );

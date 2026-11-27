@@ -4,6 +4,9 @@ import '../processing_jobs.dart';
 import 'constants.dart';
 import 'date_format.dart';
 import 'snack.dart';
+import 'ds/app_empty_state.dart';
+import 'app_icons.dart';
+import 'loading.dart';
 
 void showProcessingQueued(BuildContext context, VoidCallback? onOpen) =>
     showSnack(
@@ -94,13 +97,29 @@ class _ProcessingScreenState extends State<ProcessingScreen> {
         builder: (context, _) {
           final jobs = widget.jobs;
           if (jobs.loading && jobs.jobs.isEmpty) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(child: LoadingIndicator());
           }
           if (jobs.error != null) {
-            return Center(child: Text('Could not read jobs: ${jobs.error}'));
+            return AppEmptyState.error(
+              title: 'Could not read jobs',
+              hint:
+                  'The processing queue in this vault could not be opened. '
+                  'Check that the vault folder is available, then retry.',
+              details: '${jobs.error}',
+              primaryAction: FilledButton(
+                onPressed: () => widget.jobs.refresh(widget.jobs.storage),
+                child: const Text('Retry'),
+              ),
+            );
           }
           if (jobs.jobs.isEmpty) {
-            return const Center(child: Text('No processing jobs'));
+            return const AppEmptyState(
+              icon: AppIcons.queued,
+              title: 'No processing jobs',
+              hint:
+                  'Imports and transcriptions waiting for your computer '
+                  'appear here.',
+            );
           }
           final cutoff = DateTime.now().subtract(_oldAge);
           final recent = <ProcessingJob>[];

@@ -303,7 +303,7 @@ extension _VaultLifecycle on _HomeScreenState {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('OK'),
+              child: const Text('Close'),
             ),
           ],
         ),

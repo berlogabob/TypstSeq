@@ -9,6 +9,9 @@ import '../github/github_client.dart';
 import '../github/send_issue.dart';
 import '../controlled_editor.dart';
 import 'constants.dart';
+import 'app_icons.dart';
+import 'snack.dart';
+import 'loading.dart';
 
 class EntityBoard extends StatefulWidget {
   const EntityBoard({
@@ -85,9 +88,7 @@ class _EntityBoardState extends State<EntityBoard> {
           loading = false;
           loadFailed = true;
         });
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Could not load board: $e')));
+        showSnack(context, 'Could not load board: $e');
       }
     }
   }
@@ -122,9 +123,7 @@ class _EntityBoardState extends State<EntityBoard> {
                   t.notePath == task.notePath &&
                   t.runningClock != null,
             )) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Stopped the other running timer')),
-          );
+          showSnack(context, 'Stopped the other running timer');
         }
       } else {
         if (loadFailed) throw StateError('Board file could not be read');
@@ -150,9 +149,7 @@ class _EntityBoardState extends State<EntityBoard> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Could not update board: $e')));
+        showSnack(context, 'Could not update board: $e');
       }
     } finally {
       if (mounted) setState(() => busy = false);
@@ -275,9 +272,7 @@ class _EntityBoardState extends State<EntityBoard> {
       if (mounted && next != null) index = next;
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Could not update board: $e')));
+        showSnack(context, 'Could not update board: $e');
       }
     } finally {
       if (mounted) setState(() => busy = false);
@@ -302,9 +297,7 @@ class _EntityBoardState extends State<EntityBoard> {
       if (mounted && next != null) index = next;
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Could not send issue: $e')));
+        showSnack(context, 'Could not send issue: $e');
       }
     } finally {
       if (mounted) setState(() => busy = false);
@@ -327,7 +320,7 @@ class _EntityBoardState extends State<EntityBoard> {
             onPressed: () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
-          TextButton(
+          FilledButton(
             onPressed: () => Navigator.pop(context, input.trim()),
             child: const Text('Save'),
           ),
@@ -337,9 +330,7 @@ class _EntityBoardState extends State<EntityBoard> {
     if (value == null || !mounted) return;
     if (value.isNotEmpty &&
         !RegExp(r'^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$').hasMatch(value)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a repository as owner/name')),
-      );
+      showSnack(context, 'Enter a repository as owner/name');
       return;
     }
     try {
@@ -363,9 +354,7 @@ class _EntityBoardState extends State<EntityBoard> {
       await _sync();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not save repository: $e')),
-        );
+        showSnack(context, 'Could not save repository: $e');
       }
     }
   }
@@ -400,11 +389,7 @@ class _EntityBoardState extends State<EntityBoard> {
           'attempted $column from ${_remoteColumn(shown)}',
         );
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Issue changed on GitHub; GitHub version kept'),
-            ),
-          );
+          showSnack(context, 'Issue changed on GitHub; GitHub version kept');
         }
       } else {
         final labels = (current['labels'] as List? ?? [])
@@ -488,9 +473,7 @@ class _EntityBoardState extends State<EntityBoard> {
       if (mounted && repo == repository) setState(() => remoteIssues = rows);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not update GitHub issue: $e')),
-        );
+        showSnack(context, 'Could not update GitHub issue: $e');
       }
     } finally {
       if (mounted) setState(() => busy = false);
@@ -504,9 +487,7 @@ class _EntityBoardState extends State<EntityBoard> {
     String column,
   ) {
     if (error is! GitHubManualMoveRequired) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('GitHub move refreshed: $error')));
+      showSnack(context, 'GitHub move refreshed: $error');
       return;
     }
     final instruction = switch (column) {
@@ -514,19 +495,18 @@ class _EntityBoardState extends State<EntityBoard> {
       'doing' => 'Reopen the issue if closed and add the doing label',
       _ => 'Reopen the issue if closed and remove the doing label',
     };
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$instruction on GitHub, then refresh the board.'),
-        duration: const Duration(seconds: 10),
-        action: widget.onOpenUrl == null
-            ? null
-            : SnackBarAction(
-                label: 'Open GitHub',
-                onPressed: () => widget.onOpenUrl!(
-                  'https://github.com/$repository/issues/$number',
-                ),
+    showSnack(
+      context,
+      '$instruction on GitHub, then refresh the board.',
+      duration: const Duration(seconds: 10),
+      action: widget.onOpenUrl == null
+          ? null
+          : SnackBarAction(
+              label: 'Open GitHub',
+              onPressed: () => widget.onOpenUrl!(
+                'https://github.com/$repository/issues/$number',
               ),
-      ),
+            ),
     );
   }
 
@@ -543,11 +523,7 @@ class _EntityBoardState extends State<EntityBoard> {
       'move to $column could not be reconciled: $error; remote status unknown',
     );
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('GitHub status unknown; refresh to reconcile'),
-        ),
-      );
+      showSnack(context, 'GitHub status unknown; refresh to reconcile');
     }
   }
 
@@ -730,9 +706,7 @@ class _EntityBoardState extends State<EntityBoard> {
       if (mounted && next != null) index = next;
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not sync GitHub issues: $e')),
-        );
+        showSnack(context, 'Could not sync GitHub issues: $e');
       }
     } finally {
       if (mounted) setState(() => busy = false);
@@ -803,9 +777,7 @@ class _EntityBoardState extends State<EntityBoard> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Could not add task: $e')));
+        showSnack(context, 'Could not add task: $e');
       }
     } finally {
       if (mounted) setState(() => busy = false);
@@ -869,18 +841,18 @@ class _EntityBoardState extends State<EntityBoard> {
             IconButton(
               tooltip: 'GitHub repository',
               onPressed: busy || loading ? null : _configureRepo,
-              icon: const Icon(Icons.settings),
+              icon: const Icon(AppIcons.settings),
             ),
           if (widget.githubClient != null)
             IconButton(
               tooltip: 'Sync with GitHub',
               onPressed: busy || loading ? null : _sync,
-              icon: const Icon(Icons.sync),
+              icon: const Icon(AppIcons.sync),
             ),
         ],
       ),
       body: loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: LoadingIndicator())
           : SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
@@ -936,7 +908,7 @@ class _EntityBoardState extends State<EntityBoard> {
                           key: ValueKey('board-column-$column'),
                           width: 260,
                           child: Padding(
-                            padding: const EdgeInsets.all(8),
+                            padding: const EdgeInsets.all(kSpace8),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
@@ -967,7 +939,9 @@ class _EntityBoardState extends State<EntityBoard> {
                                     issues.isEmpty &&
                                     remoteIssues.isEmpty)
                                   Padding(
-                                    padding: const EdgeInsets.only(top: 8),
+                                    padding: const EdgeInsets.only(
+                                      top: kSpace8,
+                                    ),
                                     child: Text(
                                       'No tasks yet. Tap + or write a task on '
                                       'any page that is part of '

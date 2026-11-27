@@ -280,7 +280,7 @@ class _Avatar extends StatelessWidget {
     final fallback = CircleAvatar(
       radius: 20,
       backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-      child: Icon(iconForKind(kind), size: 20),
+      child: Icon(iconForKind(kind), size: kIconSmall),
     );
     if (path == null || imageResolver == null) return fallback;
     return FutureBuilder<Uint8List?>(
@@ -315,7 +315,7 @@ class _Chips extends StatelessWidget {
     children: [
       for (final label in labels)
         Chip(
-          avatar: Icon(icon, size: 16),
+          avatar: Icon(icon, size: kIconInline),
           label: Text(label),
           visualDensity: VisualDensity.compact,
           materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -359,7 +359,7 @@ class _PropertyRow extends StatelessWidget {
                 : _isUrl
                 ? AppIcons.link
                 : Icons.label_outline,
-            size: 16,
+            size: kIconInline,
             color: scheme.onSurfaceVariant,
           ),
           const SizedBox(width: kSpace8),

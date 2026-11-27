@@ -58,9 +58,8 @@ extension _MagicFlow on _HomeScreenState {
             .where((note) => kind == null || note.kind == kind)
             .toList();
     if (!mounted) return null;
-    final chosen = await showModalBottomSheet<Object>(
-      context: context,
-      showDragHandle: false,
+    final chosen = await showAppSheet<Object>(
+      context,
       builder: (context) => NotePickerSheet(
         notes: notes,
         heading: heading,
@@ -88,9 +87,8 @@ extension _MagicFlow on _HomeScreenState {
   Future<NoteRef?> _chooseEntity() async {
     final paged = await _pagedPickerNotes();
     if (!mounted) return null;
-    final chosen = await showModalBottomSheet<Object>(
-      context: context,
-      showDragHandle: false,
+    final chosen = await showAppSheet<Object>(
+      context,
       builder: (context) => NotePickerSheet(
         notes: [
           ...?paged?.where((item) => !structuralNoteKinds.contains(item.kind)),
@@ -378,9 +376,8 @@ extension _MagicFlow on _HomeScreenState {
         // The four highlight colours used to be reachable only by long-
         // pressing the toolbar button, which tooltips advertise but Android
         // has no way to discover. Surface them explicitly here instead.
-        final chosen = await showModalBottomSheet<String>(
-          context: context,
-          showDragHandle: false,
+        final chosen = await showAppSheet<String>(
+          context,
           builder: (context) => AppSheet(
             title: 'Highlight',
             children: [

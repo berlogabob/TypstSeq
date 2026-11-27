@@ -287,7 +287,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
             onPressed: () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
-          TextButton(
+          FilledButton(
             onPressed: () {
               Navigator.pop(context);
               if (mounted) {

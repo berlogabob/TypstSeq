@@ -10,6 +10,7 @@ import 'constants.dart';
 import 'loading.dart';
 import 'snack.dart';
 import 'sync_status.dart';
+import 'ds/app_empty_state.dart';
 import 'ds/app_sheet.dart';
 
 class SyncDashboardData {
@@ -168,9 +169,8 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
   /// mistake the single-conflict dialog was changed to stop making.
   Future<void> _resolveAll(List<SyncConflict> conflicts) async {
     final count = conflicts.length;
-    final choice = await showModalBottomSheet<SyncConflictResolution>(
-      context: context,
-      showDragHandle: false,
+    final choice = await showAppSheet<SyncConflictResolution>(
+      context,
       builder: (sheet) => AppSheet(
         title: 'Resolve $count conflicts',
         children: [
@@ -258,11 +258,20 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
         ],
       ),
       body: value == null
-          ? Center(
-              child: loadError == null
-                  ? const LoadingIndicator()
-                  : Text('Could not load sync dashboard: $loadError'),
-            )
+          ? loadError == null
+                ? const Center(child: LoadingIndicator())
+                : AppEmptyState.error(
+                    title: 'Could not load sync status',
+                    hint:
+                        'TyLog could not read the sync state of this vault. '
+                        'Check the connection and the vault folder, then '
+                        'retry.',
+                    details: '$loadError',
+                    primaryAction: FilledButton(
+                      onPressed: _reload,
+                      child: const Text('Retry'),
+                    ),
+                  )
           : RefreshIndicator(
               onRefresh: _reload,
               child: ListView(
@@ -271,9 +280,9 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
                   if (value.cloud != null) const BackgroundSyncNotice(),
                   if ((running || value.syncing) && value.stage != null) ...[
                     LinearProgressIndicator(semanticsLabel: 'Sync progress'),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: kSpace8),
                     Text(value.stage!),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: kSpace12),
                   ],
                   // Its own element, above everything. The error used to reach
                   // the screen only through the status card's subtitle, one
@@ -290,7 +299,7 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
                         subtitle: Text(value.error!),
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: kSpace12),
                   ],
                   _SyncStatusCard(
                     syncing: running || value.syncing,
@@ -321,7 +330,7 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
                             }),
                           ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: kSpace16),
                   Card(
                     child: ListTile(
                       leading: const Icon(AppIcons.folderOpen),
@@ -363,7 +372,7 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
                     ),
                   ),
                   if (value.conflicts.isNotEmpty) ...[
-                    const SizedBox(height: 16),
+                    const SizedBox(height: kSpace16),
                     Row(
                       children: [
                         Expanded(
@@ -406,7 +415,10 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
                                 : 'This device deleted; Nextcloud changed',
                           ),
                           trailing: _resolving.contains(conflict.id)
-                              ? const LoadingIndicator(size: 24, strokeWidth: 2)
+                              ? const LoadingIndicator(
+                                  size: kIcon,
+                                  strokeWidth: 2,
+                                )
                               : const Icon(Icons.chevron_right),
                           onTap: _resolving.contains(conflict.id)
                               ? null
@@ -415,7 +427,7 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
                       ),
                   ],
                   if (value.result != null) ...[
-                    const SizedBox(height: 16),
+                    const SizedBox(height: kSpace16),
                     _SyncDistribution(result: value.result!),
                   ],
                   const SizedBox(height: 20),
@@ -480,7 +492,7 @@ class _SyncDashboardScreenState extends State<SyncDashboardScreen> {
                           ),
                       ],
                     ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: kSpace12),
                   OutlinedButton.icon(
                     onPressed: widget.onCopyDiagnostics,
                     icon: const Icon(Icons.copy_all_outlined),
@@ -632,16 +644,16 @@ class _SyncDistribution extends StatelessWidget {
               ),
             ),
           ),
-        const SizedBox(height: 12),
+        const SizedBox(height: kSpace12),
         Wrap(
-          spacing: 16,
+          spacing: kSpace16,
           runSpacing: 10,
           children: [
             for (final item in visible)
               _SyncMetric(label: item.$1, value: item.$2, color: item.$3),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: kSpace12),
         Text(
           '${result.remoteCount} files on Nextcloud',
           style: Theme.of(context).textTheme.bodySmall,

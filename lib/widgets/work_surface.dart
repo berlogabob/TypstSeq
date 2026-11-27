@@ -223,9 +223,8 @@ class TodayPage extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 trailing: const Icon(Icons.expand_more),
-                onTap: () => showModalBottomSheet<void>(
-                  context: context,
-                  showDragHandle: false,
+                onTap: () => showAppSheet<void>(
+                  context,
                   isScrollControlled: true,
                   constraints: BoxConstraints(
                     maxHeight: MediaQuery.sizeOf(context).height * 0.8,
@@ -1367,9 +1366,8 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
   }
 
   void _screenshotActions(NoteRef note) => unawaited(
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: false,
+    showAppSheet<void>(
+      context,
       builder: (context) => AppSheet(
         title: _screenshotTitle(note),
         children: [
@@ -1408,7 +1406,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
             },
           ),
           ListTile(
-            leading: const Icon(Icons.delete_outline),
+            leading: const Icon(AppIcons.delete),
             title: const Text('Delete screenshot…'),
             onTap: () {
               Navigator.pop(context);
@@ -1479,7 +1477,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(
                         context,
-                      ).textTheme.titleSmall?.copyWith(color: Colors.white),
+                      ).textTheme.titleSmall?.copyWith(color: kOnImage),
                     ),
                   Row(
                     children: [
@@ -1487,7 +1485,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                         Icon(
                           _categoryIcons[category] ?? Icons.category,
                           size: 14,
-                          color: Colors.white,
+                          color: kOnImage,
                           semanticLabel: category,
                         ),
                         const SizedBox(width: kSpace4),
@@ -1499,7 +1497,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                           overflow: TextOverflow.ellipsis,
                           style: Theme.of(
                             context,
-                          ).textTheme.bodySmall?.copyWith(color: Colors.white),
+                          ).textTheme.bodySmall?.copyWith(color: kOnImage),
                         ),
                       ),
                     ],
@@ -1514,7 +1512,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                 tooltip: 'Screenshot actions',
                 style: IconButton.styleFrom(
                   backgroundColor: kImageControlScrim,
-                  foregroundColor: Colors.white,
+                  foregroundColor: kOnImage,
                   minimumSize: const Size(kMinTapTarget, kMinTapTarget),
                   padding: const EdgeInsets.all(kSpace4),
                   shape: const CircleBorder(),
@@ -1522,7 +1520,7 @@ class _ArticlesShelfState extends State<_ArticlesShelf> {
                 icon: const Icon(
                   AppIcons.overflow,
                   size: kIconSmall,
-                  color: Colors.white,
+                  color: kOnImage,
                 ),
                 onSelected: (value) {
                   if (value == 'open') widget.onReadPath(note.path);

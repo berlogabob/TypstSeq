@@ -8,6 +8,7 @@ import 'snack.dart';
 import '../models.dart';
 import 'screenshot_strip.dart';
 import '../controlled_editor.dart' show localTime;
+import 'app_icons.dart';
 
 /// Section bodies of a screenshot note source: '== Description' and '== Text'
 /// headings; Typst backslash escapes (\- \# \_ \* \\ etc.) are undone.
@@ -181,7 +182,7 @@ class ScreenshotView extends StatelessWidget {
         if (onEdit != null)
           IconButton(
             tooltip: 'Edit',
-            icon: const Icon(Icons.edit_outlined),
+            icon: const Icon(AppIcons.edit),
             onPressed: onEdit,
           ),
       ],
@@ -372,6 +373,7 @@ class _ScreenshotTextViewState extends State<ScreenshotTextView> {
       originalAvailable: original.isNotEmpty,
       languages: translations.keys,
       target: target,
+      current: translations.containsKey(_view) ? _view : 'original',
     );
     if (choice == null || !mounted) return;
     final language = choice == 'parallel' ? target! : choice;

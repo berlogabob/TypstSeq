@@ -93,7 +93,7 @@ class ProcessingPolicyEditor extends StatelessWidget {
             contentPadding: const EdgeInsets.only(left: 32, right: kSpace16),
             leading: const Icon(AppIcons.schedule),
             title: Text('Every day at $time'),
-            trailing: const Icon(AppIcons.edit, size: 20),
+            trailing: const Icon(AppIcons.edit, size: kIconSmall),
             enabled: enabled && !busy,
             onTap: () => _pickTime(context),
           ),

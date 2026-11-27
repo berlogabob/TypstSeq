@@ -1,5 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
+import '../constants.dart';
+import '../loading.dart';
 
 class P2pScratchPage extends StatefulWidget {
   const P2pScratchPage({
@@ -53,7 +55,7 @@ class _P2pScratchPageState extends State<P2pScratchPage> {
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('P2P scratch experiment')),
     body: ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(kSpace16),
       children: [
         const Text(
           'Tickets grant access to scratch text or a generated synthetic folder for five minutes. Do not paste private data.',
@@ -102,7 +104,7 @@ class _P2pScratchPageState extends State<P2pScratchPage> {
                 : () => run(() => widget.receiveDelta!(ticket.text)),
             child: const Text('Receive changed scratch folder'),
           ),
-        if (busy) const CircularProgressIndicator(),
+        if (busy) const LoadingIndicator(),
         if (result.isNotEmpty) SelectableText(result),
         if (result.isNotEmpty)
           TextButton(

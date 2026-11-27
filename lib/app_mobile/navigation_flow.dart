@@ -14,9 +14,8 @@ extension _NavigationFlow on _HomeScreenState {
     ).firstMatch(source.trim());
     if (match == null) return;
     final target = match[1]!.replaceAllMapped(RegExp(r'\\(.)'), (m) => m[1]!);
-    final action = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: false,
+    final action = await showAppSheet<String>(
+      context,
       builder: (context) => AppSheet(
         title: 'Reference actions',
         children: [
@@ -237,9 +236,8 @@ extension _NavigationFlow on _HomeScreenState {
     String? heading,
   }) async {
     final generation = ++_openGeneration;
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: false,
+    final choice = await showAppSheet<String>(
+      context,
       builder: (context) => AppSheet(
         title: '“$target” matches ${candidates.length} notes',
         children: [

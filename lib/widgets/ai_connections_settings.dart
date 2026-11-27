@@ -68,9 +68,8 @@ class _AiConnectionsSectionState extends State<AiConnectionsSection> {
   Future<void> _edit(AiConnection? connection, {ProviderPreset? preset}) async {
     connection_probe.ProbeResult? latest;
     String? latestUrl;
-    final saved = await showModalBottomSheet<_ConnectionEdit>(
-      context: context,
-      showDragHandle: false,
+    final saved = await showAppSheet<_ConnectionEdit>(
+      context,
       isScrollControlled: true,
       builder: (_) => _ConnectionEditor(
         connection: connection,
@@ -397,7 +396,7 @@ class _ConnectionEditorState extends State<_ConnectionEditor> {
                       : result.error ?? 'Cannot connect',
                 ),
               Wrap(
-                spacing: 8,
+                spacing: kSpace8,
                 children: [
                   if (widget.onDelete != null)
                     TextButton(

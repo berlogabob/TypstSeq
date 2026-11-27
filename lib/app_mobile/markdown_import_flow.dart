@@ -42,9 +42,7 @@ extension _MarkdownImportFlow on _HomeScreenState {
     if (dirty && !await _save(syncAfter: false)) return;
     if (!mounted || vault != opened) return;
 
-    final progress = ValueNotifier<String>(
-      'Preparing 0 of ${picked.length}',
-    );
+    final progress = ValueNotifier<String>('Preparing 0 of ${picked.length}');
     unawaited(
       showDialog<void>(
         context: context,
@@ -328,7 +326,7 @@ extension _MarkdownImportFlow on _HomeScreenState {
       showDialog<void>(
         context: context,
         barrierDismissible: false,
-        builder: (_) => const Center(child: CircularProgressIndicator()),
+        builder: (_) => const Center(child: LoadingIndicator()),
       ),
     );
     await Future<void>.delayed(const Duration(milliseconds: 50));

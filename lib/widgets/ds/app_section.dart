@@ -2,6 +2,12 @@ import 'package:material_ui/material_ui.dart';
 
 import '../constants.dart';
 
+/// A titled group of rows in a settings page or sheet: a divider, a small
+/// `labelMedium` header announced as a heading, then [children] (usually
+/// [AppTile]s).
+///
+/// Pass `divider: false` for the first section so the page does not open with
+/// a rule.
 class AppSection extends StatelessWidget {
   const AppSection({
     super.key,
@@ -24,10 +30,13 @@ class AppSection extends StatelessWidget {
           horizontal: kSpace8,
           vertical: kSpace4,
         ),
-        child: Text(
-          title,
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
+        child: Semantics(
+          header: true,
+          child: Text(
+            title,
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
       ),

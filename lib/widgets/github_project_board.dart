@@ -3,6 +3,9 @@ import 'package:material_ui/material_ui.dart';
 import 'package:tylog_core/tylog_core.dart';
 import '../github/github_client.dart';
 import '../github/github_projects.dart';
+import 'constants.dart';
+import 'snack.dart';
+import 'loading.dart';
 
 class GitHubProjectBoard extends StatefulWidget {
   const GitHubProjectBoard({
@@ -74,14 +77,11 @@ class _GitHubProjectBoardState extends State<GitHubProjectBoard> {
     } catch (error) {
       if (mounted) {
         if (!moved) setState(() => item.status = previous);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              moved
-                  ? 'Moved card, but could not log decision: $error'
-                  : 'Could not move card: $error',
-            ),
-          ),
+        showSnack(
+          context,
+          moved
+              ? 'Moved card, but could not log decision: $error'
+              : 'Could not move card: $error',
         );
       }
     } finally {
@@ -107,12 +107,12 @@ class _GitHubProjectBoardState extends State<GitHubProjectBoard> {
         if (snapshot.hasError) {
           return Center(
             child: Padding(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(kSpace24),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text('Could not load project: ${snapshot.error}'),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: kSpace12),
                   FilledButton.icon(
                     onPressed: reload,
                     icon: const Icon(Icons.refresh),
@@ -124,7 +124,7 @@ class _GitHubProjectBoardState extends State<GitHubProjectBoard> {
           );
         }
         if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
+          return const Center(child: LoadingIndicator());
         }
         final board = snapshot.data!;
         final itemsByStatus = <String?, List<ProjectItem>>{};
@@ -148,7 +148,7 @@ class _GitHubProjectBoardState extends State<GitHubProjectBoard> {
                       SizedBox(
                         width: 260,
                         child: Padding(
-                          padding: const EdgeInsets.all(8),
+                          padding: const EdgeInsets.all(kSpace8),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
@@ -176,7 +176,10 @@ class _GitHubProjectBoardState extends State<GitHubProjectBoard> {
                                             (itemsByStatus[column.id]
                                                     ?.isEmpty ??
                                                 true)
-                                            ? const Center(
+                                            ? const Padding(
+                                                padding: EdgeInsets.all(
+                                                  kSpace16,
+                                                ),
                                                 child: Text('No cards'),
                                               )
                                             : ListView.builder(

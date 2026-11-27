@@ -7,6 +7,8 @@ import '../github/github_client.dart';
 import '../vault.dart';
 import 'entity_board.dart';
 import 'whiteboard.dart';
+import 'snack.dart';
+import 'loading.dart';
 
 class UnifiedBoard extends StatefulWidget {
   const UnifiedBoard({
@@ -102,9 +104,7 @@ class _UnifiedBoardState extends State<UnifiedBoard> {
     } catch (e) {
       if (mounted) {
         setState(() => busy = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Could not load board: $e')));
+        showSnack(context, 'Could not load board: $e');
       }
     }
   }
@@ -167,9 +167,7 @@ class _UnifiedBoardState extends State<UnifiedBoard> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Could not update board: $e')));
+        showSnack(context, 'Could not update board: $e');
       }
     } finally {
       if (mounted) setState(() => busy = false);
@@ -180,7 +178,7 @@ class _UnifiedBoardState extends State<UnifiedBoard> {
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: Text('${widget.entity.title} Board')),
     body: board == null
-        ? const Center(child: CircularProgressIndicator())
+        ? const Center(child: LoadingIndicator())
         : Column(
             children: [
               SegmentedButton<String>(

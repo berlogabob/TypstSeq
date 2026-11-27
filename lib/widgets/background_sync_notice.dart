@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 
 import '../vault_storage.dart';
 import 'ds/app_tile.dart';
+import 'constants.dart';
+import 'snack.dart';
 
 class BackgroundSyncNotice extends StatefulWidget {
   const BackgroundSyncNotice({super.key});
@@ -62,11 +64,7 @@ class _BackgroundSyncNoticeState extends State<BackgroundSyncNotice>
       );
     } on PlatformException catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error.message ?? 'Battery settings are unavailable'),
-        ),
-      );
+      showSnack(context, error.message ?? 'Battery settings are unavailable');
     }
   }
 
@@ -91,7 +89,7 @@ class _BackgroundSyncNoticeState extends State<BackgroundSyncNotice>
         ),
         if (huawei)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: kSpace16),
             child: SizedBox(
               width: double.infinity,
               child: Text(

@@ -314,7 +314,7 @@ extension _VaultImportFlow on _HomeScreenState {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const LinearProgressIndicator(),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: kSpace16),
                   Text(message),
                 ],
               ),

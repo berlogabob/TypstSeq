@@ -160,9 +160,8 @@ extension _ShareFlow on _HomeScreenState {
       entries.addAll(parseBibtexBibliography(bib));
     }
     if (!mounted) return null;
-    return showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: false,
+    return showAppSheet<String>(
+      context,
       isScrollControlled: true,
       builder: (context) {
         var query = '';
@@ -189,23 +188,13 @@ extension _ShareFlow on _HomeScreenState {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        kSpace16,
-                        0,
-                        kSpace16,
-                        kSpace8,
-                      ),
-                      child: TextField(
-                        key: const Key('citation-search'),
+                      padding: const EdgeInsets.only(bottom: kSpace8),
+                      child: AppSearchField(
+                        fieldKey: const Key('citation-search'),
                         autofocus: entries.length > 8,
+                        hintText: 'Search citations',
                         onChanged: (value) =>
                             setSheetState(() => query = value),
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          prefixIcon: Icon(Icons.search),
-                          hintText: 'Search citations',
-                          border: OutlineInputBorder(),
-                        ),
                       ),
                     ),
                     Flexible(
@@ -328,9 +317,8 @@ extension _ShareFlow on _HomeScreenState {
 
   Future<void> _showMagicMenu() async {
     try {
-      final action = await showModalBottomSheet<MagicAction>(
-        context: context,
-        showDragHandle: false,
+      final action = await showAppSheet<MagicAction>(
+        context,
         isScrollControlled: true,
         builder: (context) {
           final columns = MediaQuery.sizeOf(context).width < 500 ? 3 : 4;

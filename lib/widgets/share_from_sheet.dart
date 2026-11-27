@@ -7,6 +7,8 @@ import 'package:tylog_core/values.dart';
 
 import '../models.dart';
 import 'constants.dart';
+import 'ds/app_search_field.dart';
+import 'ds/app_sheet.dart';
 
 /// Adds a sender without replacing the existing body or its daily reference.
 String addShareSender(String source, NoteRef person) {
@@ -78,38 +80,36 @@ class _ShareFromSheetState extends State<ShareFromSheet> {
                     ),
               )
               .toList();
-    return SafeArea(
-      child: Padding(
-        padding: EdgeInsets.only(
-          left: kSpace16,
-          right: kSpace16,
-          bottom: MediaQuery.viewInsetsOf(context).bottom,
-        ),
-        child: SizedBox(
-          height: 340,
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SizedBox(
+        height: 400,
+        child: AppSheet.body(
+          title: 'From whom?',
+          trailing: TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Skip'),
+          ),
           child: Column(
             children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text('From whom?', style: TextStyle(fontSize: 20)),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Skip'),
-                  ),
-                ],
-              ),
-              TextField(
-                decoration: const InputDecoration(
-                  labelText: 'Search people or pages',
-                  prefixIcon: Icon(Icons.search),
-                ),
+              AppSearchField(
+                hintText: 'Search people or pages',
                 onChanged: (value) => setState(() => query = value),
               ),
               Expanded(
                 child: ListView(
                   children: [
+                    if (query.trim().isEmpty && visible.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: kSpace16),
+                        child: Text(
+                          'Recent',
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                        ),
+                      ),
                     if (visible.isEmpty)
                       ListTile(
                         title: Text(

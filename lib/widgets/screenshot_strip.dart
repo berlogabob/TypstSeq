@@ -191,8 +191,8 @@ class ScreenshotStrip extends StatelessWidget {
                       if (note.properties['source'] == 'lab') {
                         onOpenPath(note.properties['note'] as String);
                       } else if (note.path.startsWith('olt:')) {
-                        showModalBottomSheet<void>(
-                          context: context,
+                        showAppSheet<void>(
+                          context,
                           builder: (context) => AppSheet(
                             title: note.title,
                             children: [
@@ -221,8 +221,8 @@ class ScreenshotStrip extends StatelessWidget {
                     },
                     onLongPress: incoming && onDecide != null
                         ? () async {
-                            final action = await showModalBottomSheet<String>(
-                              context: context,
+                            final action = await showAppSheet<String>(
+                              context,
                               builder: (context) => AppSheet(
                                 title: note.title,
                                 children: [

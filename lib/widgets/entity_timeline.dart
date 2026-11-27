@@ -158,7 +158,10 @@ class _EntityTimelineState extends State<EntityTimeline> {
                         ),
                       ListTile(
                         dense: true,
-                        leading: Icon(iconForKind(entry.kind), size: 18),
+                        leading: Icon(
+                          iconForKind(entry.kind),
+                          size: kIconDense,
+                        ),
                         title: Text(
                           entry.title,
                           maxLines: 2,

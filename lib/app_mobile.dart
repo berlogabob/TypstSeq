@@ -124,6 +124,7 @@ import 'widgets/audio_note_screen.dart';
 import 'widgets/audio_shelf.dart';
 import 'widgets/audio_sheets.dart';
 import 'widgets/settings_sheet.dart';
+import 'widgets/ds/app_search_field.dart';
 import 'widgets/ds/app_sheet.dart';
 import 'widgets/ds/app_section.dart';
 import 'widgets/ds/app_tile.dart';
@@ -762,9 +763,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         final article = SharedArticle.parse(text, title: data['title']);
         final targetVault = vault!;
         final audioNote = path != null && isAudioPath(path);
-        final choice = await showModalBottomSheet<String>(
-          context: context,
-          showDragHandle: false,
+        final choice = await showAppSheet<String>(
+          context,
           builder: (context) => AppSheet(
             title: 'Share',
             children: [
@@ -1499,17 +1499,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final choice = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: Text(
-            'This timer has been running for ${trackedTime(elapsed)}.',
+          title: Text('This timer ran for ${trackedTime(elapsed)}'),
+          content: const Text(
+            'Sessions this long stay in the note but are left out of time '
+            'totals. Keep it as a record, or discard it?',
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Stop now'),
-            ),
-            TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error,
+              ),
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Discard session'),
+              child: const Text('Discard'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Stop and keep'),
             ),
           ],
         ),
@@ -1809,7 +1814,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           builder: (_) => const AlertDialog(
             content: Row(
               children: [
-                CircularProgressIndicator(),
+                LoadingIndicator(),
                 SizedBox(width: 20),
                 Expanded(child: Text('Building namespace preview…')),
               ],
@@ -1986,9 +1991,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   void _showVaults() {
     final registry = vaultRegistry;
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: false,
+    showAppSheet<void>(
+      context,
       builder: (context) => VaultsSheet(
         vaults: registry?.entries ?? const [],
         activeVaultId: registry?.activeId,
@@ -2137,10 +2141,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _showMoreMenu(Widget linksPanel) async {
-    final action = await showModalBottomSheet<_ShellAction>(
-      context: context,
+    final action = await showAppSheet<_ShellAction>(
+      context,
       isScrollControlled: true,
-      showDragHandle: false,
       builder: (context) {
         Widget tile(_ShellAction action, IconData icon, String title) =>
             AppTile(
@@ -2208,9 +2211,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _ensureSemanticController();
     final controller = _semantic;
     if (!mounted || controller == null) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: false,
+    await showAppSheet<void>(
+      context,
       builder: (context) => AnimatedBuilder(
         animation: controller,
         builder: (context, _) {
@@ -2238,26 +2240,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ] else if (!installed)
                 FilledButton(
                   onPressed: () async {
-                    final ok = await showDialog<bool>(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Download semantic model?'),
-                        content: const Text(
+                    final ok = await showConfirmDialog(
+                      context,
+                      title: 'Download semantic model?',
+                      message:
                           'It downloads once from Hugging Face and works offline afterwards.',
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context, false),
-                            child: const Text('Cancel'),
-                          ),
-                          FilledButton(
-                            onPressed: () => Navigator.pop(context, true),
-                            child: const Text('Download'),
-                          ),
-                        ],
-                      ),
+                      confirmLabel: 'Download',
                     );
-                    if (ok == true) unawaited(controller.download());
+                    if (ok) unawaited(controller.download());
                   },
                   child: const Text('Download model (252 MB)'),
                 ),
@@ -3057,16 +3047,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   : null,
               onOpenTimeline: index == null
                   ? null
-                  : () => showModalBottomSheet<void>(
-                      context: context,
-                      builder: (context) => EntityTimeline(
-                        entity: currentNote,
-                        index: index!,
-                        resolver: workspace.linkResolver,
-                        onOpenPath: (path) {
-                          Navigator.pop(context);
-                          _openPath(path);
-                        },
+                  : () => showAppSheet<void>(
+                      context,
+                      builder: (context) => AppSheet.body(
+                        title: currentNote.title,
+                        child: EntityTimeline(
+                          entity: currentNote,
+                          index: index!,
+                          resolver: workspace.linkResolver,
+                          onOpenPath: (path) {
+                            Navigator.pop(context);
+                            _openPath(path);
+                          },
+                        ),
                       ),
                     ),
               onGithubChanged: (value) =>

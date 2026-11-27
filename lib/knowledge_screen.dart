@@ -11,6 +11,7 @@ import 'retrieval/hybrid_search.dart';
 import 'scanner.dart';
 import 'package:tylog_core/search_index.dart';
 import 'widgets/constants.dart';
+import 'widgets/ds/app_search_field.dart';
 import 'widgets/property_select_chip.dart';
 import 'widgets/snack.dart';
 import 'widgets/task_row.dart';
@@ -444,14 +445,10 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              TextField(
+              AppSearchField(
                 controller: _searchController,
                 autofocus: true,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.search),
-                  hintText: 'Search notes, tasks, and attachments',
-                ),
+                hintText: 'Search notes, tasks, and attachments',
                 onChanged: (value) {
                   setState(() => query = value);
                   _runSearch();
@@ -519,7 +516,7 @@ class _KnowledgeScreenState extends State<KnowledgeScreen> {
                                     onPressed: () => Navigator.pop(context),
                                     child: const Text('Cancel'),
                                   ),
-                                  TextButton(
+                                  FilledButton(
                                     onPressed: () =>
                                         Navigator.pop(context, controller.text),
                                     child: const Text('Save'),

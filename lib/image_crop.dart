@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:tylog_core/storage.dart';
+import 'widgets/loading.dart';
 
 Rect cropMove(Rect rect, Rect bounds, Offset delta) => rect.shift(
   Offset(
@@ -282,7 +283,7 @@ class _ImageCropPageState extends State<ImageCropPage> {
       ),
       body: SafeArea(
         child: _image == null
-            ? const Center(child: CircularProgressIndicator())
+            ? const Center(child: LoadingIndicator())
             : Stack(
                 children: [
                   LayoutBuilder(
@@ -405,7 +406,7 @@ class _ImageCropPageState extends State<ImageCropPage> {
                             dismissible: false,
                             color: Colors.black.withValues(alpha: 0.54),
                           ),
-                          const Center(child: CircularProgressIndicator()),
+                          const Center(child: LoadingIndicator()),
                         ],
                       ),
                     ),

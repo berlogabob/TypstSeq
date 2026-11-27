@@ -3,6 +3,7 @@ import 'package:tylog_core/models.dart';
 
 import 'app_icons.dart';
 import 'constants.dart';
+import 'ds/app_search_field.dart';
 import 'ds/app_sheet.dart';
 
 /// Bottom-sheet note picker with a filter field. The magic-menu choosers used
@@ -57,16 +58,9 @@ class _NotePickerSheetState extends State<NotePickerSheet> {
         children: [
           if (widget.heading != null)
             const ListTile(subtitle: Text('Dismiss to use no filter')),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: kSpace16),
-            child: TextField(
-              autofocus: false,
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.search),
-                hintText: 'Filter notes',
-              ),
-              onChanged: (value) => setState(() => _query = value),
-            ),
+          AppSearchField(
+            hintText: 'Filter notes',
+            onChanged: (value) => setState(() => _query = value),
           ),
           Flexible(
             child: ListView(

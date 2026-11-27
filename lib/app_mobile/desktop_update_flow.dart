@@ -24,21 +24,32 @@ extension _DesktopUpdateFlow on _HomeScreenState {
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Update available · ${update.version}'),
-        content: SingleChildScrollView(
-          child: Text(
-            update.notes.isEmpty
-                ? 'A newer version is available.'
-                : update.notes,
-          ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Flexible(
+              child: SingleChildScrollView(
+                child: Text(
+                  update.notes.isEmpty
+                      ? 'A newer version is available.'
+                      : update.notes,
+                ),
+              ),
+            ),
+            const SizedBox(height: kSpace8),
+            TextButton.icon(
+              style: TextButton.styleFrom(padding: EdgeInsets.zero),
+              onPressed: () {
+                Navigator.pop(context, false);
+                _openUrl(update.htmlUrl);
+              },
+              icon: const Icon(Icons.open_in_new, size: kIconSmall),
+              label: const Text('View release'),
+            ),
+          ],
         ),
         actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context, false);
-              _openUrl(update.htmlUrl);
-            },
-            child: const Text('View release'),
-          ),
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             child: const Text('Later'),

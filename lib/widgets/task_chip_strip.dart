@@ -112,7 +112,7 @@ class _TaskChipStripState extends State<TaskChipStrip> {
                     if (icon != null)
                       Icon(
                         icon,
-                        size: 16,
+                        size: kIconInline,
                         color: overdue ? scheme.error : scheme.onSurfaceVariant,
                       ),
                     if (icon != null && label.isNotEmpty)

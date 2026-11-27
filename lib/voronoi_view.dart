@@ -8,6 +8,9 @@ import 'package:tylog_core/tylog_core.dart';
 
 import 'graph.dart' show colorForSlot;
 import 'widgets/graph_label.dart';
+import 'widgets/app_icons.dart';
+import 'widgets/ds/app_empty_state.dart';
+import 'widgets/loading.dart';
 
 /// A cell's children are revealed once its on-screen area exceeds this square
 /// (per-cell semantic zoom — big communities open earlier than small ones).
@@ -451,7 +454,12 @@ class _VoronoiViewState extends State<VoronoiView>
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     if (widget.communities == null) {
-      return const Center(child: Text('Analyzing communities…'));
+      return const AppEmptyState(
+        icon: AppIcons.graph,
+        title: 'Analyzing communities…',
+        hint: '',
+        loading: true,
+      );
     }
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -459,10 +467,14 @@ class _VoronoiViewState extends State<VoronoiView>
         _ensureCells(viewport);
         final cells = _cells;
         if (cells == null) {
-          return const Center(child: CircularProgressIndicator());
+          return const Center(child: LoadingIndicator());
         }
         if (_roots.isEmpty) {
-          return const Center(child: Text('Nothing to map yet'));
+          return const AppEmptyState(
+            icon: AppIcons.graph,
+            title: 'Nothing to map yet',
+            hint: 'Topics appear here once notes share tags.',
+          );
         }
         return Stack(
           children: [
@@ -539,7 +551,7 @@ class _VoronoiViewState extends State<VoronoiView>
                             IconButton(
                               key: const Key('voronoi-rename'),
                               tooltip: 'Rename cluster ${_name(root.label)}',
-                              icon: const Icon(Icons.edit_outlined),
+                              icon: const Icon(AppIcons.edit),
                               onPressed: () => _renameCluster(root.label),
                             ),
                           FilledButton.tonalIcon(

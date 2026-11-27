@@ -97,7 +97,7 @@ class _CalendarTabState extends State<CalendarTab> {
             if (items.isEmpty && tasks.isEmpty) {
               return ListTile(
                 leading: widget.indexing
-                    ? const LoadingIndicator(size: 20, strokeWidth: 2)
+                    ? const LoadingIndicator(size: kIconSmall, strokeWidth: 2)
                     : null,
                 title: Text(
                   widget.indexing ? 'Indexing…' : 'Nothing on this day yet',

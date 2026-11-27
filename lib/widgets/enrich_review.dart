@@ -4,6 +4,9 @@ import 'package:material_ui/material_ui.dart';
 import 'package:tylog_core/tylog_core.dart';
 
 import 'constants.dart';
+import 'app_icons.dart';
+import 'ds/app_sheet.dart';
+import 'dialogs.dart';
 
 Future<void> _runDirect(Future<void> Function() body) async => await body();
 
@@ -150,26 +153,14 @@ class _EnrichReviewState extends State<EnrichReview> {
       if (loans > 0) 'track $loans ${loans == 1 ? 'loan' : 'loans'}',
     ];
     final description = parts.join(' and ');
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(
-          '${description[0].toUpperCase()}${description.substring(1)}?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            key: const ValueKey('enrich-accept-all-confirm'),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Accept all'),
-          ),
-        ],
-      ),
+    final confirmed = await showConfirmDialog(
+      context,
+      title: '${description[0].toUpperCase()}${description.substring(1)}?',
+      message: 'This applies every suggestion shown for this day.',
+      confirmLabel: 'Accept all',
+      confirmKey: const ValueKey('enrich-accept-all-confirm'),
     );
-    if (confirmed == true && mounted) {
+    if (confirmed && mounted) {
       setState(() => _accepted.addAll(cards.map((card) => card.key)));
       await widget.batch(() async {
         for (final card in acceptAllOrder(cards)) {
@@ -180,29 +171,27 @@ class _EnrichReviewState extends State<EnrichReview> {
   }
 
   Future<void> _rowMenu(EnrichCardRow row) async {
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              key: const ValueKey('enrich-menu-link'),
-              title: Text('Link to ${row.target!.title}'),
-              onTap: () => Navigator.pop(context, 'link'),
-            ),
-            ListTile(
-              key: const ValueKey('enrich-menu-other'),
-              title: const Text('Other page…'),
-              onTap: () => Navigator.pop(context, 'other'),
-            ),
-            ListTile(
-              key: const ValueKey('enrich-menu-reject'),
-              title: const Text('Not this'),
-              onTap: () => Navigator.pop(context, 'reject'),
-            ),
-          ],
-        ),
+    final choice = await showAppSheet<String>(
+      context,
+      builder: (context) => AppSheet(
+        title: row.decision!.mention.surface,
+        children: [
+          ListTile(
+            key: const ValueKey('enrich-menu-link'),
+            title: Text('Link to ${row.target!.title}'),
+            onTap: () => Navigator.pop(context, 'link'),
+          ),
+          ListTile(
+            key: const ValueKey('enrich-menu-other'),
+            title: const Text('Other page…'),
+            onTap: () => Navigator.pop(context, 'other'),
+          ),
+          ListTile(
+            key: const ValueKey('enrich-menu-reject'),
+            title: const Text('Not this'),
+            onTap: () => Navigator.pop(context, 'reject'),
+          ),
+        ],
       ),
     );
     if (!mounted) return;
@@ -389,22 +378,17 @@ class _EnrichReviewState extends State<EnrichReview> {
                 final choices = offer.equipmentCandidates.isEmpty
                     ? widget.pages.where((p) => p.kind == 'equipment').toList()
                     : offer.equipmentCandidates;
-                final chosen = await showModalBottomSheet<NoteRef>(
-                  context: context,
-                  builder: (context) => SafeArea(
-                    child: ListView(
-                      shrinkWrap: true,
-                      children: [
+                final chosen = await showAppSheet<NoteRef>(
+                  context,
+                  builder: (context) => AppSheet(
+                    title: 'Which “${offer.equipmentSurface}”?',
+                    children: [
+                      for (final page in choices)
                         ListTile(
-                          title: Text('Which “${offer.equipmentSurface}”?'),
+                          title: Text(page.title),
+                          onTap: () => Navigator.pop(context, page),
                         ),
-                        for (final page in choices)
-                          ListTile(
-                            title: Text(page.title),
-                            onTap: () => Navigator.pop(context, page),
-                          ),
-                      ],
-                    ),
+                    ],
                   ),
                 );
                 if (chosen != null && mounted) {
@@ -421,7 +405,7 @@ class _EnrichReviewState extends State<EnrichReview> {
               spacing: kSpace8,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Icon(Icons.warning_amber_outlined, color: scheme.error),
+                Icon(AppIcons.warning, color: scheme.error),
                 Text(
                   card.warning!,
                   key: ValueKey('enrich-warning-${card.line}'),
@@ -554,7 +538,7 @@ class _EnrichReviewState extends State<EnrichReview> {
                             ).colorScheme.primaryContainer,
                             avatar: const Icon(
                               Icons.bookmark_add_outlined,
-                              size: 16,
+                              size: kIconInline,
                             ),
                             label: ConstrainedBox(
                               constraints: const BoxConstraints(maxWidth: 240),
@@ -573,7 +557,10 @@ class _EnrichReviewState extends State<EnrichReview> {
                                           await widget.onAcceptMarker!(offer),
                                     );
                                   },
-                            deleteIcon: const Icon(Icons.close, size: 16),
+                            deleteIcon: const Icon(
+                              AppIcons.close,
+                              size: kIconInline,
+                            ),
                             onDeleted: widget.onRejectMarker == null
                                 ? null
                                 : () async {
@@ -606,7 +593,7 @@ class _EnrichReviewState extends State<EnrichReview> {
                                     widget.appliedTags.contains(tag)
                                         ? Icons.check
                                         : Icons.tag,
-                                    size: 16,
+                                    size: kIconInline,
                                   ),
                                   label: Text(tag),
                                   tooltip: widget.appliedTags.contains(tag)
@@ -620,7 +607,10 @@ class _EnrichReviewState extends State<EnrichReview> {
                                           context,
                                           tag,
                                         ),
-                                  deleteIcon: const Icon(Icons.close, size: 16),
+                                  deleteIcon: const Icon(
+                                    AppIcons.close,
+                                    size: kIconInline,
+                                  ),
                                   onDeleted: widget.onRejectTag == null
                                       ? null
                                       : () async {
@@ -643,31 +633,27 @@ class _EnrichReviewState extends State<EnrichReview> {
 
   Future<void> _confirmRemoveTag(BuildContext context, String tag) async {
     final add = !widget.appliedTags.contains(tag) && widget.onAcceptTag != null;
-    final choice = await showModalBottomSheet<bool>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (add)
-              ListTile(
-                key: const ValueKey('enrich-tag-add'),
-                leading: const Icon(Icons.add),
-                title: Text('Add tag "$tag" to this day'),
-                onTap: () => Navigator.pop(context, true),
-              ),
-            if (widget.onRejectTag != null)
-              ListTile(
-                key: const ValueKey('enrich-tag-remove'),
-                leading: const Icon(Icons.delete_outline),
-                title: Text('Remove tag "$tag"'),
-                subtitle: const Text(
-                  'It will not be added from your days again',
-                ),
-                onTap: () => Navigator.pop(context, false),
-              ),
-          ],
-        ),
+    final choice = await showAppSheet<bool>(
+      context,
+      builder: (context) => AppSheet(
+        title: '#$tag',
+        children: [
+          if (add)
+            ListTile(
+              key: const ValueKey('enrich-tag-add'),
+              leading: const Icon(Icons.add),
+              title: const Text('Add to this day'),
+              onTap: () => Navigator.pop(context, true),
+            ),
+          if (widget.onRejectTag != null)
+            ListTile(
+              key: const ValueKey('enrich-tag-remove'),
+              leading: const Icon(AppIcons.delete),
+              title: const Text('Remove tag'),
+              subtitle: const Text('It will not be added from your days again'),
+              onTap: () => Navigator.pop(context, false),
+            ),
+        ],
       ),
     );
     if (choice == true) {
@@ -683,54 +669,46 @@ class _EnrichReviewState extends State<EnrichReview> {
     final lines = widget.source.split('\n');
     var searching = false;
     var query = '';
-    final chosen = await showModalBottomSheet<NoteRef>(
-      context: context,
+    final chosen = await showAppSheet<NoteRef>(
+      context,
       isScrollControlled: true,
       builder: (context) => StatefulBuilder(
-        builder: (context, setState) => SafeArea(
-          child: Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.viewInsetsOf(context).bottom,
-            ),
-            child: SizedBox(
-              height: MediaQuery.sizeOf(context).height * .7,
+        builder: (context, setState) => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.viewInsetsOf(context).bottom,
+          ),
+          child: SizedBox(
+            height: MediaQuery.sizeOf(context).height * .7,
+            child: AppSheet.body(
+              title: decision.choose
+                  ? 'Which \u201c${mention.surface}\u201d?'
+                  : 'Who is ${mention.surface}?',
+              subtitle: mention.line > 0 && mention.line <= lines.length
+                  ? lines[mention.line - 1]
+                  : null,
               child: Column(
                 children: [
-                  ListTile(
-                    title: Text(
-                      decision.choose
-                          ? 'Which \u201c${mention.surface}\u201d?'
-                          : 'Who is ${mention.surface}?',
-                    ),
-                    subtitle: mention.line > 0 && mention.line <= lines.length
-                        ? Text(lines[mention.line - 1])
-                        : null,
-                  ),
                   if (searching)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Row(
-                        children: [
-                          IconButton(
-                            tooltip: 'Back to suggestions',
-                            icon: const Icon(Icons.arrow_back),
-                            onPressed: () => setState(() {
-                              searching = false;
-                              query = '';
-                            }),
-                          ),
-                          Expanded(
-                            child: TextField(
-                              autofocus: true,
-                              decoration: const InputDecoration(
-                                labelText: 'Search pages',
-                              ),
-                              onChanged: (value) =>
-                                  setState(() => query = value),
+                    Row(
+                      children: [
+                        IconButton(
+                          tooltip: 'Back to suggestions',
+                          icon: const Icon(Icons.arrow_back),
+                          onPressed: () => setState(() {
+                            searching = false;
+                            query = '';
+                          }),
+                        ),
+                        Expanded(
+                          child: TextField(
+                            autofocus: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Search pages',
                             ),
+                            onChanged: (value) => setState(() => query = value),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   Expanded(
                     child: ListView(

@@ -1,10 +1,20 @@
 import 'package:material_ui/material_ui.dart';
 
 /// Shows a simple text [SnackBar] via the nearest [ScaffoldMessenger].
-void showSnack(BuildContext context, String message, {SnackBarAction? action}) {
-  ScaffoldMessenger.of(
-    context,
-  ).showSnackBar(SnackBar(content: Text(message), action: action));
+///
+/// [duration] overrides the default display time, for messages the user has to
+/// act on elsewhere before they disappear.
+void showSnack(
+  BuildContext context,
+  String message, {
+  SnackBarAction? action,
+  Duration? duration,
+}) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    duration == null
+        ? SnackBar(content: Text(message), action: action)
+        : SnackBar(content: Text(message), action: action, duration: duration),
+  );
 }
 
 /// Tells the user once, after the next frame, that a settings file was

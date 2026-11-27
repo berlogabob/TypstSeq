@@ -611,11 +611,7 @@ extension _EnrichFlow on _HomeScreenState {
       } catch (error) {
         debugPrint('Could not save enrichment feedback: $error');
         if (mounted && vault == v) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Could not save enrichment feedback: $error'),
-            ),
-          );
+          showSnack(context, 'Could not save enrichment feedback: $error');
         }
       }
     });
@@ -929,26 +925,14 @@ extension _EnrichFlow on _HomeScreenState {
       now: DateTime.now,
       confirmDouble: (conflict) async {
         if (!mounted) return false;
-        final confirmed = await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Already out'),
-            content: Text(
+        final confirmed = await showConfirmDialog(
+          context,
+          title: 'Already out',
+          message:
               '${loanOutSinceText(conflict)}\n\nTrack another loan for the same equipment?',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancel'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Track anyway'),
-              ),
-            ],
-          ),
+          confirmLabel: 'Track anyway',
         );
-        return confirmed == true && mounted && identical(vault, v);
+        return confirmed && mounted && identical(vault, v);
       },
       recordFeedback: () => _recordEnrichFeedback(
         EnrichMention(
@@ -1173,11 +1157,10 @@ extension _EnrichIncoming on _HomeScreenState {
 
     var future = loadQueue(next: true);
     if (!mounted) return;
-    await showModalBottomSheet<void>(
-      context: context,
+    await showAppSheet<void>(
+      context,
       isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
+      bare: true,
       builder: (context) => StatefulBuilder(
         builder: (context, setSheetState) {
           void decide(
@@ -1213,7 +1196,9 @@ extension _EnrichIncoming on _HomeScreenState {
               color: Theme.of(context).colorScheme.surfaceContainerLow,
               clipBehavior: Clip.antiAlias,
               shape: const RoundedRectangleBorder(
-                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                borderRadius: BorderRadius.vertical(
+                  top: Radius.circular(kRadiusLarge),
+                ),
               ),
               child:
                   FutureBuilder<
@@ -1257,12 +1242,17 @@ extension _EnrichIncoming on _HomeScreenState {
                               key: const ValueKey('enrich-sheet-handle'),
                               width: 32,
                               height: 4,
-                              margin: const EdgeInsets.only(top: 12, bottom: 4),
+                              margin: const EdgeInsets.only(
+                                top: kSpace12,
+                                bottom: kSpace4,
+                              ),
                               decoration: BoxDecoration(
                                 color: Theme.of(
                                   context,
                                 ).colorScheme.onSurfaceVariant.withAlpha(100),
-                                borderRadius: BorderRadius.circular(2),
+                                borderRadius: BorderRadius.circular(
+                                  kRadiusSmall,
+                                ),
                               ),
                             ),
                           ),
@@ -1295,24 +1285,13 @@ extension _EnrichIncoming on _HomeScreenState {
                                         });
                                       }
                                       if (context.mounted) {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          const SnackBar(
-                                            content: Text('Clusters updated'),
-                                          ),
-                                        );
+                                        showSnack(context, 'Clusters updated');
                                       }
                                     } catch (error) {
                                       if (context.mounted) {
-                                        ScaffoldMessenger.of(
+                                        showSnack(
                                           context,
-                                        ).showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                              'Cluster update failed: $error',
-                                            ),
-                                          ),
+                                          'Cluster update failed: $error',
                                         );
                                       }
                                     }
@@ -1327,14 +1306,9 @@ extension _EnrichIncoming on _HomeScreenState {
                                       '${jsonEncode({'requested_at': DateTime.now().toUtc().toIso8601String()})}\n',
                                     );
                                     if (context.mounted) {
-                                      ScaffoldMessenger.of(
+                                      showSnack(
                                         context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            'Suggestions will update in a few minutes',
-                                          ),
-                                        ),
+                                        'Suggestions will update in a few minutes',
                                       );
                                     }
                                   },
@@ -1413,7 +1387,7 @@ extension _EnrichIncoming on _HomeScreenState {
                               ),
                             )
                           else if (views == null)
-                            const Center(child: CircularProgressIndicator())
+                            const Center(child: LoadingIndicator())
                           else if (views.isEmpty &&
                               rows.isEmpty &&
                               audio.isEmpty &&
@@ -1564,7 +1538,7 @@ extension _EnrichIncoming on _HomeScreenState {
                                           ),
                                           IconButton(
                                             tooltip: 'Reject audio proposal',
-                                            icon: const Icon(Icons.close),
+                                            icon: const Icon(AppIcons.close),
                                             onPressed: () => decide(
                                               () => _decideAudioProposal(
                                                 proposal,
@@ -1692,7 +1666,7 @@ extension _EnrichIncoming on _HomeScreenState {
                                       ),
                                       IconButton(
                                         tooltip: 'Reject',
-                                        icon: const Icon(Icons.close),
+                                        icon: const Icon(AppIcons.close),
                                         onPressed: () => decide(
                                           () async {
                                             final device =
@@ -1757,7 +1731,7 @@ extension _EnrichIncoming on _HomeScreenState {
                                       ),
                                       IconButton(
                                         tooltip: 'Reject booking',
-                                        icon: const Icon(Icons.close),
+                                        icon: const Icon(AppIcons.close),
                                         onPressed: () => decide(
                                           () => _decideIncoming(
                                             booking,

@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 import 'package:tylog_core/storage.dart';
 
 import '../../settings_path.dart';
+import '../snack.dart';
 
 class DeviceOnlySwitch extends StatefulWidget {
   const DeviceOnlySwitch({
@@ -49,9 +50,7 @@ class _DeviceOnlySwitchState extends State<DeviceOnlySwitch> {
       if (mounted) setState(() => _enabled = enabled);
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not change settings scope: $error')),
-        );
+        showSnack(context, 'Could not change settings scope: $error');
       }
     } finally {
       if (mounted) setState(() => _busy = false);

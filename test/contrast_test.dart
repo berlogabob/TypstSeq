@@ -71,6 +71,56 @@ void main() {
     }
   });
 
+  // WCAG 2.1 text contrast minimum (1.4.3) for body-size text.
+  const kMinTextContrast = 4.5;
+
+  test('text colours clear 4.5:1 on every surface they sit on', () {
+    for (final brightness in Brightness.values) {
+      final theme = tyLogTheme(brightness);
+      final scheme = theme.colorScheme;
+      // Material 3 defaults when the theme sets no colour of its own.
+      final surfaces = {
+        'app': scheme.surface,
+        'dialog':
+            theme.dialogTheme.backgroundColor ?? scheme.surfaceContainerHigh,
+        'sheet':
+            theme.bottomSheetTheme.backgroundColor ??
+            scheme.surfaceContainerLow,
+      };
+      final texts = {
+        // Destructive text buttons: Discard, Uninstall; error icons and titles.
+        'error': scheme.error,
+        // Text buttons, Details, Skip, section labels such as Recent.
+        'primary': scheme.primary,
+        // Hints, subtitles, empty-state text.
+        'onSurfaceVariant': scheme.onSurfaceVariant,
+        'onSurface': scheme.onSurface,
+      };
+      for (final surface in surfaces.entries) {
+        for (final text in texts.entries) {
+          expect(
+            _contrast(text.value, surface.value),
+            greaterThanOrEqualTo(kMinTextContrast),
+            reason:
+                '${brightness.name} ${text.key} text on the ${surface.key} '
+                'surface',
+          );
+        }
+      }
+      // Filled buttons: the primary and the destructive confirm.
+      expect(
+        _contrast(scheme.onPrimary, scheme.primary),
+        greaterThanOrEqualTo(kMinTextContrast),
+        reason: '${brightness.name} filled button label',
+      );
+      expect(
+        _contrast(scheme.onError, scheme.error),
+        greaterThanOrEqualTo(kMinTextContrast),
+        reason: '${brightness.name} destructive filled button label',
+      );
+    }
+  });
+
   test('dark-mode graph edge colors clear 3:1 on the dark app surface', () {
     for (final kind in GraphEdgeKind.values) {
       expect(

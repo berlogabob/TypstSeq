@@ -348,7 +348,7 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(title),
-        const SizedBox(height: 4),
+        const SizedBox(height: kSpace4),
         SegmentedButton<String>(
           segments: const [
             ButtonSegment(value: 'fast', label: Text('Fast')),
@@ -424,7 +424,7 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text('Preset'),
-                const SizedBox(height: 4),
+                const SizedBox(height: kSpace4),
                 SegmentedButton<String>(
                   segments: const [
                     ButtonSegment(
@@ -690,7 +690,7 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
                 Wrap(
-                  spacing: 8,
+                  spacing: kSpace8,
                   children: [
                     for (final l in p.translateTo)
                       InputChip(
@@ -729,7 +729,7 @@ class _AudioProcessingSettingsState extends State<AudioProcessingSettings> {
               ],
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: kSpace4),
         ],
       ],
     );

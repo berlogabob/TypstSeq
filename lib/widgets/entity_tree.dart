@@ -79,7 +79,10 @@ class EntityTree extends StatelessWidget {
       title: InkWell(onTap: () => onOpen(note.path), child: Text(note.title)),
       children: [
         for (final child in node.children)
-          Padding(padding: const EdgeInsets.only(left: 16), child: _row(child)),
+          Padding(
+            padding: const EdgeInsets.only(left: kSpace16),
+            child: _row(child),
+          ),
       ],
     );
   }

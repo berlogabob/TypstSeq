@@ -18,6 +18,12 @@ export 'package:tylog_core/models.dart'
 // non-text contrast at 1.56:1. Anything visual and repeated belongs here so a
 // change lands everywhere at once — `test/design_tokens_test.dart` and
 // `test/contrast_test.dart` keep it that way.
+//
+// Naming: every token starts with `k`. Scales that are picked by value are
+// named by value (`kSpace16`); scales picked by role are named by role
+// (`kRadiusSmall`, `kIconDense`, `kMotionDock`). Brightness-dependent values
+// are functions of the scheme (`warningColor`). Components built from these
+// tokens live in `ds/` and are documented in `docs/design-system.md`.
 // ---------------------------------------------------------------------------
 
 /// The one brand seed both color schemes are derived from.
@@ -91,31 +97,40 @@ ThemeData tyLogTheme(Brightness brightness) {
   );
 }
 
-/// Black scrims preserve legibility over images regardless of app brightness.
+/// Colours for content drawn over an image. Scrims are black and the ink on
+/// them is white regardless of app brightness, because the image underneath
+/// does not follow the theme.
 const kImageGradientScrim = Color(0x99000000);
+const kImageControlScrim = Color(0x66000000);
+const kOnImage = Color(0xFFFFFFFF);
 
 /// Brief highlight on the text a search result opened at (amber, 55%).
 const kSearchRevealFill = Color(0x8CFFC107);
-const kImageControlScrim = Color(0x66000000);
 
 /// Corner-radius scale. Small = chips/inline chips, medium = list tiles, cards
 /// and popovers, large = settings-style container cards.
 const kRadiusSmall = 6.0;
-
-/// Height of a collapsed image's visible strip.
-const kImageFoldHeight = 64.0;
 const kRadiusMedium = 12.0;
 const kRadiusLarge = 20.0;
 
-/// Icon sizes: compact controls and standard tile icons.
+/// Corner radius shared by rounded [ListTile]s (links panel, [AppTile]).
+const kRadiusListTile = BorderRadius.all(Radius.circular(kRadiusMedium));
+
+/// Icon sizes. Inline = glyphs inside chips and badges, dense = leading icons
+/// of dense rows, small = compact controls, default = standard tile icons,
+/// large = the focal icon of an empty or error state.
+const kIconInline = 16.0;
+const kIconDense = 18.0;
 const kIconSmall = 20.0;
 const kIcon = 24.0;
+const kIconLarge = 48.0;
 
 /// Minimum interactive size (Material/WCAG target-size guidance). Controls that
 /// draw smaller than this must still *hit* at least this big.
 const kMinTapTarget = 48.0;
 
-/// Space tokens: 4, 8, 12, 16, 24
+/// Space tokens: 4, 8, 12, 16, 24. [kEditorInset] is the one named exception:
+/// the side inset of writing surfaces.
 const kSpace4 = 4.0;
 const kSpace8 = 8.0;
 const kSpace12 = 12.0;
@@ -123,13 +138,13 @@ const kSpace16 = 16.0;
 const kSpace24 = 24.0;
 const kEditorInset = 18.0;
 
+/// Height of a collapsed image's visible strip.
+const kImageFoldHeight = 64.0;
+
 /// Motion tokens: 150ms, 200ms, 260ms
 const kMotionDock = Duration(milliseconds: 150);
 const kMotionStatus = Duration(milliseconds: 200);
 const kMotionGraphZoom = Duration(milliseconds: 260);
-
-/// Corner radius shared by the rounded [ListTile]s in the links panel.
-const listTileRadius = BorderRadius.all(Radius.circular(kRadiusMedium));
 
 /// Semantic "warning" color: Material 3 has no warning role, and the previous
 /// `Colors.amber` scored 1.56:1 on the light surface — below even the 3:1

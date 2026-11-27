@@ -14,6 +14,7 @@ import 'loading.dart';
 import 'task_row.dart';
 import 'task_fields.dart';
 import 'constants.dart';
+import 'ds/app_empty_state.dart';
 
 class JournalFeed extends StatefulWidget {
   const JournalFeed({
@@ -278,7 +279,11 @@ class _JournalFeedState extends State<JournalFeed> {
     _buildingSourcePaths = {};
     final days = _days();
     if (days.isEmpty) {
-      return const Center(child: Text('No journal pages yet'));
+      return const AppEmptyState(
+        icon: AppIcons.daily,
+        title: 'No journal pages yet',
+        hint: 'Write in Today and the day shows up here.',
+      );
     }
     final visible = min(_visibleDays, days.length);
     final hasMore = visible < days.length;

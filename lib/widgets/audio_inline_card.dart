@@ -10,6 +10,7 @@ import 'audio_note_screen.dart'
     show AudioTab, WaveformSeekBar, waveformSupported;
 import 'audio_sheets.dart';
 import 'constants.dart';
+import 'loading.dart';
 
 /// A note-body audio attachment as a player: waveform, play/pause and an
 /// expand button that opens the full comment screen. The player is created on
@@ -204,7 +205,7 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
           message: done ? '$name ready' : 'No ${name.toLowerCase()} yet',
           child: Icon(
             icon,
-            size: 18,
+            size: kIconDense,
             color: done
                 ? scheme.primary
                 : scheme.onSurfaceVariant.withValues(alpha: 0.4),
@@ -296,7 +297,7 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
                   ],
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: kSpace4),
               Row(
                 children: [
                   IconButton.filled(
@@ -310,11 +311,11 @@ class _AudioInlineCardState extends State<AudioInlineCard> {
                         ? const SizedBox(
                             width: 18,
                             height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                            child: LoadingIndicator(strokeWidth: 2),
                           )
                         : Icon(_playing ? Icons.pause : Icons.play_arrow),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: kSpace12),
                   Expanded(
                     child: _waveformAvailable
                         ? WaveformSeekBar(

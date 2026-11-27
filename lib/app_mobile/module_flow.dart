@@ -13,92 +13,84 @@ extension _ModuleFlow on _HomeScreenState {
         progress[module.id] = await moduleProgress(v.storage, module.id);
       }
       if (!mounted) return;
-      final choice =
-          await showModalBottomSheet<
-            ({String action, InstalledModule? module})
-          >(
-            context: context,
-            isScrollControlled: true,
-            showDragHandle: false,
-            builder: (context) => AppSheet(
-              title: 'Modules',
-              children: [
-                for (final module in modules) ...[
-                  AppTile(
-                    icon: Icons.school_outlined,
-                    title: module.name,
-                    subtitle:
-                        '${progress[module.id]!.done}/${progress[module.id]!.total} ${module.unit}'
-                        '${progress[module.id]!.scores.isEmpty ? '' : ' · ${progress[module.id]!.scores.length} scores'}',
-                    trailing: PopupMenuButton<String>(
-                      tooltip: 'Module actions',
-                      onSelected: (action) => Navigator.pop(context, (
-                        action: action,
-                        module: module,
-                      )),
-                      itemBuilder: (_) => [
-                        if (module.start != null)
-                          const PopupMenuItem(
-                            value: 'reschedule',
-                            child: Text('Reschedule…'),
-                          ),
-                        const PopupMenuItem(
-                          value: 'source',
-                          child: Text('Updates from GitHub…'),
-                        ),
-                        const PopupMenuItem(
-                          value: 'uninstall',
-                          child: Text('Uninstall'),
-                        ),
-                      ],
+      final choice = await showAppSheet<({String action, InstalledModule? module})>(
+        context,
+        isScrollControlled: true,
+        builder: (context) => AppSheet(
+          title: 'Modules',
+          children: [
+            for (final module in modules) ...[
+              AppTile(
+                icon: Icons.school_outlined,
+                title: module.name,
+                subtitle:
+                    '${progress[module.id]!.done}/${progress[module.id]!.total} ${module.unit}'
+                    '${progress[module.id]!.scores.isEmpty ? '' : ' · ${progress[module.id]!.scores.length} scores'}',
+                trailing: PopupMenuButton<String>(
+                  tooltip: 'Module actions',
+                  onSelected: (action) =>
+                      Navigator.pop(context, (action: action, module: module)),
+                  itemBuilder: (_) => [
+                    if (module.start != null)
+                      const PopupMenuItem(
+                        value: 'reschedule',
+                        child: Text('Reschedule…'),
+                      ),
+                    const PopupMenuItem(
+                      value: 'source',
+                      child: Text('Updates from GitHub…'),
                     ),
-                  ),
-                  AppTile(
-                    icon: Icons.link,
-                    title: 'Updates from GitHub',
-                    subtitle: module.github ?? 'Not configured',
-                    onTap: () => Navigator.pop(context, (
-                      action: 'source',
+                    const PopupMenuItem(
+                      value: 'uninstall',
+                      child: Text('Uninstall'),
+                    ),
+                  ],
+                ),
+              ),
+              AppTile(
+                icon: AppIcons.link,
+                title: 'Updates from GitHub',
+                subtitle: module.github ?? 'Not configured',
+                onTap: () =>
+                    Navigator.pop(context, (action: 'source', module: module)),
+              ),
+              if (module.updateAvailableVersion case final update?
+                  when module.updateCheckedAt != null &&
+                      DateTime.now().difference(module.updateCheckedAt!) <
+                          const Duration(days: 7))
+                AppTile(
+                  icon: Icons.system_update,
+                  title: 'Update available ${module.version} -> $update',
+                  trailing: TextButton(
+                    onPressed: () => Navigator.pop(context, (
+                      action: 'update',
                       module: module,
                     )),
+                    child: const Text('Update'),
                   ),
-                  if (module.updateAvailableVersion case final update?
-                      when module.updateCheckedAt != null &&
-                          DateTime.now().difference(module.updateCheckedAt!) <
-                              const Duration(days: 7))
-                    AppTile(
-                      icon: Icons.system_update,
-                      title: 'Update available ${module.version} -> $update',
-                      trailing: TextButton(
-                        onPressed: () => Navigator.pop(context, (
-                          action: 'update',
-                          module: module,
-                        )),
-                        child: const Text('Update'),
-                      ),
-                    ),
-                ],
-                AppTile(
-                  icon: Icons.cloud_download_outlined,
-                  title: 'Install from GitHub',
-                  onTap: () =>
-                      Navigator.pop(context, (action: 'github', module: null)),
                 ),
-                AppTile(
-                  icon: Icons.refresh,
-                  title: 'Check for updates',
-                  onTap: () =>
-                      Navigator.pop(context, (action: 'check', module: null)),
-                ),
-                AppTile(
-                  icon: Icons.file_open_outlined,
-                  title: 'Install from file…',
-                  onTap: () =>
-                      Navigator.pop(context, (action: 'install', module: null)),
-                ),
-              ],
+            ],
+            AppTile(
+              icon: Icons.cloud_download_outlined,
+              title: 'Install from GitHub',
+              onTap: () =>
+                  Navigator.pop(context, (action: 'github', module: null)),
             ),
-          );
+            AppTile(
+              icon: Icons.refresh,
+              title: 'Check for updates',
+              onTap: () =>
+                  Navigator.pop(context, (action: 'check', module: null)),
+            ),
+            AppTile(
+              icon: Icons.file_open_outlined,
+              title: 'Install from file…',
+              onTap: () =>
+                  Navigator.pop(context, (action: 'install', module: null)),
+            ),
+          ],
+        ),
+      );
       if (choice == null || !mounted) return;
       if (choice.action == 'install') {
         await _installModule();
@@ -241,20 +233,32 @@ extension _ModuleFlow on _HomeScreenState {
         context: context,
         builder: (context) => AlertDialog(
           title: Text('${pack.name} is installed'),
-          content: const Text(
-            'Update rewrites unedited files. Uninstall removes only files '
-            'you have not edited.',
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Update rewrites unedited files. Uninstall removes only files '
+                'you have not edited.',
+              ),
+              const SizedBox(height: kSpace8),
+              TextButton.icon(
+                style: TextButton.styleFrom(
+                  foregroundColor: Theme.of(context).colorScheme.error,
+                  padding: EdgeInsets.zero,
+                ),
+                onPressed: () => Navigator.pop(context, 'uninstall'),
+                icon: const Icon(AppIcons.delete, size: kIconSmall),
+                label: const Text('Uninstall'),
+              ),
+            ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
               child: const Text('Cancel'),
             ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, 'uninstall'),
-              child: const Text('Uninstall'),
-            ),
-            TextButton(
+            FilledButton(
               onPressed: () => Navigator.pop(context, 'update'),
               child: const Text('Update'),
             ),
@@ -320,7 +324,7 @@ extension _ModuleFlow on _HomeScreenState {
             onPressed: () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
-          TextButton(
+          FilledButton(
             onPressed: () => Navigator.pop(context, controller.text.trim()),
             child: const Text('Save'),
           ),

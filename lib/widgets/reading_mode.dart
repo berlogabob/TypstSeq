@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../rich_editor.dart';
 import 'constants.dart';
 import 'ds/app_sheet.dart';
+import 'app_icons.dart';
 
 class ReadingMode extends StatefulWidget {
   const ReadingMode({
@@ -185,9 +186,8 @@ class _ReadingModeState extends State<ReadingMode> {
 
   Future<void> _showRatingSheet() async {
     _ratingSheetOpen = true;
-    final value = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: false,
+    final value = await showAppSheet<String>(
+      context,
       builder: (context) {
         // Lives outside StatefulBuilder's `builder` callback (which reruns,
         // and would otherwise reset a variable declared inside it) so the
@@ -227,10 +227,10 @@ class _ReadingModeState extends State<ReadingMode> {
                   foregroundColor: Theme.of(context).colorScheme.error,
                 ),
                 onPressed: () => Navigator.pop(context, 'shit'),
-                icon: const Icon(Icons.delete_outline),
+                icon: const Icon(AppIcons.delete),
                 label: const Text('Delete article'),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: kSpace8),
             ],
           ),
         );
@@ -333,7 +333,12 @@ class _ReadingModeState extends State<ReadingMode> {
                         child: SingleChildScrollView(
                           key: const Key('reading-scroll'),
                           controller: scrollController,
-                          padding: const EdgeInsets.fromLTRB(18, 64, 18, 22),
+                          padding: const EdgeInsets.fromLTRB(
+                            kEditorInset,
+                            64,
+                            kEditorInset,
+                            22,
+                          ),
                           child: MediaQuery(
                             data: MediaQuery.of(context).copyWith(
                               textScaler: _ReadingTextScaler(

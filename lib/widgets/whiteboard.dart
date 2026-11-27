@@ -15,6 +15,10 @@ import '../github/github_projects.dart';
 import 'constants.dart';
 import 'entity_tree.dart';
 import 'note_picker_sheet.dart';
+import 'app_icons.dart';
+import 'snack.dart';
+import 'ds/app_sheet.dart';
+import 'loading.dart';
 
 String boardNotePreview(String source) {
   final text = source.trimLeft();
@@ -185,7 +189,7 @@ class _BoardsTabState extends State<BoardsTab> {
               ),
             if (projects.isEmpty)
               const Padding(
-                padding: EdgeInsets.all(16),
+                padding: EdgeInsets.all(kSpace16),
                 child: Text('No projects found'),
               ),
           ],
@@ -208,9 +212,7 @@ class _BoardsTabState extends State<BoardsTab> {
       if (mounted) setState(() => boards = load());
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not load GitHub projects: $error')),
-        );
+        showSnack(context, 'Could not load GitHub projects: $error');
       }
     }
   }
@@ -249,7 +251,7 @@ class _BoardsTabState extends State<BoardsTab> {
               return Text('Could not load boards: ${snapshot.error}');
             }
             if (!snapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
+              return const Center(child: LoadingIndicator());
             }
             return ListView(
               children: [
@@ -508,12 +510,9 @@ class _WhiteboardState extends State<Whiteboard> {
                 )
                 ..scaleByDouble(v.zoom.toDouble(), v.zoom.toDouble(), 1, 1);
               transform.addListener(viewportChanged);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'Board changed on another device - your version saved as a copy',
-                  ),
-                ),
+              showSnack(
+                context,
+                'Board changed on another device - your version saved as a copy',
               );
             }
             return;
@@ -524,9 +523,7 @@ class _WhiteboardState extends State<Whiteboard> {
         })
         .catchError((Object e) {
           if (mounted) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text('Could not save board: $e')));
+            showSnack(context, 'Could not save board: $e');
           }
           saveFailed = true;
         });
@@ -618,7 +615,7 @@ class _WhiteboardState extends State<Whiteboard> {
             onPressed: () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
-          TextButton(
+          FilledButton(
             onPressed: () => Navigator.pop(context, value),
             child: const Text('Save'),
           ),
@@ -633,8 +630,8 @@ class _WhiteboardState extends State<Whiteboard> {
       if (type == 'Add from OpenLabTwin') {
         addOltTree();
       } else if (type == 'Note/entity') {
-        final note = await showModalBottomSheet<Object>(
-          context: context,
+        final note = await showAppSheet<Object>(
+          context,
           isScrollControlled: true,
           builder: (_) => NotePickerSheet(notes: widget.index?.notes ?? []),
         );
@@ -642,10 +639,10 @@ class _WhiteboardState extends State<Whiteboard> {
           addCard(note.kind == 'note' ? 'note' : 'entity', ref: note.id);
         }
       } else if (type == 'Task') {
-        final task = await showModalBottomSheet<TaskRef>(
-          context: context,
-          builder: (context) => ListView(
-            shrinkWrap: true,
+        final task = await showAppSheet<TaskRef>(
+          context,
+          builder: (context) => AppSheet(
+            title: 'Add task card',
             children: [
               for (final task in widget.index?.tasks ?? <TaskRef>[])
                 ListTile(
@@ -681,9 +678,7 @@ class _WhiteboardState extends State<Whiteboard> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Could not add card: $e')));
+        showSnack(context, 'Could not add card: $e');
       }
     }
   }
@@ -862,10 +857,9 @@ class _WhiteboardState extends State<Whiteboard> {
         .where((n) => n.properties['source'] == 'openlabtwin')
         .toList();
     if (notes.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No OpenLabTwin places or equipment in this vault yet'),
-        ),
+      showSnack(
+        context,
+        'No OpenLabTwin places or equipment in this vault yet',
       );
       return;
     }
@@ -906,12 +900,9 @@ class _WhiteboardState extends State<Whiteboard> {
   void pinTree() {
     final tree = treeBoard;
     if (tree.cards.length <= 1) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Nothing is part of ${board.title} yet. Add "Part of" on a page.',
-          ),
-        ),
+      showSnack(
+        context,
+        'Nothing is part of ${board.title} yet. Add "Part of" on a page.',
       );
       return;
     }
@@ -1008,7 +999,7 @@ class _WhiteboardState extends State<Whiteboard> {
               )
             : snapshot.connectionState == ConnectionState.done
             ? const Text('missing')
-            : const CircularProgressIndicator(),
+            : const LoadingIndicator(),
       );
     }
     if (card.type == 'note' || card.type == 'entity') {
@@ -1019,7 +1010,7 @@ class _WhiteboardState extends State<Whiteboard> {
           children: [
             Row(
               children: [
-                Icon(iconForKind(note.kind), size: 18),
+                Icon(iconForKind(note.kind), size: kIconDense),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
@@ -1156,7 +1147,7 @@ class _WhiteboardState extends State<Whiteboard> {
         IconButton(
           tooltip: 'Delete selected card',
           onPressed: selected == null && selectedEdge == null ? null : delete,
-          icon: const Icon(Icons.delete_outline),
+          icon: const Icon(AppIcons.delete),
         ),
       ],
     ),
@@ -1246,7 +1237,7 @@ class _WhiteboardState extends State<Whiteboard> {
                       width: math.min(size.width - 32, 360),
                       child: Card(
                         child: Padding(
-                          padding: const EdgeInsets.all(16),
+                          padding: const EdgeInsets.all(kSpace16),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
@@ -1254,7 +1245,7 @@ class _WhiteboardState extends State<Whiteboard> {
                                 'This whiteboard is empty',
                                 style: Theme.of(context).textTheme.titleMedium,
                               ),
-                              const SizedBox(height: 4),
+                              const SizedBox(height: kSpace4),
                               const Text(
                                 'Choose Add to place your first card.',
                               ),
@@ -1318,7 +1309,7 @@ class _WhiteboardState extends State<Whiteboard> {
                               scheduleSave();
                             },
                             child: Padding(
-                              padding: const EdgeInsets.all(8),
+                              padding: const EdgeInsets.all(kSpace8),
                               child: Text(frame.title),
                             ),
                           ),
@@ -1437,7 +1428,7 @@ class _WhiteboardState extends State<Whiteboard> {
                                       },
                                       child: const Icon(
                                         Icons.drag_handle,
-                                        size: 20,
+                                        size: kIconSmall,
                                       ),
                                     ),
                                   ),

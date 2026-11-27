@@ -14,7 +14,9 @@ import '../ai/ai_settings.dart';
 import '../nextcloud_sync.dart';
 import '../audio/processing_policy.dart';
 import 'constants.dart';
+import 'ds/app_search_field.dart';
 import 'settings/settings_catalog.dart';
+import 'dialogs.dart';
 
 /// Route name prefix of Settings and its pages ([_closeSettings] in the app).
 const kSettingsRoute = 'settings';
@@ -175,12 +177,9 @@ class _SettingsSheetState extends State<SettingsSheet> {
             kSpace16,
             kSpace4,
           ),
-          child: TextField(
-            key: const ValueKey('settings-search'),
-            decoration: const InputDecoration(
-              hintText: 'Search settings',
-              prefixIcon: Icon(Icons.search),
-            ),
+          child: AppSearchField(
+            fieldKey: const ValueKey('settings-search'),
+            hintText: 'Search settings',
             onChanged: (value) => setState(() => _query = value),
           ),
         ),
@@ -435,24 +434,14 @@ class _CalendarsPageState extends State<_CalendarsPage> {
   }
 
   Future<void> _delete(int index) async {
-    final yes = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Delete calendar?'),
-        content: Text('Remove ${_feeds[index]['name']} from TyLog?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+    final yes = await showConfirmDialog(
+      context,
+      title: 'Delete calendar?',
+      message: 'Remove ${_feeds[index]['name']} from TyLog?',
+      confirmLabel: 'Delete',
+      destructive: true,
     );
-    if (yes == true) setState(() => _feeds.removeAt(index));
+    if (yes && mounted) setState(() => _feeds.removeAt(index));
   }
 
   @override

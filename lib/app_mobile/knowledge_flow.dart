@@ -162,7 +162,7 @@ extension _KnowledgeFlow on _HomeScreenState {
               )
             : Scaffold(
                 appBar: AppBar(title: const Text('Search')),
-                body: const Center(child: CircularProgressIndicator()),
+                body: const Center(child: LoadingIndicator()),
               ),
       ),
     );
@@ -374,9 +374,8 @@ extension _KnowledgeFlow on _HomeScreenState {
   Future<void> _openDuplicateOwners(List<PkmsProblem> problems) async {
     List<String> owners(PkmsProblem problem) =>
         problem.targets.isNotEmpty ? problem.targets : [problem.subject];
-    final choice = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: false,
+    final choice = await showAppSheet<String>(
+      context,
       builder: (context) => AppSheet(
         title: 'Duplicate owners',
         children: [

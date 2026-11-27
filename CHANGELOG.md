@@ -5,6 +5,17 @@ their history is in the commit log and the GitHub release notes.
 
 ## Unreleased
 
+## 0.26.1+179
+
+### Fixed
+
+- Every bottom sheet has a title, and its rows and search field line up with it.
+- One search field everywhere: Library, Search, Settings, "From whom?", the note picker and Citations. It has a clear button.
+- When something fails to load, the screen says in plain words what went wrong and what to try, with a Retry button where one exists. The technical message is behind "Details".
+- Dialogs put Cancel first and name the main button after what it does. The timer that ran too long asks "Discard" or "Stop and keep".
+- "Which text?" marks the text on screen. "From whom?" shows recent people under "Recent". The tag sheet reads "Add to this day" and "Remove tag".
+- Empty and error screens have a larger icon, and the title no longer moves when loading ends.
+
 ## 0.26.0+178
 
 ### New

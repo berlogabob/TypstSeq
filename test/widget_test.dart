@@ -1680,7 +1680,7 @@ void main() {
     },
   );
 
-  for (final choice in ['Stop now', 'Discard session']) {
+  for (final choice in ['Stop and keep', 'Discard']) {
     testWidgets('task clock runaway stop asks once: $choice', (tester) async {
       final (storage, _) = await _mountTaskTimers(
         tester,
@@ -1695,10 +1695,7 @@ void main() {
       );
       await _tapTaskTimer(tester, 'a', 'Stop timer');
       expect(find.byType(AlertDialog), findsOneWidget);
-      expect(
-        find.textContaining('This timer has been running for 25h'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('This timer ran for 25h'), findsOneWidget);
       expect(
         taskClocked(
           await storage.readText('notes/a.typ'),
@@ -1709,7 +1706,7 @@ void main() {
       await tester.tap(find.text(choice));
       await tester.pumpAndSettle();
       final entries = taskClocked(await storage.readText('notes/a.typ'), 'a');
-      if (choice == 'Discard session') {
+      if (choice == 'Discard') {
         expect(entries, isEmpty);
       } else {
         expect(entries.single.isRunning, isFalse);
@@ -4253,7 +4250,7 @@ void main() {
       await tester.tap(find.widgetWithText(ActionChip, 'Save'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField).last, name);
-      await tester.tap(find.widgetWithText(TextButton, 'Save'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Save'));
       await tester.pumpAndSettle();
     }
 
@@ -4302,7 +4299,7 @@ void main() {
     await tester.tap(find.widgetWithText(ActionChip, 'Save'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, 'Second');
-    await tester.tap(find.widgetWithText(TextButton, 'Save'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
     await tester.pump();
     expect(find.widgetWithText(ActionChip, 'Save'), findsNothing);
     await tester.longPress(find.text('First'));
