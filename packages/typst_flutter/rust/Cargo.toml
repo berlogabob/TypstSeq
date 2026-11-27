@@ -39,6 +39,9 @@ strip = true         # strip debug symbols from the output
 panic = "abort"      # smaller binary: no unwinding tables
 
 [features]
+# Shipped builds sync with paired devices; build with --no-default-features
+# for a library without iroh.
+default = ["p2p"]
 # The peer-to-peer tunnel and pairing (api/p2p_tunnel.rs, src/p2p_node.rs).
 p2p = ["dep:iroh", "dep:iroh-mdns-address-lookup", "dep:tokio", "dep:jni", "dep:getrandom"]
 # The dev-only scratch harness on top of it; banned from shipped libraries by
