@@ -413,7 +413,7 @@ void main() {
     storage.unreadable = true;
     await tester.tap(find.byTooltip('Refresh processing'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Folder unavailable'), findsOneWidget);
+    expect(find.text('Could not read jobs'), findsOneWidget);
     storage.unreadable = false;
     await tester.tap(find.byTooltip('Refresh processing'));
     await tester.pumpAndSettle();
