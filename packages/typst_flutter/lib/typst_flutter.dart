@@ -29,3 +29,4 @@ export 'src/widgets/typst_document_viewer.dart';
 export 'src/widgets/typst_view.dart';
 
 export 'src/p2p_harness.dart';
+export 'src/p2p_tunnel.dart';

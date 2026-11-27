@@ -6,6 +6,7 @@
 import 'api/embedding.dart';
 import 'api/markdown_import.dart';
 import 'api/p2p_harness.dart';
+import 'api/p2p_tunnel.dart';
 import 'api/typst.dart';
 import 'api/vault_import.dart';
 import 'dart:async';
@@ -29,6 +30,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   CrossPlatformFinalizerArg
   get rust_arc_decrement_strong_count_TypstEnginePtr => wire
       ._rust_arc_decrement_strong_count_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerTypstEnginePtr;
+
+  @protected
+  AnyhowException dco_decode_AnyhowException(dynamic raw);
 
   @protected
   CompiledDocument
@@ -68,6 +72,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   dco_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerTypstEngine(
     dynamic raw,
   );
+
+  @protected
+  RustStreamSink<PairedPeer> dco_decode_StreamSink_paired_peer_Sse(dynamic raw);
 
   @protected
   String dco_decode_String(dynamic raw);
@@ -120,6 +127,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Float32List dco_decode_list_prim_f_32_strict(dynamic raw);
 
   @protected
+  List<int> dco_decode_list_prim_u_8_loose(dynamic raw);
+
+  @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
 
   @protected
@@ -164,6 +174,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PageInfo dco_decode_page_info(dynamic raw);
 
   @protected
+  PairedPeer dco_decode_paired_peer(dynamic raw);
+
+  @protected
+  PeerError dco_decode_peer_error(dynamic raw);
+
+  @protected
+  PeerErrorKind dco_decode_peer_error_kind(dynamic raw);
+
+  @protected
   (String, String) dco_decode_record_string_string(dynamic raw);
 
   @protected
@@ -183,6 +202,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   TypstSourceLocation dco_decode_typst_source_location(dynamic raw);
+
+  @protected
+  int dco_decode_u_16(dynamic raw);
 
   @protected
   int dco_decode_u_32(dynamic raw);
@@ -207,6 +229,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   VirtualFile dco_decode_virtual_file(dynamic raw);
+
+  @protected
+  AnyhowException sse_decode_AnyhowException(SseDeserializer deserializer);
 
   @protected
   CompiledDocument
@@ -246,6 +271,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   TypstEngine
   sse_decode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerTypstEngine(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  RustStreamSink<PairedPeer> sse_decode_StreamSink_paired_peer_Sse(
     SseDeserializer deserializer,
   );
 
@@ -306,6 +336,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   Float32List sse_decode_list_prim_f_32_strict(SseDeserializer deserializer);
 
   @protected
+  List<int> sse_decode_list_prim_u_8_loose(SseDeserializer deserializer);
+
+  @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
 
   @protected
@@ -364,6 +397,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PageInfo sse_decode_page_info(SseDeserializer deserializer);
 
   @protected
+  PairedPeer sse_decode_paired_peer(SseDeserializer deserializer);
+
+  @protected
+  PeerError sse_decode_peer_error(SseDeserializer deserializer);
+
+  @protected
+  PeerErrorKind sse_decode_peer_error_kind(SseDeserializer deserializer);
+
+  @protected
   (String, String) sse_decode_record_string_string(
     SseDeserializer deserializer,
   );
@@ -391,6 +433,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  int sse_decode_u_16(SseDeserializer deserializer);
+
+  @protected
   int sse_decode_u_32(SseDeserializer deserializer);
 
   @protected
@@ -415,6 +460,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   VirtualFile sse_decode_virtual_file(SseDeserializer deserializer);
+
+  @protected
+  void sse_encode_AnyhowException(
+    AnyhowException self,
+    SseSerializer serializer,
+  );
 
   @protected
   void
@@ -461,6 +512,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void
   sse_encode_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerTypstEngine(
     TypstEngine self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_StreamSink_paired_peer_Sse(
+    RustStreamSink<PairedPeer> self,
     SseSerializer serializer,
   );
 
@@ -532,6 +589,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     Float32List self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_list_prim_u_8_loose(List<int> self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_prim_u_8_strict(
@@ -609,6 +669,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_page_info(PageInfo self, SseSerializer serializer);
 
   @protected
+  void sse_encode_paired_peer(PairedPeer self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_peer_error(PeerError self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_peer_error_kind(PeerErrorKind self, SseSerializer serializer);
+
+  @protected
   void sse_encode_record_string_string(
     (String, String) self,
     SseSerializer serializer,
@@ -643,6 +712,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     TypstSourceLocation self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_u_16(int self, SseSerializer serializer);
 
   @protected
   void sse_encode_u_32(int self, SseSerializer serializer);

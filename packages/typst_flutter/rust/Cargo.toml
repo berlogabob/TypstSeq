@@ -39,7 +39,11 @@ strip = true         # strip debug symbols from the output
 panic = "abort"      # smaller binary: no unwinding tables
 
 [features]
-p2p-harness = ["dep:iroh", "dep:tokio", "dep:jni", "dep:sha2"]
+# The peer-to-peer tunnel and pairing (api/p2p_tunnel.rs, src/p2p_node.rs).
+p2p = ["dep:iroh", "dep:iroh-mdns-address-lookup", "dep:tokio", "dep:jni", "dep:getrandom"]
+# The dev-only scratch harness on top of it; banned from shipped libraries by
+# tool/assert_source_built.sh.
+p2p-harness = ["p2p", "dep:sha2"]
 
 [dependencies.iroh]
 version = "1.4.0"
@@ -50,11 +54,19 @@ features = ["tls-ring"]
 [dependencies.tokio]
 version = "1"
 optional = true
-features = ["rt-multi-thread", "time"]
+features = ["rt-multi-thread", "time", "sync", "net", "io-util", "macros"]
 
 [target.'cfg(target_os = "android")'.dependencies]
 jni = { version = "0.21", optional = true }
 
 [dependencies.sha2]
 version = "0.10"
+optional = true
+
+[dependencies.getrandom]
+version = "0.3"
+optional = true
+
+[dependencies.iroh-mdns-address-lookup]
+version = "0.6.1"
 optional = true
