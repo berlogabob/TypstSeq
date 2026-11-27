@@ -629,6 +629,57 @@ String _tableSnippet(int rows, int columns) {
   return '#table(columns: $columns, $cells)';
 }
 
+/// A Markdown pipe table (a header row, a `---` row, then data rows) as the
+/// source of one Typst table with a bold header row, else null. Leading and
+/// trailing pipes are optional; a short row is padded with empty cells.
+String? markdownTableSource(String text) {
+  final lines = text
+      .replaceAll('\r', '')
+      .trim()
+      .split('\n')
+      .map((line) => line.trim())
+      .toList();
+  if (lines.length < 2 || lines.any((line) => !line.contains('|'))) {
+    return null;
+  }
+  List<String> cells(String line) {
+    var row = line;
+    if (row.startsWith('|')) row = row.substring(1);
+    if (row.endsWith('|') && !row.endsWith(r'\|')) {
+      row = row.substring(0, row.length - 1);
+    }
+    return row
+        .split(RegExp(r'(?<!\\)\|'))
+        .map((cell) => cell.trim().replaceAll(r'\|', '|'))
+        .toList();
+  }
+
+  final header = cells(lines[0]);
+  final rule = cells(lines[1]);
+  final columns = header.length;
+  if (columns < 2 ||
+      rule.length != columns ||
+      !rule.every((cell) => RegExp(r'^:?-{3,}:?$').hasMatch(cell))) {
+    return null;
+  }
+  String row(List<String> values, {bool bold = false}) => [
+    for (var i = 0; i < columns; i++)
+      switch (i < values.length ? values[i] : '') {
+        '' => '[]',
+        final value when bold => '[*${escapeMarkup(value)}*]',
+        final value => '[${escapeMarkup(value)}]',
+      },
+  ].join(', ');
+  return [
+    '#table(',
+    '  columns: $columns,',
+    '  ${row(header, bold: true)},',
+    for (final line in lines.skip(2))
+      if (line.isNotEmpty) '  ${row(cells(line))},',
+    ')',
+  ].join('\n');
+}
+
 String _citationKey(String value) {
   // Typst label charset; Better BibTeX keys commonly contain ':' and '.'.
   final key = value.trim();

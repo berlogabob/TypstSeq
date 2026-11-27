@@ -762,8 +762,9 @@ class TyLogEditingController extends TextEditingController {
       replacement = '';
     } else if (block?.style == TyLogBlockStyle.bulletList ||
         block?.style == TyLogBlockStyle.numberedList) {
-      final glyph = RegExp(r'(?:•|\d+\.)[ \t]*')
-          .matchAsPrefix(visible, indent.end);
+      final glyph = RegExp(
+        r'(?:•|\d+\.)[ \t]*',
+      ).matchAsPrefix(visible, indent.end);
       if (glyph == null) {
         // A continuation has no marker to preserve. A nested bullet also
         // leaves the numbering of surrounding ordered items intact.
@@ -795,6 +796,25 @@ class TyLogEditingController extends TextEditingController {
     var offset = sel.isValid ? sel.baseOffset : text.length;
     _format(() {
       offset = document.setBlockStyle(offset, style);
+    }, selectionOffset: () => offset);
+  }
+
+  /// The selected text as a Typst table when it is a Markdown table, else null.
+  String? get selectedTableSource {
+    if (!selection.isValid || selection.isCollapsed) return null;
+    return markdownTableSource(text.substring(selection.start, selection.end));
+  }
+
+  /// Replaces a selected Markdown table with a Typst table. Returns whether
+  /// it did; an unchanged selection means it was not a table.
+  bool convertSelectionToTable() {
+    final table = selectedTableSource;
+    if (table == null) return false;
+    _clearComposition();
+    final sel = selection;
+    var offset = sel.end;
+    return _format(() {
+      offset = document.insertBlock(sel, table);
     }, selectionOffset: () => offset);
   }
 
@@ -884,8 +904,9 @@ class TyLogEditingController extends TextEditingController {
   static String? _pastedListSource(String pasted) {
     final lines = <String>[];
     for (final line in pasted.replaceAll('\r', '').trimRight().split('\n')) {
-      final item = RegExp(r'^([ \t]*)(?:[-*•]|(\d+)[.)])[ \t]+(\S.*)$')
-          .firstMatch(line);
+      final item = RegExp(
+        r'^([ \t]*)(?:[-*•]|(\d+)[.)])[ \t]+(\S.*)$',
+      ).firstMatch(line);
       if (item == null) return null;
       lines.add(
         '${item[1]}${item[2] == null ? '-' : '+'} ${escapeMarkup(item[3]!)}',
@@ -1084,8 +1105,9 @@ class TyLogEditingController extends TextEditingController {
           (selection.extentOffset - 1).clamp(0, text.length),
         ) +
         1;
-    final prefix = RegExp(r'^(?:TODO |\[\] |\[ \] )')
-        .matchAsPrefix(text.substring(lineStart));
+    final prefix = RegExp(
+      r'^(?:TODO |\[\] |\[ \] )',
+    ).matchAsPrefix(text.substring(lineStart));
     if (prefix != null && local >= prefix.end) {
       unawaited(createTaskLine(prefixLength: prefix.end));
     }
@@ -1121,8 +1143,9 @@ class TyLogEditingController extends TextEditingController {
       final end = lineEnd < 0 ? block.visibleText.length : lineEnd;
       if (start + prefixLength > end) return;
       if (prefixLength > 0 &&
-          !RegExp(r'^(?:TODO |\[\] |\[ \] )')
-              .hasMatch(block.visibleText.substring(start))) {
+          !RegExp(
+            r'^(?:TODO |\[\] |\[ \] )',
+          ).hasMatch(block.visibleText.substring(start))) {
         return;
       }
       final oldText = text;
@@ -1477,6 +1500,21 @@ class TyLogEditingController extends TextEditingController {
       } catch (error) {
         _restore(before, emit: false);
         onError(error);
+        return;
+      }
+    }
+    // A pasted Markdown table becomes a Typst table.
+    final table = markdownTableSource(pasted);
+    if (table != null) {
+      final sel = selection.isValid
+          ? selection
+          : TextSelection.collapsed(offset: text.length);
+      var offset = sel.end;
+      if (_format(
+        () => offset = document.insertBlock(sel, table),
+        selectionOffset: () => offset,
+        quiet: true,
+      )) {
         return;
       }
     }
@@ -1928,8 +1966,9 @@ class TyLogEditingController extends TextEditingController {
               onLongPress:
                   interactive &&
                       onProtectedLongPress != null &&
-                      RegExp(r'^#tylog\.ref-note\s*\(')
-                          .hasMatch(part.source!.trimLeft())
+                      RegExp(
+                        r'^#tylog\.ref-note\s*\(',
+                      ).hasMatch(part.source!.trimLeft())
                   ? () => onProtectedLongPress!(part.id!)
                   : null,
               unresolved: resolvedKind == 'unresolved',

@@ -1291,6 +1291,14 @@ class _TyLogRichEditorState extends State<TyLogRichEditor>
                     action!();
                   },
                 ),
+              if (widget.controller.selectedTableSource != null)
+                ContextMenuButtonItem(
+                  label: 'Make table',
+                  onPressed: () {
+                    state.hideToolbar();
+                    widget.controller.convertSelectionToTable();
+                  },
+                ),
               if (!widget.controller.selection.isCollapsed)
                 ContextMenuButtonItem(
                   type: ContextMenuButtonType.copy,

@@ -1465,6 +1465,83 @@ void main() {
     expect(await paste('note', 'intro\n- one'), contains('\\- one'));
   });
 
+  const markdownTable =
+      '| По-португальски  | Произношение     | Перевод           |\n'
+      '| ---------------- | ---------------- | ----------------- |\n'
+      '| Estou bem, e tu? | Штоу бэйм, и ту? | Хорошо, а ты?     |\n'
+      '| Tudo fixe!       | Туду фиш!        | Всё [отлично]!    |\n';
+  const typstTable =
+      '#table(\n'
+      '  columns: 3,\n'
+      '  [*По-португальски*], [*Произношение*], [*Перевод*],\n'
+      '  [Estou bem, e tu?], [Штоу бэйм, и ту?], [Хорошо, а ты?],\n'
+      '  [Tudo fixe!], [Туду фиш!], [Всё \\[отлично\\]!],\n'
+      ')';
+
+  test('a Markdown table converts to a Typst table', () {
+    expect(markdownTableSource(markdownTable), typstTable);
+    expect(
+      markdownTableSource('a | b\n:--- | ---:\n1\n'),
+      '#table(\n  columns: 2,\n  [*a*], [*b*],\n  [1], [],\n)',
+    );
+    expect(markdownTableSource('| a | b |\n| x | y |'), isNull); // no rule
+    expect(markdownTableSource('- one\n- two'), isNull);
+    expect(markdownTableSource('| only |\n| --- |'), isNull); // one column
+  });
+
+  testWidgets('a pasted Markdown table becomes a table', (tester) async {
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async => call.method == 'Clipboard.getData'
+          ? <String, dynamic>{'text': markdownTable}
+          : null,
+    );
+    var saved = '';
+    final controller = TyLogEditingController(
+      source: 'note',
+      onSourceChanged: (value) => saved = value,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    controller.selection = TextSelection.collapsed(
+      offset: controller.text.length,
+    );
+    await controller.paste();
+    expect(saved, contains(typstTable));
+    expect(TyLogDocument.parse(saved).toSource(), saved);
+  });
+
+  test('a selected Markdown table converts to a table', () {
+    var saved = '';
+    final controller = TyLogEditingController(
+      source: 'Before\n\n${markdownTable.trim()}\n\nAfter',
+      onSourceChanged: (value) => saved = value,
+      onError: (error) => fail('$error'),
+      onProtectedTap: (_) {},
+    );
+    addTearDown(controller.dispose);
+    final start = controller.text.indexOf('| По');
+    final end = controller.text.indexOf('After');
+    controller.selection = TextSelection(
+      baseOffset: start,
+      extentOffset: start + 3,
+    );
+    expect(controller.selectedTableSource, isNull); // a fragment is not a table
+    controller.selection = TextSelection(baseOffset: start, extentOffset: end);
+    expect(controller.selectedTableSource, isNotNull);
+    expect(controller.convertSelectionToTable(), isTrue);
+    expect(saved, contains(typstTable));
+    expect(saved, startsWith('Before'));
+    expect(saved.trimRight(), endsWith('After'));
+  });
+
   test('copy and paste inside TyLog retains rich formatting', () async {
     String? saved;
     final controller = TyLogEditingController(

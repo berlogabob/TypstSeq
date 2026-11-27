@@ -5,6 +5,10 @@ their history is in the commit log and the GitHub release notes.
 
 ## Unreleased
 
+### New
+
+- Pasting a Markdown table into a note turns it into a Typst table, and selecting one in the editor offers **Make table**.
+
 ## 0.26.2+181
 
 ### Fixed
