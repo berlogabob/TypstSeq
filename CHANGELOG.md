@@ -5,11 +5,12 @@ their history is in the commit log and the GitHub release notes.
 
 ## Unreleased
 
+## 0.26.1+180
+
 ### New
 
 - Questions about Portuguese. Tag a question with `#pt-ask` (or `#pt-ask-audio` to hear the replies) and the Mac worker answers it in a note in "Meu português": what it means, a table of replies with pronunciation and translation, and the one to use. The day page links to it.
 
-## 0.26.1+179
 
 ### Fixed
 
