@@ -27,7 +27,8 @@ import '../nextcloud_sync.dart' show isSyncInternalPath;
 class VaultDavServer {
   VaultDavServer({
     required this.storage,
-    required this.password,
+    this.password,
+    this.authorize,
     this.generation,
     this.onWritten,
     this.onNotify,
@@ -38,7 +39,13 @@ class VaultDavServer {
   static const rootPath = '/tylog-vault-dav/';
 
   final VaultStorage storage;
-  final String password;
+
+  /// One password for every user (tests, single peer)...
+  final String? password;
+
+  /// ...or a check per user: the syncing peer sends its node id as the user
+  /// name and the secret both sides derived at pairing as the password.
+  final bool Function(String user, String password)? authorize;
   final int Function(String path)? generation;
 
   /// A peer wrote or deleted [path]: refresh the index and mark it pending for
@@ -129,7 +136,11 @@ class VaultDavServer {
     }
     final colon = decoded.indexOf(':');
     if (colon < 0) return false;
-    return _constantTimeEquals(decoded.substring(colon + 1), password);
+    final user = decoded.substring(0, colon);
+    final secret = decoded.substring(colon + 1);
+    final fixed = password;
+    if (fixed != null && _constantTimeEquals(secret, fixed)) return true;
+    return authorize?.call(user, secret) ?? false;
   }
 
   /// The vault-relative path for a request path, '' for the root, a trailing
@@ -420,6 +431,9 @@ class VaultDavServer {
     }
   }
 }
+
+/// Compares secrets without an early exit on the first differing byte.
+bool constantTimeEquals(String a, String b) => _constantTimeEquals(a, b);
 
 bool _constantTimeEquals(String a, String b) {
   final x = utf8.encode(a);

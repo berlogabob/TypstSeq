@@ -547,6 +547,10 @@ class WorkspaceController extends ChangeNotifier {
   SyncResult? lastSync;
   List<SyncConflict> syncConflicts = const [];
   DateTime? lastSyncAt;
+
+  /// Per paired peer (node id): the last sync failure, and the last success.
+  final peerSyncErrors = <String, String>{};
+  final peerLastSyncAt = <String, DateTime>{};
   DateTime? lastPollAt;
   String? syncError;
 
@@ -2839,7 +2843,11 @@ class WorkspaceController extends ChangeNotifier {
       return false;
     }
     final local = localDirectory;
-    if (local != null && isNextcloudManagedVault(local)) {
+    // A paired peer syncs through the app even where Nextcloud Desktop moves
+    // the files for the server.
+    if (local != null &&
+        isNextcloudManagedVault(local) &&
+        !(config?.isPeer ?? false)) {
       return _syncDesktopRevisions(opened, generation);
     }
     if (config == null) throw const WorkspaceSyncNotConfigured();
@@ -3080,12 +3088,19 @@ class WorkspaceController extends ChangeNotifier {
         }
       }
       if (!_owns(opened, generation)) return false;
-      lastSync = result;
-      _pollNextAt = null;
-      _pollFailures = 0;
-      lastSyncAt = _now();
-      _transientFailures = 0;
-      _firstTransientFailureAt = null;
+      if (config.isPeer) {
+        // A peer's outcome is its own: the server's status, backoff and
+        // last-sync time describe Nextcloud.
+        peerSyncErrors.remove(config.peerId);
+        peerLastSyncAt[config.peerId!] = _now();
+      } else {
+        lastSync = result;
+        _pollNextAt = null;
+        _pollFailures = 0;
+        lastSyncAt = _now();
+        _transientFailures = 0;
+        _firstTransientFailureAt = null;
+      }
       syncConflicts = conflicts;
       final changed =
           result.uploaded +
@@ -3126,6 +3141,19 @@ class WorkspaceController extends ChangeNotifier {
       // stale record — which is where sync problems are most likely — every
       // sync failure was silently discarded.
       if (!_owns(opened, generation)) return false;
+      if (config.isPeer) {
+        // An offline peer is normal, not a sync failure: record it on the
+        // peer and leave Nextcloud's error, status and backoff alone.
+        peerSyncErrors[config.peerId!] = friendlySyncError(error);
+        notifyListeners();
+        final conflicts = await loadSyncConflicts(opened);
+        if (!_owns(opened, generation)) return false;
+        syncConflicts = conflicts;
+        if (localContentChanged) {
+          await _scan(opened, generation: generation, updateStatus: false);
+        }
+        return false;
+      }
       final transient = error is WebDavStatusException
           ? error.statusCode >= 500 && error.statusCode <= 599 ||
                 const {423, 429}.contains(error.statusCode)

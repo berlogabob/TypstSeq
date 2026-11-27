@@ -1,3 +1,4 @@
+import 'p2p/peer_entry.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -65,6 +66,7 @@ class VaultEntry {
     this.backupPath,
     this.cloud,
     this.recent = const [],
+    this.peers = const [],
   });
 
   final String id;
@@ -75,6 +77,9 @@ class VaultEntry {
   final String? backupPath;
   final NextcloudConfig? cloud;
   final List<RecentNote> recent;
+
+  /// Devices paired with this vault for P2P sync.
+  final List<PeerEntry> peers;
 
   VaultStorage get storage => storageKind == 'android-tree'
       ? AndroidTreeVaultStorage(uri: treeUri!, name: name)
@@ -88,6 +93,7 @@ class VaultEntry {
     String? backupPath,
     NextcloudConfig? cloud,
     List<RecentNote>? recent,
+    List<PeerEntry>? peers,
   }) => VaultEntry(
     id: id,
     name: name ?? this.name,
@@ -97,6 +103,7 @@ class VaultEntry {
     backupPath: backupPath ?? this.backupPath,
     cloud: cloud ?? this.cloud,
     recent: recent ?? this.recent,
+    peers: peers ?? this.peers,
   );
 
   Map<String, Object?> toJson() => {
@@ -108,6 +115,7 @@ class VaultEntry {
     if (backupPath != null) 'backupPath': backupPath,
     if (cloud != null) 'nextcloud': cloud!.toJson(),
     if (recent.isNotEmpty) 'recent': recent.map((r) => r.toJson()).toList(),
+    if (peers.isNotEmpty) 'peers': peers.map((p) => p.toJson()).toList(),
   };
 
   factory VaultEntry.fromJson(Map<String, Object?> json) {
@@ -132,6 +140,9 @@ class VaultEntry {
               (json['nextcloud'] as Map).cast<String, Object?>(),
             )
           : null,
+      peers: json['peers'] is List
+          ? (json['peers'] as List).map(PeerEntry.fromJson).nonNulls.toList()
+          : const [],
       recent: json['recent'] is List
           ? (json['recent'] as List)
                 .map(
