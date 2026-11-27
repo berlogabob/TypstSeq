@@ -28,6 +28,16 @@ class MainActivity : FlutterActivity() {
 
     private external fun initP2p(context: android.content.Context): Boolean
 
+    /// iroh needs the Android context (for DNS) before the P2P node starts, in
+    /// every package. Lazy, so startup does not load the library early; a build
+    /// without the `p2p` feature has no such symbol and reports false.
+    private val p2pReady by lazy {
+        try {
+            System.loadLibrary("typst_flutter")
+            initP2p(applicationContext)
+        } catch (e: UnsatisfiedLinkError) { false }
+    }
+
     private lateinit var safBridge: SafBridge
     private lateinit var shareChannel: MethodChannel
     private val pendingShares = java.util.ArrayDeque<Map<String, String>>()
@@ -115,12 +125,9 @@ class MainActivity : FlutterActivity() {
         shareChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "org.tylog.tylog/share")
         shareChannel.setMethodCallHandler { call, result ->
             if (call.method == "getPendingShare") result.success(pendingShares.poll())
+            else if (call.method == "initP2p") result.success(p2pReady)
             else if (call.method == "isProfileTest") {
-                if (packageName != "org.tylog.tylog.profiletest") result.success(false)
-                else try {
-                    System.loadLibrary("typst_flutter")
-                    result.success(initP2p(applicationContext))
-                } catch (e: UnsatisfiedLinkError) { result.success(false) }
+                result.success(packageName == "org.tylog.tylog.profiletest" && p2pReady)
             }
             else result.notImplemented()
         }

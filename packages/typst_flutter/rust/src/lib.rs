@@ -12,10 +12,15 @@ pub mod quicklook_ffi;
 #[allow(clippy::all, clippy::not_unsafe_ptr_arg_deref)]
 pub mod frb_generated;
 
+#[cfg(feature = "p2p")]
+mod p2p_node;
+#[cfg(not(feature = "p2p"))]
+mod p2p_stub;
+
 #[cfg(all(test, feature = "p2p-harness"))]
 mod p2p_harness_tests;
 
-#[cfg(all(target_os = "android", feature = "p2p-harness"))]
+#[cfg(all(target_os = "android", feature = "p2p"))]
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_org_tylog_tylog_MainActivity_initP2p(
     env: jni::JNIEnv<'_>,
