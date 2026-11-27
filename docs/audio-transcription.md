@@ -208,7 +208,7 @@ Mark them `"cloud": true`. With such a connection in a priority list, note text 
 earlier connections fail. Speech (transcription, phrase audio) never uses them. The heartbeat reports them as
 reachable without probing. The app has no screen for `priority`; saving settings in the app keeps the list.
 
-## Phrase notes (`#pt`, `#pt-audio`)
+## Phrase notes (`#pt`, `#pt-audio`, `#pt-ask`)
 
 `tool/phrase_notes.py`, `tool/phrase_audio.py`. A block of a daily note tagged `#pt` (text) or `#pt-audio`
 (text and audio) becomes a practice note in the personal module "Meu português" (`my-portuguese`). The worker
@@ -231,6 +231,11 @@ never edits the daily note.
   back; under 0.9 it is made again, up to 4 times, and the best clip is kept with its score in the job.
 - Limits: editing a processed block makes a second note (blocks are identified by their text); a failed job is
   not retried on its own; names are transliterated as written.
+- Questions: `#pt-ask` (or `#pt-ask-audio`) marks a question about Portuguese ("Таш бэйм? Как отвечать?").
+  The answer goes to `projects/my-portuguese/<date>-ask-<hash8>.typ`, written in the question's language:
+  `== Question`, `== Answer`, a `== Replies` table (Portuguese, pronunciation in the question's letters,
+  meaning) and `== Use` with the reply to pick and a practice task. The note refers to its day, so the day page
+  lists it under linked references. A reply with a Brazilian form asks once more; audio speaks the replies.
 
 At the end of every run the worker attempts to write
 `<vault>/_system/workers/<hostname>.json`:

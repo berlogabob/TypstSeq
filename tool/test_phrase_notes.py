@@ -127,7 +127,60 @@ def test_settings_keep_the_phrases_task(tmp_path):
 
 def test_typed_hashtag_is_a_tag():
     text = "- 14:28 other\n\nContext line.\nOlá Andrea, como estás? \\#pt\n\n- 15:00 A: Olá. \\#pt-audio\n  - B: Bom dia.\n- \\#ptx no\n"
-    assert phrase_notes.tagged_blocks(text) == [(["Olá Andrea, como estás?"], False), (["A: Olá.", "B: Bom dia."], True)]
+    assert phrase_notes.tagged_blocks(text) == [(["Olá Andrea, como estás?"], False, False),
+                                                (["A: Olá.", "B: Bom dia."], True, False)]
+
+
+ASK_DAILY = ('#import "/_system/tylog.typ" as tylog\n\n= 2026-11-24\n\n'
+             '- 11:51 На вопрос на португальском\nТаш бэйм?\nКак надо отвечать?\n#tylog.tag("pt-ask-audio")\n')
+ANSWER = {"title": "Tás bem?", "answer": ["Разговорная форма «Estás bem?»: «Как дела?»."],
+          "replies": [{"pt": "Tudo bem, e tu?", "say": "Туду бэйм, и ту?", "meaning": "Всё хорошо, а ты?"},
+                      {"pt": "Mais ou menos.", "say": "Майз оу менуш.", "meaning": "Более-менее."},
+                      {"pt": 3}],
+          "pick": "Tudo bem, e tu?", "why": "Просто и дружелюбно."}
+
+
+def test_ask_tags_are_found():
+    assert phrase_notes.tagged_blocks(ASK_DAILY) == [
+        (["На вопрос на португальском", "Таш бэйм?", "Как надо отвечать?"], True, True)]
+    assert phrase_notes.tagged_blocks("Q? \\#pt-ask\n- \\#pt-askx no\n") == [(["Q?"], False, True)]
+
+
+def test_ask_job_writes_an_answer_note_linked_to_the_day(tmp_path, monkeypatch):
+    vault, note = make_vault(tmp_path)
+    note.write_text(ASK_DAILY, encoding="utf-8")
+    os.utime(note, (NOW.timestamp() - 3600,) * 2)
+    assert phrase_notes.sweep(vault, NOW, {}) == 1
+    job = jobs(vault, "phrases")[0]
+    assert job["ask"] is True and job["audio"] is True and job["phrase"].startswith("2026-11-24-ask-")
+    asked = fake_llm(monkeypatch, [ANSWER])
+    phrase_notes.run_job(vault, job, {"tasks": {"phrases": {"model": "muse"}}})
+    assert job["lang"] == "ru" and len(asked) == 1  # Cyrillic needs no language call; no Brazilian form, no re-ask
+    text = (vault / job["phrase_note"]).read_text(encoding="utf-8")
+    assert 'title: "Tás bem?"' in text and '"pt-ask"' in text
+    assert 'From #tylog.ref-note("2026-11-24")[2026-11-24]' in text
+    assert '[*По-португальски*], [*Произношение*], [*Перевод*], [Tudo bem, e tu?], [Туду бэйм, и ту?]' in text
+    assert "== Use\n\n*Tudo bem, e tu?* — Просто и дружелюбно." in text
+    assert jobs(vault, "phrase-audio")[0]["lines"] == ["Tudo bem, e tu?", "Mais ou menos."]
+    assert note.read_text(encoding="utf-8") == ASK_DAILY  # the day page links back through the reference
+    record = json.loads((vault / "_system/modules/my-portuguese.json").read_text(encoding="utf-8"))
+    assert list(record["files"]) == [job["phrase_note"]]
+
+
+def test_ask_with_a_brazilian_reply_is_asked_again(tmp_path, monkeypatch):
+    vault, note = make_vault(tmp_path)
+    note.write_text("Как сказать «телефон»?\n\\#pt-ask\n", encoding="utf-8")
+    os.utime(note, (NOW.timestamp() - 3600,) * 2)
+    phrase_notes.sweep(vault, NOW, {})
+    job = jobs(vault, "phrases")[0]
+    brazilian = {**ANSWER, "replies": [{"pt": "o celular", "say": "у селулар", "meaning": "телефон"}], "pick": ""}
+    european = {**ANSWER, "replies": [{"pt": "o telemóvel", "say": "у тэлэмовэл", "meaning": "телефон"}], "pick": ""}
+    asked = fake_llm(monkeypatch, [brazilian, european])
+    phrase_notes.run_job(vault, job, {"tasks": {"phrases": {"model": "muse"}}})
+    assert len(asked) == 2 and "brazilian" not in job
+    text = (vault / job["phrase_note"]).read_text(encoding="utf-8")
+    assert "telemóvel" in text and "celular" not in text and "== Use" not in text
+    assert not jobs(vault, "phrase-audio")
 
 
 def test_tagged_recording_stands_for_its_transcript(tmp_path):
@@ -136,4 +189,4 @@ def test_tagged_recording_stands_for_its_transcript(tmp_path):
     (tmp_path / "notes").mkdir()
     (tmp_path / "notes/Audio rec1.typ").write_text("= Audio\n\n== Summary ru\n\n- 00:00 x\n\n== Transcript\n\n"
                                                    "- 00:03 Привет, Андрей.\n- 00:06 Давно не видел.\n", encoding="utf-8")
-    assert phrase_notes.tagged_blocks(text, tmp_path) == [(["Привет, Андрей.", "Давно не видел."], True)]
+    assert phrase_notes.tagged_blocks(text, tmp_path) == [(["Привет, Андрей.", "Давно не видел."], True, False)]

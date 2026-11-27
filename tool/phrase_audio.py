@@ -187,7 +187,7 @@ def run_job(vault, job, speech):
     source = note.read_text(encoding="utf-8")
     line = f'#tylog.attachment("{relative}", kind: "audio")[Audio]'
     if relative not in source:
-        source = re.sub(r"^(== (?:Corrected|Translation pt)\n)", lambda m: m[1] + "\n" + line + "\n", source,
+        source = re.sub(r"^(== (?:Corrected|Translation pt|Replies)\n)", lambda m: m[1] + "\n" + line + "\n", source,
                         count=1, flags=re.MULTILINE)
         note.write_text(source, encoding="utf-8")
     for path in (job["note"], relative, relative + ".peaks"):

@@ -15,7 +15,7 @@ MODULE = "my-portuguese"
 SCAN_DAYS = 14  # daily notes older than this are not looked at
 QUIET_SECONDS = 600  # a daily note edited more recently is still being typed
 # The tag as the app writes it: the tag call, or a typed hashtag kept as text ("\\#pt").
-TAG = re.compile(r'(?:#tylog\.tag\("|\\#)(pt-audio|pt)(?:"\)|(?![\w-]))')
+TAG = re.compile(r'(?:#tylog\.tag\("|\\#)(pt-ask-audio|pt-ask|pt-audio|pt)(?:"\)|(?![\w-]))')
 # Forms a Portuguese person would not write. Also the competition's Brazilian count (tool/championship/lang_bench).
 # ponytail: a fixed list; "Se ..." and "Nos ..." at a sentence start are not checked (they are also "if" and "in the").
 BRAZILIAN = re.compile(
@@ -90,7 +90,8 @@ def transcript_rows(vault, recording):
 
 
 def tagged_blocks(text, vault=None):
-    """[(lines, audio)] for each #pt / #pt-audio tag in a daily note.
+    """[(lines, audio, ask)] for each #pt / #pt-audio / #pt-ask / #pt-ask-audio tag in a daily note.
+    ask: the lines are a question about Portuguese, answered in a note of its own.
 
     A tagged voice recording stands for what was said: its rows are the transcript from its audio note, and
     the block is left for a later sweep while that transcript is not written yet.
@@ -119,7 +120,7 @@ def tagged_blocks(text, vault=None):
                  for line in (transcript_rows(vault, recording[1]) if recording and vault else [row])]
         lines = [line for line in map(clean_line, block) if line]
         if lines and not any(recording and not transcript_rows(vault, recording[1]) for _, recording in spoken if vault):
-            blocks.append((lines, tag.group(1) == "pt-audio"))
+            blocks.append((lines, tag.group(1).endswith("audio"), tag.group(1).startswith("pt-ask")))
     return blocks
 
 
@@ -140,14 +141,15 @@ def sweep(vault, now, state, force=False):
         note = vault / "daily" / day[:4] / day[5:7] / f"{day}.typ"
         if not note.is_file() or now.timestamp() - note.stat().st_mtime < QUIET_SECONDS:
             continue
-        for lines, with_audio in tagged_blocks(note.read_text(encoding="utf-8"), vault):
-            key = hashlib.sha1("\n".join(lines).encode("utf-8")).hexdigest()[:8]
-            path = worker._job_file(vault, "phrases", f"{day}\n{key}")
+        for lines, with_audio, ask in tagged_blocks(note.read_text(encoding="utf-8"), vault):
+            key = hashlib.sha1(("ask\n" * ask + "\n".join(lines)).encode("utf-8")).hexdigest()[:8]
+            phrase = f"{day}-{'ask-' * ask}{key}"
+            path = worker._job_file(vault, "phrases", f"{day}\n{'ask-' * ask}{key}")
             path.parent.mkdir(parents=True, exist_ok=True)
             try:
                 with path.open("x", encoding="utf-8") as stream:
-                    json.dump({"note": note.relative_to(vault).as_posix(), "date": day, "phrase": f"{day}-{key}",
-                               "lines": lines, "audio": with_audio, "status": "queued", "auto": True,
+                    json.dump({"note": note.relative_to(vault).as_posix(), "date": day, "phrase": phrase,
+                               "lines": lines, "audio": with_audio, "ask": ask, "status": "queued", "auto": True,
                                "requested_at": now.astimezone(timezone.utc).isoformat()},
                               stream, ensure_ascii=False, indent=2)
                 created += 1
@@ -219,6 +221,64 @@ def render(job, lang, portuguese, changes, translations, left):
     return "\n".join(parts) + "\n"
 
 
+ASK_LABELS = {"ru": ("По-португальски", "Произношение", "Перевод"), "en": ("Portuguese", "Say it", "Meaning")}
+
+
+def answer(lines, lang, chat):
+    """The answer to a learner's question about Portuguese, in the question's language:
+    {"title", "answer": [paragraphs], "replies": [{"pt", "say", "meaning"}], "pick", "why"}.
+    A reply entry that is not three strings is dropped; a reply that is not a JSON object raises ValueError."""
+    name = worker.LANGUAGE_NAMES.get(lang, lang)
+    system = (f"A learner of European Portuguese asks a question in {name}. Answer it in {name}, briefly, as a "
+              f"teacher who lives in Portugal. {PT_PT} Return only a JSON object: "
+              '{"title": the Portuguese words the question is about, "answer": [short paragraphs: what it means '
+              'and when it is used], "replies": [{"pt": a Portuguese phrase, "say": how to pronounce it, written '
+              f'in {name} letters, "meaning": its meaning in {name}}}] (natural answers or examples, 3 to 6), '
+              '"pick": the one phrase from replies you would use with colleagues, "why": one sentence}.')
+    reply = worker._reply_object(chat([{"role": "system", "content": system},
+                                       {"role": "user", "content": "\n".join(lines)}], json_mode=True))
+    if not isinstance(reply, dict):
+        raise ValueError("Answer is not a JSON object")
+    text = lambda key: reply.get(key).strip() if isinstance(reply.get(key), str) else ""  # noqa: E731
+    paragraphs = reply.get("answer")
+    paragraphs = [paragraphs] if isinstance(paragraphs, str) else paragraphs or []
+    replies = [{key: item[key].strip() for key in ("pt", "say", "meaning")}
+               for item in reply.get("replies") or []
+               if isinstance(item, dict) and all(isinstance(item.get(key), str) for key in ("pt", "say", "meaning"))]
+    if not replies and not any(isinstance(p, str) and p.strip() for p in paragraphs):
+        raise ValueError("Answer has neither text nor replies")
+    return {"title": text("title"), "answer": [p.strip() for p in paragraphs if isinstance(p, str) and p.strip()],
+            "replies": replies, "pick": text("pick"), "why": text("why")}
+
+
+def render_answer(job, lang, reply, left):
+    """The answer note's Typst source. The day page lists it under its linked references."""
+    esc = worker.escape_markup
+    quoted = lambda text: json.dumps(text, ensure_ascii=False).replace("#", "\\u{23}")  # noqa: E731
+    ident = f"{MODULE}-{job['phrase']}"
+    title = reply["title"] or job["lines"][0]
+    title = title if len(title) <= 60 else title[:57].rstrip() + "..."
+    parts = ['#import "/_system/tylog.typ" as tylog',
+             f'#show: tylog.note.with(id: "{ident}", title: {quoted(title)}, kind: "note", project: "Português", '
+             f'tags: ("português", "pt-ask", "module-{MODULE}"), properties: ("source": "{job["date"]}", '
+             f'"lang": "{lang}"))',
+             "",
+             f'From #tylog.ref-note("{job["date"]}")[{job["date"]}]',
+             "", "== Question", "", "\n\n".join(esc(line) for line in job["lines"]),
+             "", "== Answer", "", "\n\n".join(esc(p) for p in reply["answer"])]
+    if reply["replies"]:
+        head = ASK_LABELS.get(lang, ASK_LABELS["en"])
+        cells = [f"[*{esc(label)}*]" for label in head]
+        cells += [f"[{esc(item[key])}]" for item in reply["replies"] for key in ("pt", "say", "meaning")]
+        parts += ["", "== Replies", "", "#table(columns: 3, " + ", ".join(cells) + ")"]
+    if left:
+        parts += ["", "#emph[Not checked as European Portuguese: " + esc(", ".join(sorted({f for v in left.values() for f in v}))) + "]"]
+    if reply["pick"]:
+        parts += ["", "== Use", "", f"*{esc(reply['pick'])}*" + (f" — {esc(reply['why'])}" if reply["why"] else "")]
+        parts += ["", f'#tylog.task(id: "{ident}-task", text: {quoted(reply["pick"])}, project: "Português")']
+    return "\n".join(parts) + "\n"
+
+
 def record_file(vault, relative):
     """Adds or refreshes `relative` in the personal module's record, which lists the module in the app."""
     path = vault / "_system/modules" / f"{MODULE}.json"
@@ -237,6 +297,8 @@ def run_job(vault, job, settings):
     # 8000: a reasoning model spent the default 3000 thinking about a five-line dialogue and answered nothing.
     model, chat = worker.llm_chat(settings, max_tokens=8000)
     lang = language("\n".join(lines), chat)
+    if job.get("ask"):
+        return _run_ask(vault, job, lang, chat, model)
     if lang == "pt":
         (portuguese, changes), left = _european(lambda rows, avoid: correct(rows, chat, avoid), lines)
     else:
@@ -253,16 +315,45 @@ def run_job(vault, job, settings):
     if left:
         job["brazilian"] = sorted({form for forms in left.values() for form in forms})
     if job.get("audio"):
-        path = worker._job_file(vault, "phrase-audio", job["phrase"])
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"note": relative, "phrase": job["phrase"], "lines": portuguese,
-                                    "status": "queued", "auto": True, "requested_at": job["requested_at"]},
-                                   ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        _queue_audio(vault, job, relative, portuguese)
+
+
+def _queue_audio(vault, job, relative, lines):
+    path = worker._job_file(vault, "phrase-audio", job["phrase"])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"note": relative, "phrase": job["phrase"], "lines": lines,
+                                "status": "queued", "auto": True, "requested_at": job["requested_at"]},
+                               ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _run_ask(vault, job, lang, chat, model):
+    """Writes the answer note of a #pt-ask job; for #pt-ask-audio, queues a clip of the replies.
+    The answer is asked again once when a reply uses a Brazilian form; forms still there are flagged."""
+    reply = answer(job["lines"], lang, chat)
+    left = {index: brazilian(item["pt"]) for index, item in enumerate(reply["replies"]) if brazilian(item["pt"])}
+    if left:
+        again = answer(job["lines"] + ["(" + PT_PT + " Avoid: " + ", ".join(f for v in left.values() for f in v) + ")"],
+                       lang, chat)
+        again_left = {i: brazilian(item["pt"]) for i, item in enumerate(again["replies"]) if brazilian(item["pt"])}
+        if again["replies"] and len(again_left) < len(left):
+            reply, left = again, again_left
+    relative = f"projects/{MODULE}/{job['phrase']}.typ"
+    target = vault / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(render_answer(job, lang, reply, left), encoding="utf-8")
+    record_file(vault, relative)
+    portuguese = [item["pt"] for item in reply["replies"]]
+    job.update(lang=lang, llm=model, phrase_note=relative, portuguese=portuguese)
+    if left:
+        job["brazilian"] = sorted({form for forms in left.values() for form in forms})
+    if job.get("audio") and portuguese:
+        _queue_audio(vault, job, relative, portuguese)
 
 
 if __name__ == "__main__":
     demo = '- 10:05 Fui ao médico #tylog.tag("pt-audio")\n  - Médico: Bom dia\n- other\n\nХочу кофе\n#tylog.tag("pt")\n'
-    assert tagged_blocks(demo) == [(["Fui ao médico", "Médico: Bom dia"], True), (["Хочу кофе"], False)]
+    assert tagged_blocks(demo) == [(["Fui ao médico", "Médico: Bom dia"], True, False), (["Хочу кофе"], False, False)]
+    assert tagged_blocks("Таш бэйм?\nКак отвечать?\n\\#pt-ask\n") == [(["Таш бэйм?", "Как отвечать?"], False, True)]
     assert clean_line('- #tylog.ref-note("x")[Rui] disse \\#olá') == "Rui disse #olá"
     assert brazilian("Me chamo Alex. Você tem um celular?") == ["me chamo", "você", "celular"]
     assert not brazilian("Se chover, fico em casa. Está lindo! Nos dias de sol estou a trabalhar.")
