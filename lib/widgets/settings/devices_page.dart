@@ -8,6 +8,7 @@ import '../../p2p/p2p_service.dart';
 import '../../p2p/peer_entry.dart';
 import '../app_icons.dart';
 import '../constants.dart';
+import '../ds/app_sheet.dart';
 import '../ds/app_tile.dart';
 import '../snack.dart';
 import 'scope_note.dart';
@@ -97,25 +98,23 @@ class _DevicesPageState extends State<DevicesPage> {
   }
 
   Future<void> _peerMenu(PeerEntry peer) async {
-    final action = await showModalBottomSheet<String>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(AppIcons.sync),
-              title: const Text('Sync now'),
-              onTap: () => Navigator.pop(context, 'sync'),
-            ),
-            ListTile(
-              leading: const Icon(AppIcons.delete),
-              title: const Text('Remove device'),
-              subtitle: const Text('It stops syncing with this vault'),
-              onTap: () => Navigator.pop(context, 'remove'),
-            ),
-          ],
-        ),
+    final action = await showAppSheet<String>(
+      context,
+      builder: (context) => AppSheet(
+        title: peer.name,
+        children: [
+          ListTile(
+            leading: const Icon(AppIcons.sync),
+            title: const Text('Sync now'),
+            onTap: () => Navigator.pop(context, 'sync'),
+          ),
+          ListTile(
+            leading: const Icon(AppIcons.delete),
+            title: const Text('Remove device'),
+            subtitle: const Text('It stops syncing with this vault'),
+            onTap: () => Navigator.pop(context, 'remove'),
+          ),
+        ],
       ),
     );
     if (action == 'sync') {
