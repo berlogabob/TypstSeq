@@ -40,15 +40,31 @@ class NextcloudConfig {
     required this.password,
     this.remoteFolder = 'TyLogVault',
     this.kind = 'nextcloud',
+    this.peerId,
   });
 
   final String serverUrl;
   final String username;
   final String password;
   final String remoteFolder;
-  final String kind;
 
-  bool get isWebDav => kind == 'webdav';
+  /// `nextcloud`, `webdav`, or `peer`: a paired device's vault served as plain
+  /// WebDAV through the local P2P tunnel (`serverUrl` is a loopback port that
+  /// changes every run, so its sync state is keyed by [peerId] instead).
+  final String kind;
+  final String? peerId;
+
+  bool get isPeer => kind == 'peer' && (peerId?.isNotEmpty ?? false);
+  bool get isWebDav => kind == 'webdav' || kind == 'peer';
+
+  /// The vault-pending-writes key for this remote: null for the server.
+  String? get pendingKey => isPeer ? peerId : null;
+
+  /// Each remote keeps its own cursors: one shared file would be reset every
+  /// time a different remote synced (see `remoteKey` in sync_state.dart).
+  String get syncStatePath => isPeer
+      ? '.tylog/sync_state.peer-${peerId!.length > 16 ? peerId!.substring(0, 16) : peerId}.json'
+      : '.tylog/sync_state.json';
 
   bool get isReady {
     final server = Uri.tryParse(serverUrl.trim());
@@ -112,6 +128,7 @@ class NextcloudConfig {
     password: password,
     remoteFolder: remoteFolder,
     kind: kind,
+    peerId: peerId,
   );
 
   // ponytail: password lives in the OS keystore only, never in vaults.json /
@@ -121,6 +138,7 @@ class NextcloudConfig {
     'username': username,
     'remoteFolder': remoteFolder,
     if (kind != 'nextcloud') 'kind': kind,
+    if (peerId != null) 'peerId': peerId,
   };
 
   static NextcloudConfig fromJson(Map<String, Object?> json) => NextcloudConfig(
@@ -130,6 +148,7 @@ class NextcloudConfig {
     password: json['password'] as String? ?? '',
     remoteFolder: json['remoteFolder'] as String? ?? 'TyLogVault',
     kind: json['kind'] as String? ?? 'nextcloud',
+    peerId: json['peerId'] as String?,
   );
 
   static const _secure = FlutterSecureStorage();
@@ -525,7 +544,7 @@ class NextcloudSync {
     // Local writes this pass will have accounted for by the time it completes.
     // Snapshotted before any work so a save landing mid-pass is not cleared
     // unseen.
-    final coveredWrites = vault.pendingSyncWrites;
+    final coveredWrites = vault.pendingSyncWritesFor(config.pendingKey);
     final hadLocalWrites = coveredWrites.isNotEmpty;
     var skippedLocalScan = false;
     final deferredLocalPaths = <String>{};
@@ -658,7 +677,7 @@ class NextcloudSync {
           }
           // A save of this same path may have landed during the PUT.
           if (await vault.storage.hash(path) == hash) {
-            vault.clearPendingSyncWrites([path]);
+            vault.clearPendingSyncWrites([path], remote: config.pendingKey);
           }
           coveredWrites.remove(path);
         }
@@ -1178,7 +1197,7 @@ class NextcloudSync {
       // queued for the next one — the same contract the scan cache uses for
       // its own stale set, and the reason both take a snapshot up front rather
       // than clearing wholesale at the end.
-      vault.clearPendingSyncWrites(coveredWrites);
+      vault.clearPendingSyncWrites(coveredWrites, remote: config.pendingKey);
       traceEvents.add({
         'timestamp': DateTime.now().toUtc().toIso8601String(),
         'runId': runId,

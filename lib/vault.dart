@@ -61,12 +61,44 @@ class Vault {
   /// hazard since the beginning; sync had none.
   final _pendingSyncWrites = <String>{};
 
+  /// The same, per paired P2P peer (keyed by peer id). Each remote clears only
+  /// its own set: a Nextcloud pass covering a write says nothing about whether
+  /// a peer has seen it, and the no-change shortcut would skip it for good.
+  final _peerPendingWrites = <String, Set<String>>{};
+
+  /// Every user write this run, never cleared: seeds a peer set created after
+  /// the write, so a peer paired or first synced mid-run still sees it.
+  final _writesThisRun = <String>{};
+
+  /// How many local writes this run touched [path]: part of the P2P DAV
+  /// server's ETag, because size + mtime misses a same-size edit within one
+  /// second on SAF (see `VaultDavServer`).
+  int writeGeneration(String path) => _writeGenerations[path] ?? 0;
+  final _writeGenerations = <String, int>{};
+
+  void _notePendingWrite(String path) {
+    _writeGenerations[path] = writeGeneration(path) + 1;
+    _pendingSyncWrites.add(path);
+    _writesThisRun.add(path);
+    for (final pending in _peerPendingWrites.values) {
+      pending.add(path);
+    }
+  }
+
+  Set<String> _pendingFor(String? remote) => remote == null
+      ? _pendingSyncWrites
+      : _peerPendingWrites.putIfAbsent(remote, () => {..._writesThisRun});
+
   /// Whether a local write is waiting for a sync pass to look at it.
   bool get hasPendingSyncWrites => pendingSyncWrites.isNotEmpty;
 
   /// Snapshot of user writes; derived indexes and sync bookkeeping do not
   /// invalidate the local tree scan. Donors are picked up by the periodic scan.
-  Set<String> get pendingSyncWrites => _pendingSyncWrites
+  Set<String> get pendingSyncWrites => pendingSyncWritesFor(null);
+
+  /// [pendingSyncWrites] for one remote: null is Nextcloud/WebDAV, otherwise a
+  /// peer id.
+  Set<String> pendingSyncWritesFor(String? remote) => _pendingFor(remote)
       .where(
         (path) =>
             !path.startsWith('.tylog/') &&
@@ -96,14 +128,13 @@ class Vault {
     required bool pendingSync,
   }) {
     stale ? _staleNotes.add(path) : _staleNotes.remove(path);
-    pendingSync
-        ? _pendingSyncWrites.add(path)
-        : _pendingSyncWrites.remove(path);
+    pendingSync ? _notePendingWrite(path) : _pendingSyncWrites.remove(path);
   }
 
-  /// Drops paths a completed sync pass covered.
-  void clearPendingSyncWrites(Iterable<String> paths) =>
-      _pendingSyncWrites.removeAll(paths);
+  /// Drops paths a completed sync pass covered, for [remote] only (null is
+  /// Nextcloud/WebDAV, otherwise a peer id).
+  void clearPendingSyncWrites(Iterable<String> paths, {String? remote}) =>
+      _pendingFor(remote).removeAll(paths);
 
   /// Indexing, validation, search and the orphan sweep — the routine all four
   /// contexts share, and the caches that make a repeat pass cheap. Lives in
@@ -186,7 +217,7 @@ class Vault {
         ),
       );
       _staleNotes.add(path);
-      _pendingSyncWrites.add(path);
+      _notePendingWrite(path);
     }
     return path;
   }
@@ -480,7 +511,7 @@ class Vault {
       if (await _isDisposableNote(path)) {
         await storage.delete(path);
         _staleNotes.add(path);
-        _pendingSyncWrites.add(path);
+        _notePendingWrite(path);
         return;
       }
       throw ArgumentError('A TyLog note cannot be empty');
@@ -498,13 +529,13 @@ class Vault {
     }
     await storage.writeText(path, withTylogImport(path, text));
     _staleNotes.add(path);
-    _pendingSyncWrites.add(path);
+    _notePendingWrite(path);
   }
 
   Future<void> deleteNote(String path) async {
     await storage.delete(path);
     _staleNotes.add(path);
-    _pendingSyncWrites.add(path);
+    _notePendingWrite(path);
   }
 
   /// Whether the note at [path] holds nothing worth keeping: absent, blank, an

@@ -55,6 +55,10 @@ extension _SyncStatePersistence on NextcloudSync {
       isSyncInternalPath(path) || !isSyncableVaultPath(path);
 
   String get _remoteKey {
+    // A peer's loopback port changes every run; its identity is the peer id.
+    if (config.isPeer) {
+      return sha256.convert(utf8.encode('peer:${config.peerId}')).toString();
+    }
     final root = config.rootUri;
     final normalized = Uri(
       scheme: root.scheme.toLowerCase(),
@@ -68,7 +72,7 @@ extension _SyncStatePersistence on NextcloudSync {
   }
 
   Future<_SyncState> _loadSyncState(Vault vault) async {
-    const path = '.tylog/sync_state.json';
+    final path = config.syncStatePath;
     if (!await vault.storage.exists(path)) {
       return (
         cursors: <String, SyncCursor>{},
@@ -178,7 +182,10 @@ extension _SyncStatePersistence on NextcloudSync {
       final modified =
           (await vault.storage.stat(path))?.modified?.millisecondsSinceEpoch ??
           DateTime.now().millisecondsSinceEpoch;
-      final archive = '.tylog/sync_state.corrupt-$modified.json';
+      final archive = path.replaceFirst(
+        RegExp(r'\.json$'),
+        '.corrupt-$modified.json',
+      );
       if (!await vault.storage.exists(archive)) {
         await vault.storage.writeText(archive, source);
       }
@@ -200,7 +207,7 @@ extension _SyncStatePersistence on NextcloudSync {
     Map<String, String?>? folders,
   }) async {
     await vault.storage.writeText(
-      '.tylog/sync_state.json',
+      config.syncStatePath,
       jsonEncode({
         'schema': 2,
         'remoteKey': _remoteKey,
