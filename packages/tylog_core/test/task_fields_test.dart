@@ -255,8 +255,8 @@ After the task.
       final firstExpected = firstLoan || secondLoan
           ? first
           : '#tylog.task(id: "t1", status: "todo", properties: ("clocked": (("2026-10-08T13:00:00.000Z", "$iso"),),))\n';
-        final secondExpected =
-            '#tylog.task(id: "t2", status: "doing", properties: (${secondProperties.trimRight()}"clocked": (("$iso", none),),))\n';
+      final secondExpected =
+          '#tylog.task(id: "t2", status: "doing", properties: (${secondProperties.trimRight()}"clocked": (("$iso", none),),))\n';
       expect(
         applyTaskStatus('$first$second', 't2', 'doing', now),
         '$firstExpected$secondExpected',

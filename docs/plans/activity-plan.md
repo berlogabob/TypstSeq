@@ -1180,7 +1180,8 @@ Plan: `docs/plans/2026-11-28-graph-atlas/README.md`. Audit: `docs/audits/2026-11
 - [x] Conceptual model: "Readings of the model"; literature sections 7 and 8 (not read yet)
 - [x] P1 defects: Voronoi repaint, retry loop, cluster name, hues, zoom reset; nearest-node hit test (branch `feat/graph-atlas`)
 - [ ] P1 left out: the hairball banner. It already fires when the node cap truncates (200 > 180); only its wording ("200 notes in view") hides the real count. Do with P3
-- [ ] P2 core model: edge kinds `partOf` / `added` / `cooccurs`, `origin`, one edge per mutual link
+- [x] P2 core model: edge kinds `added` / `cooccurs`, one edge per mutual link, `GraphNode.source` renamed `noteKind`
+- [ ] P2 moved: `origin` goes with P3 (its first user is the Origin filter), `partOf` with P4 (its first user is the Structure map)
 - [ ] P3 atlas state and one bar for every map (meets thesis rule 3)
 - [ ] P4 Structure map; Network ranked by notes; Timeline window
 - [ ] P5 Recency lens; saved views in `_system/graph/views.json`

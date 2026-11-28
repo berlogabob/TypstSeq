@@ -2,7 +2,10 @@ import 'models.dart';
 import 'scanner.dart' show normalizeTag;
 import 'knowledge.dart';
 
-enum GraphEdgeKind { link, citation, tag, read, finished }
+/// Append only: edges sort by `kind.index`.
+/// `added` joins a day to a note created then (Timeline); `cooccurs` joins two
+/// topics that share notes (Overview).
+enum GraphEdgeKind { link, citation, tag, read, finished, added, cooccurs }
 
 /// A tag on fewer notes than this is a pure leaf (a hub node wired to a single
 /// note connects nothing), so it is not promoted to a concept node in the note
@@ -25,7 +28,7 @@ class GraphNode {
     required this.path,
     required this.title,
     this.kind = GraphNodeKind.note,
-    this.source = '',
+    this.noteKind = '',
     this.problemCount = 0,
     this.count = 0,
   });
@@ -33,7 +36,9 @@ class GraphNode {
   final String path;
   final String title;
   final GraphNodeKind kind;
-  final String source;
+
+  /// The note's kind (`article`, `audio`, ...); empty for hubs and days.
+  final String noteKind;
   final int problemCount;
 
   /// For concept/work hubs: how many notes carry this tag/citekey (drives the
@@ -48,6 +53,7 @@ class GraphEdge {
     this.kind = GraphEdgeKind.link,
     this.weight = 1,
     this.status = KnowledgeStatus.accepted,
+    this.mutual = false,
   });
 
   final String from;
@@ -55,6 +61,9 @@ class GraphEdge {
   final GraphEdgeKind kind;
   final int weight;
   final KnowledgeStatus status;
+
+  /// A link that also exists from [to] to [from]; drawn and counted once.
+  final bool mutual;
 }
 
 class NoteGraph {
@@ -78,14 +87,20 @@ NoteGraph buildNoteGraph(VaultIndex index) {
       GraphNode(
         path: note.path,
         title: note.title,
-        source: note.kind,
+        noteKind: note.kind,
         problemCount: problemCounts[note.path] ?? 0,
       ),
   ];
 
+  bool links(String from, String to) =>
+      index.backlinksByTarget[to]?.contains(from) ?? false;
   final edges = <GraphEdge>[
     for (final entry in index.backlinksByTarget.entries)
-      for (final source in entry.value) GraphEdge(from: source, to: entry.key),
+      for (final source in entry.value)
+        if (!links(entry.key, source))
+          GraphEdge(from: source, to: entry.key)
+        else if (source.compareTo(entry.key) < 0)
+          GraphEdge(from: source, to: entry.key, mutual: true),
   ];
   // Tags and citations become their own hub nodes with note->entity spokes,
   // rather than fanning every co-occurring pair of notes into a clique. Single-
@@ -193,7 +208,7 @@ NoteGraph buildConceptMap(
           GraphEdge(
             from: 'concept:${keys[i]}',
             to: 'concept:${keys[j]}',
-            kind: GraphEdgeKind.tag,
+            kind: GraphEdgeKind.cooccurs,
             weight: shared,
           ),
         );
@@ -406,7 +421,7 @@ final _isoDayPattern = RegExp(r'^\d{4}-\d{2}-\d{2}');
 
 /// A time-perspective projection of notes the user touched: any non-daily note
 /// with an entry in [readDayByPath] or a `finished` property matching
-/// `YYYY-MM-DD`. Such notes can have `link`, `read`, and `finished` edges for
+/// `YYYY-MM-DD`. Such notes can have `added`, `read`, and `finished` edges for
 /// their added, opened, and finished days respectively. Bounded to the most
 /// recent [windowDays] days represented by those edges.
 NoteGraph buildTimelineGraph(
@@ -441,7 +456,8 @@ NoteGraph buildTimelineGraph(
     // Opening counts only for articles; anything else needs a finished day.
     if (finished == null && (read == null || note.kind != 'article')) continue;
     candidateEdges[note.path] = [
-      if (added != null) GraphEdge(from: 'day:$added', to: note.path),
+      if (added != null)
+        GraphEdge(from: 'day:$added', to: note.path, kind: GraphEdgeKind.added),
       if (read != null)
         GraphEdge(from: 'day:$read', to: note.path, kind: GraphEdgeKind.read),
       if (finished != null)
@@ -487,7 +503,7 @@ NoteGraph buildTimelineGraph(
       ),
     for (final note
         in usedNotes.values.toList()..sort((a, b) => a.path.compareTo(b.path)))
-      GraphNode(path: note.path, title: note.title, source: note.kind),
+      GraphNode(path: note.path, title: note.title, noteKind: note.kind),
   ];
   edges.sort((a, b) {
     final byFrom = a.from.compareTo(b.from);
@@ -552,8 +568,8 @@ NoteGraph buildLocalNoteGraph(
         !selected.contains(to) ||
         local.edges.any(
           (edge) =>
-              edge.from == from &&
-              edge.to == to &&
+              (edge.from == from && edge.to == to ||
+                  edge.mutual && edge.from == to && edge.to == from) &&
               edge.status == KnowledgeStatus.accepted,
         )) {
       continue;

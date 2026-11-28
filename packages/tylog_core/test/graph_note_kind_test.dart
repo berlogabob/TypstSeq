@@ -35,29 +35,29 @@ void main() {
       expect(
         graph.nodes
             .where((n) => n.kind == GraphNodeKind.note)
-            .map((n) => n.source),
+            .map((n) => n.noteKind),
         unorderedEquals(sources),
       );
       expect(
         graph.nodes
             .where((n) => n.kind != GraphNodeKind.note)
-            .map((n) => n.source),
+            .map((n) => n.noteKind),
         ['', ''],
       );
       final timeline = buildTimelineGraph(index, const {});
       expect(
         timeline.nodes
             .where((n) => n.kind == GraphNodeKind.note)
-            .map((n) => n.source),
+            .map((n) => n.noteKind),
         unorderedEquals(sources.where((s) => s != 'daily')),
       );
       expect(
         timeline.nodes
             .where((n) => n.kind == GraphNodeKind.day)
-            .map((n) => n.source),
+            .map((n) => n.noteKind),
         everyElement(''),
       );
-      expect(const GraphNode(path: 'legacy', title: 'Legacy').source, '');
+      expect(const GraphNode(path: 'legacy', title: 'Legacy').noteKind, '');
     },
   );
 }

@@ -13,9 +13,9 @@ void main() {
           body: GraphView(
             graph: const NoteGraph(
               nodes: [
-                GraphNode(path: 'a', title: 'Article', source: 'article'),
-                GraphNode(path: 'b', title: 'Audio', source: 'audio'),
-                GraphNode(path: 'c', title: 'Orphan', source: 'article'),
+                GraphNode(path: 'a', title: 'Article', noteKind: 'article'),
+                GraphNode(path: 'b', title: 'Audio', noteKind: 'audio'),
+                GraphNode(path: 'c', title: 'Orphan', noteKind: 'article'),
               ],
               edges: [GraphEdge(from: 'a', to: 'b')],
             ),
@@ -150,8 +150,8 @@ void main() {
       'notes/PKM.typ',
     ]);
     expect(graph.edges.map((edge) => '${edge.from}->${edge.to}'), [
+      // The two notes link to each other: one mutual edge, not two.
       'daily/2026/07/2026-07-01.typ->notes/PKM.typ',
-      'notes/PKM.typ->daily/2026/07/2026-07-01.typ',
     ]);
   });
 
@@ -311,6 +311,7 @@ void main() {
       // Concept-to-concept co-occurrence edge (shared on 5 notes >= 3).
       expect(map.edges, hasLength(1));
       expect(map.edges.single.weight, 5);
+      expect(map.edges.single.kind, GraphEdgeKind.cooccurs);
       expect(map.nodes.any((n) => n.path.startsWith('articles/')), isFalse);
     },
   );
@@ -449,6 +450,58 @@ void main() {
     expect(restricted.edges, [const GraphEdge(from: 'a', to: 'b')]);
   });
 
+  test('a mutual link is one edge, and the bar says so', () {
+    NoteRef note(String path) => NoteRef(
+      id: path,
+      path: path,
+      title: path,
+      outgoingLinks: const [],
+      tags: const [],
+    );
+    final index = VaultIndex(
+      notesByPath: {
+        for (final p in ['a', 'b', 'c']) p: note(p),
+      },
+      backlinksByTarget: const {
+        'b': ['a'],
+        'a': ['b', 'c'],
+      },
+    );
+    final graph = buildNoteGraph(index);
+    expect(
+      [for (final e in graph.edges) (e.from, e.to, e.mutual)],
+      [('a', 'b', true), ('c', 'a', false)],
+    );
+    expect(connectionReason(graph, 'b', 'a'), 'Linked both ways');
+    // A suggestion that repeats one direction of a mutual link is not drawn.
+    final local = buildLocalNoteGraph(index, 'b', pending: const [('b', 'a')]);
+    expect(
+      local.edges.where((e) => e.status == KnowledgeStatus.proposed),
+      isEmpty,
+    );
+  });
+
+  test('Overview explains a co-occurrence edge', () {
+    const graph = NoteGraph(
+      nodes: [
+        GraphNode(path: 'concept:x', title: 'x', kind: GraphNodeKind.concept),
+        GraphNode(path: 'concept:y', title: 'y', kind: GraphNodeKind.concept),
+      ],
+      edges: [
+        GraphEdge(
+          from: 'concept:x',
+          to: 'concept:y',
+          kind: GraphEdgeKind.cooccurs,
+          weight: 4,
+        ),
+      ],
+    );
+    expect(
+      connectionReason(graph, 'concept:x', 'concept:y'),
+      'Together on 4 notes',
+    );
+  });
+
   test('computeGraphStats finds orphans', () {
     const graph = NoteGraph(
       nodes: [
@@ -575,7 +628,7 @@ void main() {
           (e) =>
               e.from == 'day:2026-07-10' &&
               e.to == 'articles/a.typ' &&
-              e.kind == GraphEdgeKind.link,
+              e.kind == GraphEdgeKind.added,
         ),
         isTrue, // added on 07-10
       );

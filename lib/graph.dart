@@ -156,13 +156,7 @@ class _GraphViewState extends State<GraphView>
   // Animated zoom-to-cluster (tap a zone → it fills the view and expands).
   late final AnimationController _zoomCtl;
   Animation<Matrix4>? _zoomAnim;
-  final Set<GraphEdgeKind> _visibleKinds = {
-    GraphEdgeKind.link,
-    GraphEdgeKind.citation,
-    GraphEdgeKind.tag,
-    GraphEdgeKind.read,
-    GraphEdgeKind.finished,
-  };
+  final Set<GraphEdgeKind> _visibleKinds = GraphEdgeKind.values.toSet();
   bool _bannerDismissed = false;
   bool _showSuggestions = true;
   final Set<String> _hiddenSources = {};
@@ -344,8 +338,12 @@ class _GraphViewState extends State<GraphView>
     final stats = computeGraphStats(widget.graph);
     final sourceCounts = <String, int>{};
     for (final node in widget.graph.nodes) {
-      if (node.source.isEmpty) continue;
-      sourceCounts.update(node.source, (count) => count + 1, ifAbsent: () => 1);
+      if (node.noteKind.isEmpty) continue;
+      sourceCounts.update(
+        node.noteKind,
+        (count) => count + 1,
+        ifAbsent: () => 1,
+      );
     }
     final sources = sourceCounts.keys.toList()..sort();
     final filteredGraph = _focusFilter == null && _hiddenSources.isEmpty
@@ -354,7 +352,7 @@ class _GraphViewState extends State<GraphView>
             for (final node in widget.graph.nodes)
               if ((_focusFilter == null || _focusFilter!.contains(node.path)) &&
                   (node.kind != GraphNodeKind.note ||
-                      !_hiddenSources.contains(node.source)))
+                      !_hiddenSources.contains(node.noteKind)))
                 node.path,
           });
     final hasSuggestions = filteredGraph.edges.any(
@@ -1339,6 +1337,8 @@ class GraphPainter extends CustomPainter {
       GraphEdgeKind.tag,
       GraphEdgeKind.read,
       GraphEdgeKind.finished,
+      GraphEdgeKind.added,
+      GraphEdgeKind.cooccurs,
     },
     this.communities,
     this.clusters,
@@ -1546,7 +1546,12 @@ class GraphPainter extends CustomPainter {
                 edge.kind,
                 colorScheme.brightness,
               ).withValues(alpha: 0.45)
-        ..strokeWidth = connected ? 2.5 : 1;
+        // A co-occurrence edge is as thick as the notes two topics share.
+        ..strokeWidth = connected
+            ? 2.5
+            : edge.kind == GraphEdgeKind.cooccurs
+            ? (1 + edge.weight / 4).clamp(1.0, 4.0)
+            : 1;
       if (edge.kind == GraphEdgeKind.citation ||
           edge.status == KnowledgeStatus.proposed) {
         _drawDashedLine(canvas, from, to, paint);
@@ -1723,6 +1728,8 @@ Color edgeColor(GraphEdgeKind kind, Brightness brightness) =>
         GraphEdgeKind.finished => const Color(
           0xFFFFB74D,
         ), // finished-on-day = amber
+        GraphEdgeKind.added => const Color(0xFFBCAAA4), // added-on-day = brown
+        GraphEdgeKind.cooccurs => const Color(0xFFCE93D8), // shared notes
       }
     : switch (kind) {
         GraphEdgeKind.link => const Color(0xFF757575),
@@ -1732,6 +1739,8 @@ Color edgeColor(GraphEdgeKind kind, Brightness brightness) =>
         // both had to move to clear 3:1.
         GraphEdgeKind.read => const Color(0xFF00695C),
         GraphEdgeKind.finished => const Color(0xFFE65100),
+        GraphEdgeKind.added => const Color(0xFF6D4C41),
+        GraphEdgeKind.cooccurs => const Color(0xFF7B1FA2),
       };
 
 void _drawDashedLine(Canvas canvas, Offset from, Offset to, Paint paint) {
@@ -1828,6 +1837,27 @@ class GraphLegend extends StatelessWidget {
           selected: visibleKinds.contains(GraphEdgeKind.finished),
           onToggle: onToggle,
         ),
+      if (presentKinds.contains(GraphEdgeKind.added))
+        _LegendEntry(
+          kind: GraphEdgeKind.added,
+          color: edgeColor(GraphEdgeKind.added, Theme.of(context).brightness),
+          label: 'Added on',
+          hint: 'Day this note was added',
+          selected: visibleKinds.contains(GraphEdgeKind.added),
+          onToggle: onToggle,
+        ),
+      if (presentKinds.contains(GraphEdgeKind.cooccurs))
+        _LegendEntry(
+          kind: GraphEdgeKind.cooccurs,
+          color: edgeColor(
+            GraphEdgeKind.cooccurs,
+            Theme.of(context).brightness,
+          ),
+          label: 'Shared notes',
+          hint: 'Topics that appear on the same notes; thicker = more notes',
+          selected: visibleKinds.contains(GraphEdgeKind.cooccurs),
+          onToggle: onToggle,
+        ),
     ],
   );
 }
@@ -1922,6 +1952,8 @@ String? connectionReason(
       if (edge.status == KnowledgeStatus.proposed &&
           (isLinked || isLinkedBack)) {
         reasons.add('Suggested link (not yet accepted)');
+      } else if (edge.mutual && (isLinked || isLinkedBack)) {
+        reasons.add('Linked both ways');
       } else {
         if (isLinked) reasons.add('This note links to it');
         if (isLinkedBack) reasons.add('It links to this note');
@@ -1930,7 +1962,12 @@ String? connectionReason(
       if (isLinked) reasons.add('Cited by this note');
       if (isLinkedBack) reasons.add('It cites this note');
     }
-    if ((isLinked || isLinkedBack) && selected?.kind == GraphNodeKind.concept) {
+    if (edge.kind == GraphEdgeKind.cooccurs) {
+      if (isLinked || isLinkedBack) {
+        reasons.add('Together on ${edge.weight} notes');
+      }
+    } else if ((isLinked || isLinkedBack) &&
+        selected?.kind == GraphNodeKind.concept) {
       reasons.add('Tag #${t(selectedPath)}');
     }
   }

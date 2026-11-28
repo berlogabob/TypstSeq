@@ -10,6 +10,9 @@ their history is in the commit log and the GitHub release notes.
 - Graph, Voronoi map: the selected note is outlined at once, the bar names the note's cluster instead of its tag, a topic keeps the same colour as in All files, Uncategorized is grey, and a refresh of the notes no longer resets the zoom. If the map cannot be drawn it now says so and offers **Retry** instead of loading forever.
 - Graph: a tap picks the nearest node, so a note next to a large tag circle can be selected.
 - Graph: Focused with no note open shows the same 40 topics as Overview.
+- Graph: two notes that link to each other are joined by one line, and the bar says **Linked both ways**.
+- Graph, Timeline: the line from the day a note was added is now called **Added on**, not Links.
+- Graph, Overview: lines between topics are called **Shared notes**, not Same tag, and are thicker when the topics share more notes.
 
 ## 0.26.4+183
 

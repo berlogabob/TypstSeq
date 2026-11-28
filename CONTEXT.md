@@ -65,7 +65,7 @@ _Avoid_: Link record, diagram line
 
 **Source**:
 External evidence with a stable identity, such as a document, book, article, recording, or dataset. Changes to its bytes create source versions without changing that identity.
-The provenance field named `source` in code (GraphNode.source, note kind) means origin, not this term.
+The provenance property named `source` on a note means origin, not this term. A graph node's note kind is `GraphNode.noteKind`.
 _Avoid_: Attachment, note
 
 **Item**:

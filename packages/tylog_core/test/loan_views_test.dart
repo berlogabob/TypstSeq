@@ -76,36 +76,70 @@ void main() {
 
   test('groups open loans and finds the oldest matching equipment loan', () {
     const older = TaskRef(
-      id: 'older', notePath: 'a', text: 'Older',
+      id: 'older',
+      notePath: 'a',
+      text: 'Older',
       clocked: [old],
-      properties: {'loan': true, 'equipment': ['b']},
+      properties: {
+        'loan': true,
+        'equipment': ['b'],
+      },
     );
     const groupedIndex = VaultIndex(
-      notesByPath: {}, backlinksByTarget: {}, tasks: [...tasks, older],
+      notesByPath: {},
+      backlinksByTarget: {},
+      tasks: [...tasks, older],
     );
     final grouped = openLoansByEquipment(groupedIndex);
     expect(grouped['a']!.map((task) => task.id), ['tie', 'new']);
     expect(grouped['b']!.map((task) => task.id), ['new', 'older']);
     const offer = EnrichLoanOffer(
-      line: 1, text: '', ledgerSurface: '',
+      line: 1,
+      text: '',
+      ledgerSurface: '',
       equipment: [
-        NoteRef(id: 'a', path: 'a', title: 'A', kind: 'equipment', outgoingLinks: []),
-        NoteRef(id: 'b', path: 'b', title: 'B', kind: 'equipment', outgoingLinks: []),
+        NoteRef(
+          id: 'a',
+          path: 'a',
+          title: 'A',
+          kind: 'equipment',
+          outgoingLinks: [],
+        ),
+        NoteRef(
+          id: 'b',
+          path: 'b',
+          title: 'B',
+          kind: 'equipment',
+          outgoingLinks: [],
+        ),
       ],
     );
     expect(openLoanFor(offer, grouped), same(older));
     expect(openLoanFor(offer, {}), isNull);
-    expect(openLoanFor(offer, {'a': [tasks[2], tasks[1]]}), same(tasks[2]));
+    expect(
+      openLoanFor(offer, {
+        'a': [tasks[2], tasks[1]],
+      }),
+      same(tasks[2]),
+    );
   });
 
   test('out since text uses borrower, assignee, or neither', () {
     const borrower = TaskRef(
-      id: 'a', notePath: 'a', text: '', clocked: [old],
-      assignees: ['Alex'], properties: {'borrower': 'Sam'},
+      id: 'a',
+      notePath: 'a',
+      text: '',
+      clocked: [old],
+      assignees: ['Alex'],
+      properties: {'borrower': 'Sam'},
     );
     const assignee = TaskRef(
-      id: 'b', notePath: 'a', text: '', clocked: [old],
-      assignees: ['Alex'], properties: {'borrower': ''},
+      id: 'b',
+      notePath: 'a',
+      text: '',
+      clocked: [old],
+      assignees: ['Alex'],
+      properties: {'borrower': ''},
     );
     expect(loanOutSinceText(borrower), 'Already out since 2026-01-01 (Sam)');
     expect(loanOutSinceText(assignee), 'Already out since 2026-01-01 (Alex)');
