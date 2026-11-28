@@ -449,7 +449,7 @@ void main() {
     expect(restricted.edges, [const GraphEdge(from: 'a', to: 'b')]);
   });
 
-  test('computeGraphStats finds orphans and ranks hubs by degree', () {
+  test('computeGraphStats finds orphans', () {
     const graph = NoteGraph(
       nodes: [
         GraphNode(path: 'hub', title: 'Hub'),
@@ -466,13 +466,32 @@ void main() {
       ],
     );
 
-    final stats = computeGraphStats(graph, hubLimit: 2);
+    final stats = computeGraphStats(graph);
 
     expect(stats.orphanPaths, ['orphan1', 'orphan2']);
-    expect(stats.hubPaths, ['hub', 'a']);
   });
 
-  test('graphPositions is deterministic and clusters connected nodes', () {
+  test('a tap picks the nearest node, using each node\'s own radius', () {
+    const graph = NoteGraph(
+      nodes: [
+        GraphNode(path: 'hub', title: 'Hub', kind: GraphNodeKind.concept),
+        GraphNode(path: 'note', title: 'Note'),
+      ],
+      edges: [],
+    );
+    final positions = {
+      'hub': const Offset(100, 100),
+      'note': const Offset(140, 100),
+    };
+    // 28 px from the hub (inside its 22 + 8 reach) but only 12 px from the
+    // note: the first-match rule used to return the hub.
+    expect(hitGraphNode(graph, positions, const Offset(128, 100)), 'note');
+    // 25 px from a note is outside its 12 + 8 reach.
+    expect(hitGraphNode(graph, positions, const Offset(165, 100)), isNull);
+    expect(hitGraphNode(graph, positions, const Offset(80, 100)), 'hub');
+  });
+
+  test('force layout is deterministic and clusters connected nodes', () {
     const graph = NoteGraph(
       nodes: [
         GraphNode(path: 'a', title: 'A'),
@@ -489,8 +508,8 @@ void main() {
     const size = Size(1000, 1000);
 
     // Deterministic (seeded) so it never jitters between rebuilds.
-    final p1 = graphPositions(graph, null, size);
-    final p2 = graphPositions(graph, null, size);
+    final p1 = forceLayoutPositions(graph, size);
+    final p2 = forceLayoutPositions(graph, size);
     expect(p1, p2);
     expect(p1.values.toSet(), hasLength(4)); // no overlaps
 

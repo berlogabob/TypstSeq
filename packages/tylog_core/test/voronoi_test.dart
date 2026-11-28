@@ -225,13 +225,28 @@ void main() {
     final communities = computeCommunities(index, minNotes: 2, minCoOccur: 2);
     final req = buildVoronoiRequest(index, communities, 100, 100);
 
+    test('colour slot is the clusterOrder index; Uncategorized has none', () {
+      // 'ghost' has no notes here: a running counter would shift every hue.
+      final shifted = CommunityMap(
+        tagToCluster: communities.tagToCluster,
+        noteToCluster: communities.noteToCluster,
+        clusterOrder: ['ghost', ...communities.clusterOrder],
+      );
+      final r = buildVoronoiRequest(index, shifted, 100, 100);
+      int slotOf(String id) => r.colorSlot[r.ids.indexOf(id)];
+      expect(slotOf('cluster:a1'), shifted.clusterOrder.indexOf('a1'));
+      expect(slotOf('cluster:b1'), shifted.clusterOrder.indexOf('b1'));
+      expect(slotOf('n4'), shifted.clusterOrder.indexOf('b1'));
+      expect(slotOf('cluster:'), kVoronoiNoSlot);
+      expect(slotOf('n7'), kVoronoiNoSlot);
+    });
+
     test('hierarchy: communities, dominant tags, notes, Uncategorized', () {
       final roots = [
         for (var i = 0; i < req.ids.length; i++)
           if (req.parent[i] == -1) req.labels[i],
       ];
       expect(roots, ['a1', 'b1', kUncategorizedLabel]);
-      expect(voronoiRootCount(req), 3);
 
       // Every clustered note sits under its dominant tag (a1/b1: most notes,
       // lexicographic tie-break), two levels below its community.

@@ -93,13 +93,14 @@ NoteGraph boundGraphForLayout(
 /// value are tuned per theme so tints stay legible on light and dark. Shared
 /// by the force-directed graph and the Voronoi treemap so a community keeps
 /// its color across visualizations.
+/// A negative [slot] (no community) is grey.
 Color colorForSlot(int slot, int total, ColorScheme scheme) {
   final hue = (slot * 360.0 / math.max(1, total)) % 360;
   final dark = scheme.brightness == Brightness.dark;
   return HSVColor.fromAHSV(
     1,
     hue,
-    dark ? 0.42 : 0.40,
+    slot < 0 ? 0 : (dark ? 0.42 : 0.40),
     dark ? 0.55 : 0.82,
   ).toColor();
 }
@@ -730,7 +731,7 @@ class _GraphViewState extends State<GraphView>
         return;
       }
     }
-    final node = _hitNode(positions, point);
+    final node = hitGraphNode(widget.graph, positions, point);
     if (node != null) _setSelectedPath(node);
   }
 
@@ -761,15 +762,6 @@ class _GraphViewState extends State<GraphView>
       end: end,
     ).animate(CurvedAnimation(parent: _zoomCtl, curve: Curves.easeInOut));
     _zoomCtl.forward(from: 0);
-  }
-
-  String? _hitNode(Map<String, Offset> positions, Offset point) {
-    for (final entry in positions.entries) {
-      if ((entry.value - point).distance <= GraphPainter.nodeRadius + 8) {
-        return entry.key;
-      }
-    }
-    return null;
   }
 
   bool _sameNodes(List<GraphNode> a, List<GraphNode> b) =>
@@ -882,17 +874,26 @@ Map<String, Offset> _timelineRow(NoteGraph graph, Size size) {
   return pos;
 }
 
-Map<String, Offset> graphPositions(
+/// The node under [point]: the nearest one whose own circle (plus an 8 px
+/// touch margin) contains it, so a small note next to a hub can be tapped.
+String? hitGraphNode(
   NoteGraph graph,
-  String? focalPath,
-  Size size,
+  Map<String, Offset> positions,
+  Offset point,
 ) {
-  final nodes = graph.nodes;
-  if (nodes.isEmpty) return const {};
-  if (isTimelineGraph(graph)) return timelinePositions(graph, size);
-  final w = size.width.isFinite && size.width > 0 ? size.width : 1000.0;
-  final h = size.height.isFinite && size.height > 0 ? size.height : 1000.0;
-  return forceLayoutPositions(graph, Size(w, h));
+  String? best;
+  var bestDistance = double.infinity;
+  for (final node in graph.nodes) {
+    final center = positions[node.path];
+    if (center == null) continue;
+    final distance = (center - point).distance;
+    if (distance <= GraphPainter._radiusFor(node) + 8 &&
+        distance < bestDistance) {
+      best = node.path;
+      bestDistance = distance;
+    }
+  }
+  return best;
 }
 
 /// The community label a graph node belongs to, or null if unassigned: note
@@ -1344,7 +1345,6 @@ class GraphPainter extends CustomPainter {
   }) : super(repaint: transform);
 
   static const nodeRadius = 22.0;
-  static const minimumNodeSpacing = 60.0;
 
   final NoteGraph graph;
   final Map<String, Offset> positions;
@@ -1673,7 +1673,10 @@ class GraphPainter extends CustomPainter {
         for (final node in graph.nodes)
           if (positions[node.path] case final center?)
             CustomPainterSemantics(
-              rect: Rect.fromCircle(center: center, radius: nodeRadius + 8),
+              rect: Rect.fromCircle(
+                center: center,
+                radius: _radiusFor(node) + 8,
+              ),
               properties: SemanticsProperties(
                 label: node.problemCount > 0
                     ? '${node.title} (${node.problemCount} problems)'

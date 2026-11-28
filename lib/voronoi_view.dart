@@ -31,6 +31,7 @@ class VoronoiView extends StatefulWidget {
     this.onSelectionChanged,
     this.clusterNames = const {},
     this.onRenameCluster,
+    @visibleForTesting this.computeLayout,
   });
 
   final VaultIndex index;
@@ -52,6 +53,9 @@ class VoronoiView extends StatefulWidget {
   /// Cache key: cells are retessellated only when this changes (or the
   /// viewport size does).
   final int indexRevision;
+
+  /// Replaces the layout isolate in tests.
+  final Future<VoronoiResult> Function(VoronoiRequest)? computeLayout;
 
   @override
   State<VoronoiView> createState() => _VoronoiViewState();
@@ -130,6 +134,7 @@ class _VoronoiViewState extends State<VoronoiView>
   int _rootCount = 1;
   Size? _builtSize;
   bool _computing = false;
+  bool _failed = false;
   int _token = 0;
   VoronoiRequest? _request;
   final Set<int> _pending = {};
@@ -166,15 +171,15 @@ class _VoronoiViewState extends State<VoronoiView>
       _token++;
       _pending.clear();
       _cells = null;
-      _builtSize = null;
       _computing = false;
+      _failed = false;
     }
   }
 
   /// Computes only root geometry on an isolate, guarded by the revision token.
   void _ensureCells(Size viewport) {
     final communities = widget.communities;
-    if (communities == null || _computing) return;
+    if (communities == null || _computing || _failed) return;
     if (_cells != null && _builtSize == viewport) return;
     final req = buildVoronoiRequest(
       widget.index,
@@ -185,7 +190,7 @@ class _VoronoiViewState extends State<VoronoiView>
     _computing = true;
     _pending.clear();
     final token = ++_token;
-    compute(computeVoronoiTreemap, req).then(
+    (widget.computeLayout?.call(req) ?? compute(computeVoronoiTreemap, req)).then(
       (result) {
         if (!mounted || token != _token) return;
         setState(() {
@@ -195,7 +200,12 @@ class _VoronoiViewState extends State<VoronoiView>
       },
       onError: (Object error, StackTrace stack) {
         if (!mounted || token != _token) return;
-        setState(() => _computing = false);
+        // Stop here: clearing only _computing would respawn the layout on the
+        // next build, forever, behind the spinner.
+        setState(() {
+          _computing = false;
+          _failed = true;
+        });
         FlutterError.reportError(
           FlutterErrorDetails(exception: error, stack: stack),
         );
@@ -234,9 +244,10 @@ class _VoronoiViewState extends State<VoronoiView>
     _request = req;
     _cells = cells;
     _roots = roots;
-    _rootCount = math.max(1, voronoiRootCount(req));
+    _rootCount = math.max(1, widget.communities!.clusterOrder.length);
+    // An index refresh at the same size keeps the user's zoom.
+    if (_builtSize != viewport) _transform.value = Matrix4.identity();
     _builtSize = viewport;
-    _transform.value = Matrix4.identity();
     _scheduleReveal();
   }
 
@@ -370,13 +381,18 @@ class _VoronoiViewState extends State<VoronoiView>
   String _name(String label) =>
       widget.clusterNames[label] ?? prettyGraphLabel(label);
 
-  /// The top-level cluster of [cell] when it can be renamed, else null.
-  _Cell? _renamableRoot(List<_Cell> cells, _Cell cell) {
-    if (widget.onRenameCluster == null) return null;
+  _Cell _rootOf(List<_Cell> cells, _Cell cell) {
     var root = cell;
     while (root.parent >= 0) {
       root = cells[root.parent];
     }
+    return root;
+  }
+
+  /// The top-level cluster of [cell] when it can be renamed, else null.
+  _Cell? _renamableRoot(List<_Cell> cells, _Cell cell) {
+    if (widget.onRenameCluster == null) return null;
+    final root = _rootOf(cells, cell);
     if (widget.index.notesByPath.containsKey(root.id) ||
         root.label == kUncategorizedLabel) {
       return null;
@@ -466,6 +482,17 @@ class _VoronoiViewState extends State<VoronoiView>
         final viewport = Size(constraints.maxWidth, constraints.maxHeight);
         _ensureCells(viewport);
         final cells = _cells;
+        if (_failed) {
+          return AppEmptyState.error(
+            title: 'The map could not be drawn',
+            hint: 'Try again. If it keeps failing, use another graph view.',
+            primaryAction: FilledButton(
+              key: const Key('voronoi-retry'),
+              onPressed: () => setState(() => _failed = false),
+              child: const Text('Retry'),
+            ),
+          );
+        }
         if (cells == null) {
           return const Center(child: LoadingIndicator());
         }
@@ -536,7 +563,7 @@ class _VoronoiViewState extends State<VoronoiView>
                       ),
                       subtitle: Text(
                         widget.index.notesByPath.containsKey(selected.id)
-                            ? 'In cluster ${selected.parent >= 0 ? _name(cells[selected.parent].label) : selected.label}'
+                            ? 'In cluster ${_name(_rootOf(cells, selected).label)}'
                             : '${selected.count} notes',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -839,6 +866,8 @@ class _VoronoiPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _VoronoiPainter oldDelegate) =>
       oldDelegate.cells != cells ||
+      oldDelegate.selectedPath != selectedPath ||
+      oldDelegate.rootCount != rootCount ||
       oldDelegate.colorScheme != colorScheme ||
       oldDelegate.clusterNames != clusterNames;
 

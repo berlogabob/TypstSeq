@@ -5,6 +5,12 @@ their history is in the commit log and the GitHub release notes.
 
 ## Unreleased
 
+### Fixed
+
+- Graph, Voronoi map: the selected note is outlined at once, the bar names the note's cluster instead of its tag, a topic keeps the same colour as in All files, Uncategorized is grey, and a refresh of the notes no longer resets the zoom. If the map cannot be drawn it now says so and offers **Retry** instead of loading forever.
+- Graph: a tap picks the nearest node, so a note next to a large tag circle can be selected.
+- Graph: Focused with no note open shows the same 40 topics as Overview.
+
 ## 0.26.4+183
 
 ### New

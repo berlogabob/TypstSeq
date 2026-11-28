@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tylog/graph.dart' show colorForSlot;
 import 'package:tylog/voronoi_view.dart';
 import 'package:tylog_core/tylog_core.dart';
 
@@ -44,17 +45,134 @@ void main() {
     CommunityMap? c,
     ValueChanged<String>? onOpen,
     ValueChanged<String?>? onSelectionChanged,
+    int revision = 1,
+    Future<VoronoiResult> Function(VoronoiRequest)? computeLayout,
   }) => MaterialApp(
     home: Scaffold(
       body: VoronoiView(
         index: index,
         communities: c,
-        indexRevision: 1,
+        indexRevision: revision,
         onOpenPath: onOpen ?? (_) {},
         onSelectionChanged: onSelectionChanged,
+        computeLayout: computeLayout,
       ),
     ),
   );
+
+  // The painter class is private; its fields are read dynamically.
+  dynamic painter(WidgetTester tester) => tester
+      .widgetList<CustomPaint>(find.byType(CustomPaint))
+      .map((paint) => paint.painter)
+      .firstWhere((p) => p.runtimeType.toString() == '_VoronoiPainter');
+
+  testWidgets('selecting a cell repaints the highlight', (tester) async {
+    await tester.pumpWidget(host(c: communities));
+    await _waitForLayout(tester);
+    final before = painter(tester);
+    await tester.tapAt(tester.getCenter(find.byType(VoronoiView)));
+    await tester.pump();
+    final after = painter(tester);
+    expect(after.selectedPath, isNotNull);
+    expect(after.shouldRepaint(before), isTrue);
+  });
+
+  testWidgets('hues are spread over the communities only', (tester) async {
+    await tester.pumpWidget(host(c: communities));
+    await _waitForLayout(tester);
+    // Two communities plus Uncategorized: the force graph divides by two.
+    expect(painter(tester).rootCount, communities.clusterOrder.length);
+  });
+
+  test('a cell outside every community is grey', () {
+    const scheme = ColorScheme.light();
+    final grey = colorForSlot(kVoronoiNoSlot, 2, scheme);
+    expect(HSVColor.fromColor(grey).saturation, 0);
+    expect(HSVColor.fromColor(colorForSlot(0, 2, scheme)).saturation, isNot(0));
+  });
+
+  testWidgets('a failed layout stops and offers Retry', (tester) async {
+    var calls = 0;
+    var fail = true;
+    Future<VoronoiResult> layout(VoronoiRequest req) {
+      calls++;
+      return fail
+          ? Future.error(StateError('boom'))
+          : Future.value(computeVoronoiTreemap(req));
+    }
+
+    await tester.pumpWidget(host(c: communities, computeLayout: layout));
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect(tester.takeException(), isStateError);
+    expect(calls, 1, reason: 'must not respawn the layout on every build');
+    expect(find.byKey(const Key('voronoi-retry')), findsOneWidget);
+
+    fail = false;
+    await tester.tap(find.byKey(const Key('voronoi-retry')));
+    await tester.pump();
+    await tester.pump();
+    expect(calls, 2);
+    expect(find.byKey(const Key('voronoi-fit')), findsOneWidget);
+  });
+
+  testWidgets('an index refresh keeps the zoom', (tester) async {
+    await tester.pumpWidget(host(c: communities));
+    await _waitForLayout(tester);
+    final controller = tester
+        .widget<InteractiveViewer>(find.byType(InteractiveViewer))
+        .transformationController!;
+    controller.value = Matrix4.identity()..scaleByDouble(2, 2, 2, 1);
+    await tester.pumpWidget(host(c: communities, revision: 2));
+    await _waitForLayout(tester);
+    expect(
+      tester
+          .widget<InteractiveViewer>(find.byType(InteractiveViewer))
+          .transformationController!
+          .value
+          .getMaxScaleOnAxis(),
+      2,
+    );
+  });
+
+  testWidgets('"In cluster" names the cluster, not the tag', (tester) async {
+    // x1 leads the community; m6 carries only x2, so its parent cell is the
+    // tag x2 while its cluster is x1.
+    final mixed = VaultIndex(
+      notesByPath: {
+        for (final n in [
+          _note('m1', ['x1', 'x2']),
+          _note('m2', ['x1', 'x2']),
+          _note('m3', ['x1', 'x2']),
+          _note('m4', ['x1']),
+          _note('m5', ['x1']),
+          _note('m6', ['x2']),
+        ])
+          n.path: n,
+      },
+      backlinksByTarget: const {},
+    );
+    final c = computeCommunities(mixed, minNotes: 2, minCoOccur: 2);
+    final cluster = c.noteToCluster['m6']!;
+    expect(cluster, isNot('x2'), reason: 'fixture: tag differs from cluster');
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: VoronoiView(
+            index: mixed,
+            communities: c,
+            indexRevision: 1,
+            onOpenPath: (_) {},
+            initialSelectedPath: 'm6',
+            clusterNames: {cluster: 'Renamed cluster'},
+          ),
+        ),
+      ),
+    );
+    await _waitForLayout(tester);
+    expect(find.text('In cluster Renamed cluster'), findsOneWidget);
+  });
 
   testWidgets('renders and a tap selects before Open opens a note', (
     tester,

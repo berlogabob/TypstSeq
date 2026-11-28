@@ -400,17 +400,10 @@ class VoronoiResult {
   final Int32List cellStart;
 }
 
-/// Number of communities (root cells) in [req] — the `total` a caller passes
-/// to a per-slot color function.
-int voronoiRootCount(VoronoiRequest req) {
-  var count = 0;
-  for (var i = 0; i < req.parent.length; i++) {
-    if (req.parent[i] == -1) count++;
-  }
-  return count;
-}
-
 const kUncategorizedLabel = 'Uncategorized';
+
+/// Colour slot of cells that belong to no community (drawn grey).
+const kVoronoiNoSlot = -1;
 
 /// Extracts the community -> tag -> note hierarchy from the index. Cheap and
 /// sync — run it on the main thread so [VaultIndex] never crosses an isolate.
@@ -482,8 +475,10 @@ VoronoiRequest buildVoronoiRequest(
 
   String titleOf(String path) => index.notesByPath[path]?.title ?? path;
 
-  var slot = 0;
-  for (final cluster in communities.clusterOrder) {
+  // The slot is the clusterOrder index, as in the force graph, so a community
+  // keeps its hue on every map even when an earlier one has no notes here.
+  for (var slot = 0; slot < communities.clusterOrder.length; slot++) {
+    final cluster = communities.clusterOrder[slot];
     final tags = notesByClusterTag[cluster];
     if (tags == null) continue;
     final noteCount = tags.values.fold(0, (a, b) => a + b.length);
@@ -502,7 +497,6 @@ VoronoiRequest buildVoronoiRequest(
         add(path, titleOf(path), tagIndex, 2, slot, 1);
       }
     }
-    slot++;
   }
   if (unclustered.isNotEmpty) {
     final clusterIndex = ids.length;
@@ -511,11 +505,11 @@ VoronoiRequest buildVoronoiRequest(
       kUncategorizedLabel,
       -1,
       0,
-      slot,
+      kVoronoiNoSlot,
       unclustered.length.toDouble(),
     );
     for (final path in unclustered) {
-      add(path, titleOf(path), clusterIndex, 1, slot, 1);
+      add(path, titleOf(path), clusterIndex, 1, kVoronoiNoSlot, 1);
     }
   }
 

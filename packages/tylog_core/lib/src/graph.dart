@@ -572,16 +572,14 @@ NoteGraph restrictNoteGraph(NoteGraph graph, Set<String> paths) => NoteGraph(
 );
 
 class GraphStats {
-  const GraphStats({required this.orphanPaths, required this.hubPaths});
+  const GraphStats({required this.orphanPaths});
 
   final List<String> orphanPaths;
-  final List<String> hubPaths;
 }
 
 /// Cheap degree-count diagnostics: notes with no edges at all ([orphanPaths],
-/// sorted), and the top [hubLimit] most-connected notes ([hubPaths], ranked
-/// by degree desc then path). No graph-theory beyond counting edges.
-GraphStats computeGraphStats(NoteGraph graph, {int hubLimit = 5}) {
+/// sorted).
+GraphStats computeGraphStats(NoteGraph graph) {
   final degree = {for (final node in graph.nodes) node.path: 0};
   for (final edge in graph.edges) {
     degree[edge.from] = (degree[edge.from] ?? 0) + 1;
@@ -593,13 +591,5 @@ GraphStats computeGraphStats(NoteGraph graph, {int hubLimit = 5}) {
           .map((entry) => entry.key)
           .toList()
         ..sort();
-  final ranked = degree.entries.where((entry) => entry.value > 0).toList()
-    ..sort((a, b) {
-      final byDegree = b.value.compareTo(a.value);
-      return byDegree != 0 ? byDegree : a.key.compareTo(b.key);
-    });
-  return GraphStats(
-    orphanPaths: orphans,
-    hubPaths: ranked.take(hubLimit).map((entry) => entry.key).toList(),
-  );
+  return GraphStats(orphanPaths: orphans);
 }

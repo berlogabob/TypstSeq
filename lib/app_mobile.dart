@@ -431,13 +431,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // ponytail: wipe-when-full cap; local-graph keys grow per opened note.
     if (_graphCache.length >= 8) _graphCache.clear();
     final idx = index!;
+    // Overview = the 40 busiest topics; ~200 labelled hubs was unreadable.
+    NoteGraph overview() =>
+        boundGraphForLayout(buildConceptMap(idx), maxNodes: 40, maxEdges: 120);
     final built = switch (_graphMode) {
-      // Overview = the 40 busiest topics; ~200 labelled hubs was unreadable.
-      'conceptMap' => boundGraphForLayout(
-        buildConceptMap(idx),
-        maxNodes: 40,
-        maxEdges: 120,
-      ),
+      'conceptMap' => overview(),
       // The treemap renders straight from the index; no note graph needed.
       'voronoi' => const NoteGraph(nodes: [], edges: []),
       'allFiles' => buildNoteGraph(idx),
@@ -445,7 +443,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         for (final r in _mergedRecent()) r.path: isoDay(r.openedAt),
       }),
       // No note open yet: focused view would be empty, show the overview.
-      _ when (_graphFocusPath ?? current) == null => buildConceptMap(idx),
+      _ when (_graphFocusPath ?? current) == null => overview(),
       _ => buildLocalNoteGraph(idx, graphFocus, pending: pending),
     };
     final bounded = boundGraphForLayout(built, currentPath: current);
