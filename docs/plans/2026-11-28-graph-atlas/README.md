@@ -6,7 +6,7 @@ Thesis text: [docs/thesis/2026-11-28-graph-atlas.typ](../../thesis/2026-11-28-gr
 
 ## Goal
 
-The graph screen becomes an atlas: several maps of one model, with one shared state.
+The graph screen becomes the way to explore the atlas: several maps of one model, with one shared state.
 The thesis and the app use the same words.
 
 ## Concept
@@ -16,7 +16,7 @@ The thesis and the app use the same words.
 | Conceptual data model | Source → Item → Mention → Link → Entity, Decision on top | `docs/thesis/conceptual-model.md` |
 | Archive | Everything kept, with origin, derivation and time | vault files + decision log |
 | Knowledge graph | Entities and typed links, each with a status | index: links, tags, citations, part_of |
-| Atlas | Several maps of the same graph, one question each | the graph screen |
+| Atlas | The knowledge graph under one ontology, unifying sources so it can be navigated (Bueckle 2025; Venkataramanan 2025; Giacomini 2025) | index + ontology core and packs; the graph screen is its exploration interface: several maps, one question each |
 | Anthology | What the human chose to keep, saved under a name | accepted links, saved views, boards |
 | Memory layer | Decisions consolidated into rules, names and vocabulary | decision ledger → resolver, daily cluster step |
 

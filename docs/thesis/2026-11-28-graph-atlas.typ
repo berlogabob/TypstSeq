@@ -11,22 +11,22 @@
 #title-block(
   "The graph as an atlas",
   subtitle: "Addition to the conceptual model · TyLog",
-  meta-line: "28 Nov 2026 · from a code audit of the same day; nothing in this note is built yet",
-  standfirst: [The thesis says "one model, many sources" but never describes the graph that shows the model. An audit found five graph views on two unrelated widgets, with different filters, colours and names. This note gives the graph one concept taken from the conceptual data model: the vault is the archive, the index is the knowledge graph, the graph screen is an atlas of maps, saved selections are the anthology, and the decision log is the memory that improves the system. It then lists what the current graph lacks and the order to build it.],
+  meta-line: "28 Nov 2026 · from a code audit of the same day, checked against the supervisor's links of 26 Nov; nothing in this note is built yet",
+  standfirst: [The thesis says "one model, many sources" but never describes the graph that shows the model. An audit found five graph views on two unrelated widgets, with different filters, colours and names. This note gives the graph one concept taken from the conceptual data model: the vault is the archive, the index is the knowledge graph, that graph under one ontology is the atlas and the graph screen is how it is explored, saved selections are the anthology, and the decision log is the memory that improves the system. It then lists what the current graph lacks and the order to build it.],
 )
 
 #kpi-row((
   ("5", "Maps today", "on two widgets, no shared state"),
   ("1", "Map missing", "Structure: what is part of what"),
   ("3", "Lenses missing", "Origin, Status, Recency"),
-  ("15", "Sources to read", "modelling, visualisation, memory"),
+  ("3 of 18", "Sources read", "the three atlas papers; 15 named from memory"),
 ))
 
 = Why this addition
 
 Rule 3 of the conceptual model says the graph can hide or show each source. In the app the chips filter the note kind, not where the note came from. ADR 0002 says every map draws the status of a fact. In the app only proposed links are drawn, and only around the open note. Both gaps come from the same cause: the graph grew view by view and has no model of its own.
 
-The sources cited here are in sections 7 and 8 of `literature-2026-11.md`. They are not read yet; check each one before it enters the thesis.
+Sources are in `literature-2026-11.md`. Section 9 holds the three atlas papers the supervisor sent on 26 Nov; they were read at the level of abstract, introduction and usage. Sections 7 and 8 were named from memory and are not read; every citation from them below is a candidate, not support. Archive, anthology, memory layer and conceptual data model are the supervisor's terms, and none of his links defines them.
 
 = One model, five readings
 
@@ -37,7 +37,7 @@ A conceptual data model states what exists and how it relates, independent of st
   (
     ("Archive", "What do I have, and where did it come from?", "Items with origin, derivation and time; append-only", "Vault files, decision log"),
     ("Knowledge graph", "What is connected, and how sure are we?", "Entities and typed links, each with a status", "Index: links, tags, citations, part_of"),
-    ("Atlas", "Where am I?", "Maps: one projection of the graph per question", "Graph screen"),
+    ("Atlas", "How do I find my way through all of it?", "The knowledge graph under one ontology; maps are how it is read", "Index with ontology core and packs; graph screen"),
     ("Anthology", "What did I choose to keep?", "A named selection made by decisions", "Accepted links, saved views, boards"),
     ("Memory layer", "What did the system learn from me?", "Decisions consolidated into rules and names", "Ledger to resolver; daily cluster step"),
   ),
@@ -45,11 +45,11 @@ A conceptual data model states what exists and how it relates, independent of st
   right-from: none,
 )
 
-A Decision is the only step that moves a fact from the archive into the anthology. This is rule 2 stated as a path. The archive follows the usual archive model: ingest, keep, and record provenance (CCSDS 2012). The anthology follows the idea of a named trail through one's own material (Bush 1945).
+A Decision is the only step that moves a fact from the archive into the anthology. This is rule 2 stated as a path. Candidate sources, not read: the open archive model of ingest, keep and record provenance (CCSDS 2012) for the archive, and the named trail through one's own material (Bush 1945) for the anthology. The Archive reading is the whole vault. It is not the attention state `archived`, which marks one Item as put away.
 
 = Memory layer
 
-The research question asks whether the system improves from decisions over time. That is a claim about memory. The table maps the standard memory systems onto parts that already exist.
+The research question asks whether the system improves from decisions over time. That is a claim about memory. The table maps the standard memory systems onto parts that already exist. The citations in it are from memory and not read, so for now the mapping is a framing and not a result.
 
 #data-table(
   ("Memory", "Role", "In TyLog", "State"),
@@ -69,7 +69,11 @@ Language agents use the same four stores (Sumers et al. 2024). The difference he
 
 = The atlas
 
-A map fixes one projection and answers one question (Munzner 2014). The set follows the order overview, then zoom and filter, then detail (Shneiderman 1996).
+In the supervisor's three papers an atlas is a knowledge graph that brings many sources under one ontology so that a field can be navigated. The Human Reference Atlas graph integrates data from many labs and technologies under the Common Coordinate Framework ontology, and its applications and Exploration User Interface read the graph as their backend (Bueckle et al. 2025). The same paper says the ontology is the framework for building an atlas and is not an atlas itself. A metadata graph built from three public platforms under a Common Metadata Ontology "serves as an atlas for navigating" the field (Venkataramanan et al. 2025). The ATLAS project pairs one ontology with a knowledge graph to aggregate unlike research outputs (Giacomini et al. 2025).
+
+TyLog has the same three parts at the scale of one person. The ontology core and its packs are the framework. The index, with links, tags, citations and part_of from every source, is the graph. The graph screen is the exploration interface. So the atlas is not the screen: it is the graph under its ontology, and the screen offers several maps of it.
+
+A map fixes one projection and answers one question (Munzner 2014, not read). The set follows the order overview, then zoom and filter, then detail (Shneiderman 1996, not read).
 
 #data-table(
   ("Map", "Question", "Projection", "Today", "Change"),
@@ -143,4 +147,5 @@ The plan with files and tests is in `docs/plans/2026-11-28-graph-atlas/README.md
   1. Is "one model, five readings" an acceptable frame for the conceptual chapter?
   2. Is the memory mapping a framing, or a claim that needs its own measure of consolidation?
   3. Is "anthology: a named selection made by decisions" an acceptable definition?
+  4. Which source do you mean for anthology, memory layer and conceptual data model? Your links of 26 Nov cover atlas and knowledge graph only.
 ]

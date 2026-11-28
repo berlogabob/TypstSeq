@@ -72,13 +72,13 @@ ADR 0002 defines one status for every fact (link, mention, tag) and vocabulary i
 
 ## Readings of the model
 
-One model, five readings. They are not five stores. Details: [2026-11-28-graph-atlas.typ](2026-11-28-graph-atlas.typ).
+One model, five readings. They are not five stores. Archive, anthology and memory layer are the supervisor's terms and have no source yet; atlas follows his links (literature section 9). The Archive reading is the whole vault, not the attention state `archived`. Details: [2026-11-28-graph-atlas.typ](2026-11-28-graph-atlas.typ).
 
 | Reading | Question | In TyLog |
 |---|---|---|
 | Archive | What do I have, and where did it come from? | vault files, decision log |
 | Knowledge graph | What is connected, and how sure are we? | index: links, tags, citations, `part_of` |
-| Atlas | Where am I? | graph screen: one map per question |
+| Atlas | How do I find my way through all of it? | the knowledge graph under one ontology (core + packs), read through the graph screen: one map per question |
 | Anthology | What did I choose to keep? | accepted links, saved views, boards |
 | Memory layer | What did the system learn from me? | decision ledger → resolver, daily cluster step |
 
