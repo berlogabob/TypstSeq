@@ -67,8 +67,22 @@ ADR 0002 defines one status for every fact (link, mention, tag) and vocabulary i
 
 1. An external Entity (`source: openlabtwin`) is read-only in TyLog; edits go through OLT's API and its own access rules. Lab equipment, places and professors are exported into the vault as notes (`notes/labs/inventory/`, id = asset tag, place code or `lab-person-<id>`). The export overwrites them, and by policy TyLog does not edit them; loans recorded in TyLog become OLT movements through the lab bridge ([ADR 0003](../adr/0003-lab-equipment-identity-and-typed-loans.md)).
 2. A suggested Link is final only after a Decision: the user's accept, or an `auto` decision for an exact match. The resolver learns from the decision ledger.
-3. The graph can hide or show each source.
+3. The graph can hide or show each source. Today the chips filter note kind, not origin; the origin filter is planned ([graph atlas plan](../plans/2026-11-28-graph-atlas/README.md)).
 4. Secrets (tokens, API keys) are not part of the model; they stay per device.
+
+## Readings of the model
+
+One model, five readings. They are not five stores. Details: [2026-11-28-graph-atlas.typ](2026-11-28-graph-atlas.typ).
+
+| Reading | Question | In TyLog |
+|---|---|---|
+| Archive | What do I have, and where did it come from? | vault files, decision log |
+| Knowledge graph | What is connected, and how sure are we? | index: links, tags, citations, `part_of` |
+| Atlas | Where am I? | graph screen: one map per question |
+| Anthology | What did I choose to keep? | accepted links, saved views, boards |
+| Memory layer | What did the system learn from me? | decision ledger → resolver, daily cluster step |
+
+A Decision is the only step that moves a fact from the archive into the anthology (rule 2).
 
 ## What the thesis measures
 

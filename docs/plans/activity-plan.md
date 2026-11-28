@@ -1168,3 +1168,20 @@ Plan: `~/.claude/plans/lets-think-about-one-inherited-steele-of-04345ed6-f2fb-4f
 - [x] Audio note summaries name the transcript language in the prompt (short Russian recordings were summarised in English)
 - [x] Mac workers hung on opening their script: macOS grants `~/Documents` access per `uv` version; the workers now run from `~/.tylog/worker`. The hang with the screen locked was not reproduced
 - [ ] Published pack `pt-pt-a2b1` 1.3.2 is not installed in the real vault
+
+## Wave 42 (2026-11-28): graph atlas (audit, thesis addition, plan)
+
+One concept for the graph, shared by the thesis and the app. Nothing built yet.
+Plan: `docs/plans/2026-11-28-graph-atlas/README.md`. Audit: `docs/audits/2026-11-28-graph.md`.
+
+- [x] Audit of the five graph modes, filters, defects and unused data
+- [x] Thesis addition `docs/thesis/2026-11-28-graph-atlas.typ` (+ PDF, built on Windows with a fallback font)
+- [x] Conceptual model: "Readings of the model"; literature sections 7 and 8 (not read yet)
+- [ ] P1 defects: Voronoi repaint, retry loop, cluster name, hues, zoom reset; nearest-node hit test
+- [ ] P2 core model: edge kinds `partOf` / `added` / `cooccurs`, `origin`, one edge per mutual link
+- [ ] P3 atlas state and one bar for every map (meets thesis rule 3)
+- [ ] P4 Structure map; Network ranked by notes; Timeline window
+- [ ] P5 Recency lens; saved views in `_system/graph/views.json`
+- [ ] P6 docs: manual, ADR 0002, conceptual model, changelog
+- [ ] (user) Read the sources in literature sections 7 and 8; rebuild the PDF on the Mac
+- [ ] (user) Paste the ScienceDirect conceptual-data-model text if a quote is wanted (page returned 403)

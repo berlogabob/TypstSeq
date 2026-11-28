@@ -59,7 +59,34 @@ Every entry below was seen in search results (URL or DOI as listed). Abstract-le
 - Hartig (2017). RDF* and SPARQL*: An Alternative Approach to Annotate Statements in RDF. ISWC 2017 Posters. https://ceur-ws.org/Vol-1963/paper593.pdf — challenges: D7 on one point; plain RDF needs four triples to reify a statement, so per-fact provenance is costly in RDF, easier in property graph or row form.
 - Hartig, Thompson (2014). Foundations of an Alternative Approach to Reification in RDF. arXiv:1406.3399. https://arxiv.org/abs/1406.3399 — challenges: RDF for statement-level provenance; supports choosing rows with status columns for fact status.
 
+## 7. Conceptual modelling and graph visualisation (added 2026-11-28)
+
+Not from the search step. Named from memory for the [graph atlas note](2026-11-28-graph-atlas.typ); not read yet. Check each reference before citing.
+
+- Chen (1976). The Entity-Relationship Model: Toward a Unified View of Data. ACM TODS 1(1). https://doi.org/10.1145/320434.320440 — supports: entities, relationships and attributes as the conceptual level.
+- Tsichritzis, Klug (eds.) (1978). The ANSI/X3/SPARC DBMS Framework. Information Systems 3(3) — supports: a conceptual schema independent of storage; one model, several views.
+- Shneiderman (1996). The Eyes Have It: A Task by Data Type Taxonomy for Information Visualizations. IEEE Symposium on Visual Languages. https://doi.org/10.1109/VL.1996.545307 — supports: overview, zoom and filter, detail as the order of the maps.
+- Munzner (2014). Visualization Analysis and Design. CRC Press — supports: separate data, task and encoding; basis for map, lens and filter.
+- Fruchterman, Reingold (1991). Graph Drawing by Force-directed Placement. Software: Practice and Experience 21(11). https://doi.org/10.1002/spe.4380211102 — supports: the layout used by Network, Topics and Neighbourhood.
+- Balzer, Deussen (2005). Voronoi Treemaps. IEEE InfoVis — supports: the Territory map.
+- Raghavan, Albert, Kumara (2007). Near Linear Time Algorithm to Detect Community Structures in Large-scale Networks. Physical Review E 76. https://doi.org/10.1103/PhysRevE.76.036106 — supports: label propagation for topics.
+- von Landesberger et al. (2011). Visual Analysis of Large Graphs: State-of-the-Art and Future Research Challenges. Computer Graphics Forum 30(6) — supports: limits of node-link drawings; why Network is capped.
+- CCSDS (2012). Reference Model for an Open Archival Information System (OAIS). CCSDS 650.0-M-2, ISO 14721 — supports: archive as ingest, keep, record provenance.
+- Bush (1945). As We May Think. The Atlantic Monthly — supports: a named trail through one's own material; the anthology.
+
+## 8. Memory (added 2026-11-28)
+
+Same status as section 7: named from memory, not read yet.
+
+- Tulving (1972). Episodic and Semantic Memory. In Tulving, Donaldson (eds.), Organization of Memory. Academic Press — supports: Items and decisions as episodes; entities and links as knowledge.
+- Baddeley, Hitch (1974). Working Memory. Psychology of Learning and Motivation 8 — supports: Today and Neighbourhood as what is in view.
+- McClelland, McNaughton, O'Reilly (1995). Why There Are Complementary Learning Systems in the Hippocampus and Neocortex. Psychological Review 102(3). https://doi.org/10.1037/0033-295X.102.3.419 — supports: consolidation; the daily cluster step and ledger learning.
+- Squire (2004). Memory Systems of the Brain: A Brief History and Current Perspective. Neurobiology of Learning and Memory 82(3) — supports: procedural memory; the auto rule and typed commands.
+- Sumers, Yao, Narasimhan, Griffiths (2024). Cognitive Architectures for Language Agents. TMLR. https://arxiv.org/abs/2309.02427 — supports: the same four stores in language agents; ours differ in that the human approves each consolidation.
+
 ## Gaps
+
+- Graph visualisation and memory (sections 7 and 8): nothing read yet; no source found on an "atlas" or "anthology" reading of a personal knowledge graph. The ScienceDirect topic page on conceptual data models returned 403 on 2026-11-28.
 
 - Small-scale performance of Postgres versus Neo4j versus an RDF store for a single lab: I found only blog, student and conference-paper benchmarks whose titles or authors I could not confirm, so none are listed. Needs a targeted ACM or IEEE search.
 - Lab and makerspace equipment loan systems: no peer-reviewed comparison of loan-tracking systems. A Tufts dissertation on an IoT makerspace equipment system and an MDPI chemical-warehouse paper exist, but I could not confirm author, title or venue details, so they are left out.
